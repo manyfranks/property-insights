@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "src/app/api/discover/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/analyze/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}
