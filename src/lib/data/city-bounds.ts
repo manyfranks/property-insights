@@ -11,6 +11,8 @@ export const CITY_BOUNDS: Record<string, CityBounds> = {
   Burnaby: { latMin: 49.2, latMax: 49.29, lngMin: -123.02, lngMax: -122.89 },
   Richmond: { latMin: 49.1, latMax: 49.2, lngMin: -123.22, lngMax: -123.06 },
   Surrey: { latMin: 49.0, latMax: 49.23, lngMin: -122.9, lngMax: -122.69 },
+  Coquitlam: { latMin: 49.24, latMax: 49.33, lngMin: -122.82, lngMax: -122.72 },
+  "North Vancouver": { latMin: 49.3, latMax: 49.37, lngMin: -123.13, lngMax: -123.0 },
   // Southern Vancouver Island
   Victoria: { latMin: 48.4, latMax: 48.47, lngMin: -123.42, lngMax: -123.32 },
   Saanich: { latMin: 48.44, latMax: 48.54, lngMin: -123.42, lngMax: -123.3 },
@@ -32,7 +34,7 @@ export const CITY_BOUNDS: Record<string, CityBounds> = {
 };
 
 export const PROVINCE_CITIES: Record<string, string[]> = {
-  BC: ["Victoria", "Saanich", "Langford", "Colwood", "Esquimalt", "Oak Bay", "View Royal", "Sooke", "Metchosin", "Vancouver", "Burnaby", "Richmond", "Surrey"],
+  BC: ["Victoria", "Saanich", "Langford", "Colwood", "Esquimalt", "Oak Bay", "View Royal", "Sooke", "Metchosin", "Vancouver", "Burnaby", "Coquitlam", "North Vancouver", "Richmond", "Surrey"],
   ON: ["Toronto", "Mississauga", "Hamilton", "Ottawa"],
   AB: ["Calgary", "Edmonton"],
 };
