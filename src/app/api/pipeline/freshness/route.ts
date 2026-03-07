@@ -22,20 +22,49 @@ import { getAllListings, removeListings } from "@/lib/kv/listings";
 
 export const maxDuration = 60; // Allow up to 60s for all HEAD requests
 
-async function checkUrl(url: string): Promise<number> {
+/**
+ * Check if a realtor.ca listing URL is still live.
+ * Returns: "live" | "dead" | "unknown"
+ *
+ * Realtor.ca is a SPA — HEAD requests often return 403,
+ * and GET always returns 200 (even for delisted listings).
+ * Instead we check the MLS number via the realtor.ca API.
+ */
+async function checkMls(mlsNumber: string): Promise<"live" | "dead" | "unknown"> {
+  if (!mlsNumber) return "unknown";
+
   try {
-    const res = await fetch(url, {
-      method: "HEAD",
-      redirect: "follow",
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
+    const params = new URLSearchParams({
+      ZoomLevel: "1",
+      LatitudeMax: "90",
+      LatitudeMin: "-90",
+      LongitudeMax: "180",
+      LongitudeMin: "-180",
+      CurrentPage: "1",
+      RecordsPerPage: "1",
+      PropertySearchTypeId: "1",
+      TransactionTypeId: "2",
+      ReferenceNumber: mlsNumber,
     });
-    return res.status;
+
+    const res = await fetch("https://api2.realtor.ca/Listing.svc/PropertySearch_Post", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: "https://www.realtor.ca",
+        Referer: "https://www.realtor.ca/",
+      },
+      body: params.toString(),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) return "unknown";
+
+    const data = await res.json();
+    const count = data.Paging?.TotalRecords ?? data.Results?.length ?? -1;
+    return count > 0 ? "live" : "dead";
   } catch {
-    return 0; // Network error / timeout
+    return "unknown";
   }
 }
 
@@ -51,13 +80,13 @@ export async function GET() {
     .filter(([, count]) => count > 1)
     .map(([address, count]) => ({ address, count }));
 
-  // Check listing URLs in parallel batches
-  const batchSize = 10;
-  const results: { address: string; city: string; province: string; url: string; status: number }[] = [];
+  // Check listings via MLS API in parallel batches
+  const batchSize = 5; // Smaller batches to avoid API rate limits
+  const results: { address: string; city: string; province: string; url: string; mlsNumber: string; status: "live" | "dead" | "unknown" }[] = [];
 
   for (let i = 0; i < listings.length; i += batchSize) {
     const batch = listings.slice(i, i + batchSize);
-    const statuses = await Promise.all(batch.map((l) => checkUrl(l.url)));
+    const statuses = await Promise.all(batch.map((l) => checkMls(l.mlsNumber || "")));
 
     for (let j = 0; j < batch.length; j++) {
       results.push({
@@ -65,14 +94,15 @@ export async function GET() {
         city: batch[j].city,
         province: batch[j].province,
         url: batch[j].url,
+        mlsNumber: batch[j].mlsNumber || "",
         status: statuses[j],
       });
     }
   }
 
-  const live = results.filter((r) => r.status === 200);
-  const dead = results.filter((r) => r.status === 404);
-  const errors = results.filter((r) => r.status !== 200 && r.status !== 404);
+  const live = results.filter((r) => r.status === "live");
+  const dead = results.filter((r) => r.status === "dead");
+  const unknown = results.filter((r) => r.status === "unknown");
 
   // Auto-prune dead listings from KV
   let pruned = 0;
@@ -115,7 +145,7 @@ export async function GET() {
     total: listings.length,
     live: live.length,
     dead: dead.length,
-    errors: errors.length,
+    unknown: unknown.length,
     duplicates: duplicates.length,
     pruned,
     dedupPruned,
@@ -124,11 +154,12 @@ export async function GET() {
       city: d.city,
       province: d.province,
       url: d.url,
+      mlsNumber: d.mlsNumber,
     })),
     duplicateListings: duplicates,
-    errorListings: errors.map((e) => ({
-      address: e.address,
-      status: e.status,
+    unknownListings: unknown.map((u) => ({
+      address: u.address,
+      mlsNumber: u.mlsNumber,
     })),
     checkedAt: new Date().toISOString(),
   });
