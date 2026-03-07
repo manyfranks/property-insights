@@ -1,5 +1,7 @@
-// BC Assessment cache — keyed by address
-// Province-aware: this is the BC dataset. Ontario/Alberta will have their own files.
+// Assessment caches — keyed by address
+// BC: land/building splits for original 41 entries; total-only for new additions
+// AB/ON: total-only from municipal assessment data
+
 export const BC_ASSESSMENT_CACHE: Record<
   string,
   { total: number; land: number; building: number }
@@ -45,5 +47,85 @@ export const BC_ASSESSMENT_CACHE: Record<
   "796 Worthington Pl": { total: 1483000, land: 434000, building: 1049000 },
   "2617 Country Terr": { total: 857000, land: 439000, building: 418000 },
   "2901 Harriet Rd": { total: 906000, land: 342000, building: 564000 },
+  "2719 DUKE STREET": { total: 1459300, land: 0, building: 0 },
+  "3008 CLARK DRIVE": { total: 1652600, land: 0, building: 0 },
+  "16 N KASLO STREET": { total: 1322900, land: 0, building: 0 },
+  "2007 680 SEYLYNN CRES": { total: 1285000, land: 0, building: 0 },
+  "701 1318 HOMER STREET": { total: 1172000, land: 0, building: 0 },
+  "242 1014 W 47TH AVENUE": { total: 1457000, land: 0, building: 0 },
+  "7590-7592 FRASER STREET": { total: 1418500, land: 0, building: 0 },
+  "51 550 W 28TH AVENUE": { total: 1628000, land: 0, building: 0 },
+  "6451 BEATRICE STREET": { total: 1314000, land: 0, building: 0 },
+  "1440 E KING EDWARD AVENUE": { total: 1450000, land: 0, building: 0 },
+  "212 688 FAIRCHILD ROAD": { total: 1457000, land: 0, building: 0 },
+  "803 3280 CORVETTE WAY": { total: 1168000, land: 0, building: 0 },
+  "1500 8155 CAPSTAN WAY": { total: 1247000, land: 0, building: 0 },
+  "6 7240 MOFFATT ROAD": { total: 921100, land: 0, building: 0 },
+  "12778 114 AVENUE": { total: 860700, land: 0, building: 0 },
+  "14605 67B AVENUE": { total: 1456000, land: 0, building: 0 },
+  "5898 124 STREET": { total: 1291400, land: 0, building: 0 },
+  "149 Mitchell Road NW": { total: 886500, land: 0, building: 0 },
+  "215 25 Avenue NW": { total: 702500, land: 0, building: 0 },
+  "2, 923 1 Avenue NW": { total: 923000, land: 0, building: 0 },
+  "108, 150 Lebel Crescent NW": { total: 204500, land: 0, building: 0 },
+  "609 23 Avenue SW": { total: 1260000, land: 0, building: 0 },
+  "166 Setonstone Green SE": { total: 893000, land: 0, building: 0 },
+  "412 Legacy Circle SE": { total: 840000, land: 0, building: 0 },
+  "3128 39 Street SW": { total: 479500, land: 0, building: 0 },
+  "3130 39 Street SW": { total: 479500, land: 0, building: 0 },
+  "#1801 9939 109 ST NW": { total: 787000, land: 0, building: 0 },
+  "4002 Ginsberg CR NW": { total: 330000, land: 0, building: 0 },
+  "11411 76 AV NW": { total: 784500, land: 0, building: 0 },
+  "11721 80 ST NW": { total: 638500, land: 0, building: 0 },
+  "15807 30 AV SW SW": { total: 771500, land: 0, building: 0 },
+  "9654 83 AV NW": { total: 991500, land: 0, building: 0 },
+  "1581 HOWES PL SW": { total: 804000, land: 0, building: 0 },
+  "2767 Wheaton DR NW": { total: 1399500, land: 0, building: 0 },
+  "3301 - 100 DALHOUSIE STREET": { total: 992500, land: 0, building: 0 },
+  "TH3 - 39 ANNIE CRAIG DRIVE": { total: 719200, land: 0, building: 0 },
+  "5 STONEDENE BOULEVARD": { total: 968200, land: 0, building: 0 },
+  "2497 DUFFERIN STREET": { total: 674300, land: 0, building: 0 },
+  "88 STANLEY TERRACE": { total: 880900, land: 0, building: 0 },
+  "3516A - 17 BATHURST STREET": { total: 745900, land: 0, building: 0 },
+  "490 COLDSTREAM AVENUE E": { total: 942000, land: 0, building: 0 },
+  "903 - 55 DELISLE AVENUE": { total: 1168300, land: 0, building: 0 },
+  "5202 - 488 UNIVERSITY AVENUE": { total: 776700, land: 0, building: 0 },
 };
 
+export const AB_ASSESSMENT_CACHE: Record<
+  string,
+  { total: number; land: number; building: number }
+> = {
+  "149 Mitchell Road NW": { total: 886500, land: 0, building: 0 },
+  "215 25 Avenue NW": { total: 702500, land: 0, building: 0 },
+  "2, 923 1 Avenue NW": { total: 923000, land: 0, building: 0 },
+  "108, 150 Lebel Crescent NW": { total: 204500, land: 0, building: 0 },
+  "609 23 Avenue SW": { total: 1260000, land: 0, building: 0 },
+  "166 Setonstone Green SE": { total: 893000, land: 0, building: 0 },
+  "412 Legacy Circle SE": { total: 840000, land: 0, building: 0 },
+  "3128 39 Street SW": { total: 479500, land: 0, building: 0 },
+  "3130 39 Street SW": { total: 479500, land: 0, building: 0 },
+  "#1801 9939 109 ST NW": { total: 787000, land: 0, building: 0 },
+  "4002 Ginsberg CR NW": { total: 330000, land: 0, building: 0 },
+  "11411 76 AV NW": { total: 784500, land: 0, building: 0 },
+  "11721 80 ST NW": { total: 638500, land: 0, building: 0 },
+  "15807 30 AV SW SW": { total: 771500, land: 0, building: 0 },
+  "9654 83 AV NW": { total: 991500, land: 0, building: 0 },
+  "1581 HOWES PL SW": { total: 804000, land: 0, building: 0 },
+  "2767 Wheaton DR NW": { total: 1399500, land: 0, building: 0 },
+};
+
+export const ON_ASSESSMENT_CACHE: Record<
+  string,
+  { total: number; land: number; building: number }
+> = {
+  "3301 - 100 DALHOUSIE STREET": { total: 992500, land: 0, building: 0 },
+  "TH3 - 39 ANNIE CRAIG DRIVE": { total: 719200, land: 0, building: 0 },
+  "5 STONEDENE BOULEVARD": { total: 968200, land: 0, building: 0 },
+  "2497 DUFFERIN STREET": { total: 674300, land: 0, building: 0 },
+  "88 STANLEY TERRACE": { total: 880900, land: 0, building: 0 },
+  "3516A - 17 BATHURST STREET": { total: 745900, land: 0, building: 0 },
+  "490 COLDSTREAM AVENUE E": { total: 942000, land: 0, building: 0 },
+  "903 - 55 DELISLE AVENUE": { total: 1168300, land: 0, building: 0 },
+  "5202 - 488 UNIVERSITY AVENUE": { total: 776700, land: 0, building: 0 },
+};

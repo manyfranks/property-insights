@@ -1,3 +1,18 @@
+export interface PrecomputedOffer {
+  anchor: number;
+  anchor_tag: string;
+  ratio: number;
+  dom_adjusted: number;
+  dom_mult: number;
+  dom_tag: string;
+  signal_adjusted: number;
+  signal_tags: string[];
+  final_offer: number;
+  pct_of_list: number;
+  savings: number;
+  floor_applied: boolean;
+}
+
 export interface Listing {
   address: string;
   city: string;
@@ -18,6 +33,13 @@ export interface Listing {
   cluster: string;
   url: string;
   mlsNumber?: string;
+  // Pre-computed fields from LLM pipeline
+  preScore?: number;
+  preTier?: "HOT" | "WARM" | "WATCH";
+  preSignals?: string[];
+  preNarrative?: string;
+  preOffer?: PrecomputedOffer;
+  assessmentNote?: string;
 }
 
 export interface Assessment {

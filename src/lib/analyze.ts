@@ -1,10 +1,30 @@
-import { Listing, AnalysisResult } from "./types";
+import { Listing, AnalysisResult, OfferResult } from "./types";
 import { scoreV2 } from "./scoring";
 import { offerModel } from "./offer-model";
 import { getSignals } from "./signals";
 import { lookupAssessmentSync, lookupAssessment } from "./assessment";
 import { getLinkOnlyHistory } from "./housesigma";
 import { analyzeDescription, generateOfferNarrative } from "./llm";
+
+/**
+ * Convert pre-computed offer (snake_case from JSON) to OfferResult (camelCase).
+ */
+function preOfferToResult(pre: NonNullable<Listing["preOffer"]>, listing: Listing): OfferResult {
+  return {
+    anchor: pre.anchor,
+    anchorTag: pre.anchor_tag,
+    listToAssessedRatio: pre.ratio,
+    domAdjusted: pre.dom_adjusted,
+    domMultiplier: pre.dom_mult,
+    domTag: pre.dom_tag,
+    signalAdjusted: pre.signal_adjusted,
+    signalTags: pre.signal_tags,
+    finalOffer: pre.final_offer,
+    percentOfList: pre.pct_of_list,
+    savings: pre.savings,
+    inTargetRange: pre.final_offer >= 900000 && pre.final_offer <= 1250000,
+  };
+}
 
 /**
  * Synchronous analysis using cached data only.
@@ -14,7 +34,9 @@ export function analyzeListing(listing: Listing): AnalysisResult {
   const assessment = lookupAssessmentSync(listing.address, listing.province);
   const history = getLinkOnlyHistory(listing.address, listing.province);
   const score = scoreV2(listing);
-  const offer = assessment ? offerModel(listing, assessment) : null;
+  const offer = listing.preOffer
+    ? preOfferToResult(listing.preOffer, listing)
+    : assessment ? offerModel(listing, assessment) : null;
   const signals = getSignals(listing);
 
   return { listing, assessment, history, score, offer, signals };
@@ -22,14 +44,40 @@ export function analyzeListing(listing: Listing): AnalysisResult {
 
 /**
  * Full async analysis with LLM enrichment + live assessment lookup.
- * Used by API routes where we can afford the latency.
+ * Uses pre-computed data when available, falls back to LLM calls.
  */
 export async function analyzeListingAsync(listing: Listing): Promise<AnalysisResult & {
   llmSignals?: string[];
   llmConfidence?: number;
   narrative?: string;
 }> {
-  // Run assessment lookup and LLM analysis in parallel
+  const hasPre = !!(listing.preNarrative || listing.preSignals || listing.preOffer);
+
+  // If we have pre-computed data, skip LLM calls entirely
+  if (hasPre) {
+    const assessment = lookupAssessmentSync(listing.address, listing.province);
+    const history = getLinkOnlyHistory(listing.address, listing.province);
+    const score = listing.preScore != null && listing.preTier
+      ? { total: listing.preScore, tier: listing.preTier, breakdown: scoreV2(listing).breakdown }
+      : scoreV2(listing);
+    const offer = listing.preOffer
+      ? preOfferToResult(listing.preOffer, listing)
+      : assessment ? offerModel(listing, assessment) : null;
+    const signals = getSignals(listing);
+
+    return {
+      listing,
+      assessment,
+      history,
+      score,
+      offer,
+      signals,
+      llmSignals: listing.preSignals,
+      narrative: listing.preNarrative,
+    };
+  }
+
+  // No pre-computed data — run LLM pipeline
   const [assessment, llmResult] = await Promise.all([
     lookupAssessment(listing.address, listing.province),
     analyzeDescription(listing.description),
@@ -40,7 +88,6 @@ export async function analyzeListingAsync(listing: Listing): Promise<AnalysisRes
   const offer = assessment ? offerModel(listing, assessment) : null;
   const signals = getSignals(listing);
 
-  // Generate offer narrative if we have an offer
   let narrative = "";
   if (offer && assessment) {
     narrative = await generateOfferNarrative({

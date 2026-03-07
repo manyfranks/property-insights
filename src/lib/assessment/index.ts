@@ -1,7 +1,7 @@
 import { Assessment } from "../types";
 import { lookupBC, lookupBCSync } from "./bc";
-import { lookupON } from "./on";
-import { lookupAB } from "./ab";
+import { lookupON, lookupONSync } from "./on";
+import { lookupAB, lookupABSync } from "./ab";
 
 /**
  * Async lookup — tries cache first, then live scrape.
@@ -28,9 +28,9 @@ export function lookupAssessmentSync(address: string, province: string): Assessm
     case "BC":
       return lookupBCSync(address);
     case "ON":
-      return lookupON(address);
+      return lookupONSync(address);
     case "AB":
-      return lookupAB(address);
+      return lookupABSync(address);
     default:
       return null;
   }

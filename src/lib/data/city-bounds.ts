@@ -6,6 +6,11 @@ export interface CityBounds {
 }
 
 export const CITY_BOUNDS: Record<string, CityBounds> = {
+  // Metro Vancouver
+  Vancouver: { latMin: 49.2, latMax: 49.32, lngMin: -123.22, lngMax: -123.02 },
+  Burnaby: { latMin: 49.2, latMax: 49.29, lngMin: -123.02, lngMax: -122.89 },
+  Richmond: { latMin: 49.1, latMax: 49.2, lngMin: -123.22, lngMax: -123.06 },
+  Surrey: { latMin: 49.0, latMax: 49.23, lngMin: -122.9, lngMax: -122.69 },
   // Southern Vancouver Island
   Victoria: { latMin: 48.4, latMax: 48.47, lngMin: -123.42, lngMax: -123.32 },
   Saanich: { latMin: 48.44, latMax: 48.54, lngMin: -123.42, lngMax: -123.3 },
@@ -15,6 +20,7 @@ export const CITY_BOUNDS: Record<string, CityBounds> = {
   "Oak Bay": { latMin: 48.42, latMax: 48.46, lngMin: -123.33, lngMax: -123.28 },
   "View Royal": { latMin: 48.44, latMax: 48.48, lngMin: -123.47, lngMax: -123.4 },
   Sooke: { latMin: 48.35, latMax: 48.42, lngMin: -123.78, lngMax: -123.68 },
+  Metchosin: { latMin: 48.35, latMax: 48.42, lngMin: -123.58, lngMax: -123.48 },
   // Ontario
   Toronto: { latMin: 43.58, latMax: 43.86, lngMin: -79.64, lngMax: -79.1 },
   Mississauga: { latMin: 43.5, latMax: 43.66, lngMin: -79.78, lngMax: -79.53 },
@@ -26,7 +32,7 @@ export const CITY_BOUNDS: Record<string, CityBounds> = {
 };
 
 export const PROVINCE_CITIES: Record<string, string[]> = {
-  BC: ["Victoria", "Saanich", "Langford", "Colwood", "Esquimalt", "Oak Bay", "View Royal", "Sooke"],
+  BC: ["Victoria", "Saanich", "Langford", "Colwood", "Esquimalt", "Oak Bay", "View Royal", "Sooke", "Metchosin", "Vancouver", "Burnaby", "Richmond", "Surrey"],
   ON: ["Toronto", "Mississauga", "Hamilton", "Ottawa"],
   AB: ["Calgary", "Edmonton"],
 };
