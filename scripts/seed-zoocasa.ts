@@ -37,18 +37,18 @@ interface CityConfig {
 
 const CITIES: CityConfig[] = [
   // BC
-  { city: "Victoria", province: "BC", minPrice: 900000, maxPrice: 1300000, target: 5 },
-  { city: "Saanich", province: "BC", minPrice: 900000, maxPrice: 1300000, target: 5 },
-  { city: "Langford", province: "BC", minPrice: 900000, maxPrice: 1300000, target: 5 },
-  { city: "Vancouver", province: "BC", minPrice: 1000000, maxPrice: 1800000, target: 5 },
-  { city: "Surrey", province: "BC", minPrice: 1000000, maxPrice: 1800000, target: 5 },
+  { city: "Victoria", province: "BC", minPrice: 900000, maxPrice: 1300000, target: 25 },
+  { city: "Saanich", province: "BC", minPrice: 900000, maxPrice: 1300000, target: 25 },
+  { city: "Langford", province: "BC", minPrice: 900000, maxPrice: 1300000, target: 25 },
+  { city: "Vancouver", province: "BC", minPrice: 1000000, maxPrice: 1800000, target: 25 },
+  { city: "Surrey", province: "BC", minPrice: 1000000, maxPrice: 1800000, target: 25 },
   // AB
-  { city: "Calgary", province: "AB", minPrice: 500000, maxPrice: 900000, target: 5 },
-  { city: "Edmonton", province: "AB", minPrice: 500000, maxPrice: 900000, target: 5 },
+  { city: "Calgary", province: "AB", minPrice: 500000, maxPrice: 900000, target: 25 },
+  { city: "Edmonton", province: "AB", minPrice: 500000, maxPrice: 900000, target: 25 },
   // ON
-  { city: "Toronto", province: "ON", minPrice: 1000000, maxPrice: 1800000, target: 5 },
-  { city: "Hamilton", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 5 },
-  { city: "Ottawa", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 5 },
+  { city: "Toronto", province: "ON", minPrice: 1000000, maxPrice: 1800000, target: 25 },
+  { city: "Hamilton", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 25 },
+  { city: "Ottawa", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 25 },
 ];
 
 // Pre-computed fields to strip from listings
@@ -122,9 +122,9 @@ async function main() {
       continue;
     }
 
-    // Take top 8 by DOM desc for detail fetch
+    // Take top 30 by DOM desc for detail fetch (need extras to hit target=25 after filtering)
     candidates.sort((a, b) => b.dom - a.dom);
-    const toFetch = candidates.slice(0, 8);
+    const toFetch = candidates.slice(0, 30);
 
     // Fetch details
     const detailed: Listing[] = [];
