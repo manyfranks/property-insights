@@ -52,7 +52,7 @@ export interface Assessment {
 
 export interface ListingHistory {
   found: boolean;
-  source: "housesigma" | "link_only";
+  source: "zoocasa" | "housesigma" | "link_only";
   relistCount?: number;
   cumulativeDom?: number;
   priceChanges?: {
@@ -73,7 +73,8 @@ export interface ListingHistory {
     sqft: number;
     distanceKm: number;
   }[];
-  houseSigmaUrl: string;
+  zoocasaUrl?: string;
+  houseSigmaUrl?: string;
 }
 
 export interface ScoreResult {

@@ -1,13 +1,13 @@
 /**
  * GET /api/pipeline/freshness
  *
- * Checks all stored listings for freshness by cross-referencing
- * against live realtor.ca city searches via ScraperAPI.
+ * Checks all stored listings for freshness by checking Zoocasa.
+ * A 404 or missingAddress redirect = listing is sold/delisted = dead.
  *
  * Strategy:
- * - Groups listings by city
- * - For each city, does a PropertySearch_Post via ScraperAPI
- * - Any stored listing whose MLS number is NOT in live results = dead
+ * - Fetches all listings from KV
+ * - Checks each against Zoocasa (batched with concurrency limit)
+ * - Dead listings are auto-pruned from KV
  * - Also detects and prunes duplicate addresses
  *
  * Designed to be called by Vercel Cron (weekly) or manually.
@@ -15,74 +15,30 @@
 
 import { NextResponse } from "next/server";
 import { getAllListings, removeListings } from "@/lib/kv/listings";
-import { CITY_BOUNDS, CityBounds } from "@/lib/data/city-bounds";
+import { checkFreshness } from "@/lib/zoocasa";
 
 export const maxDuration = 60;
 
-const API_URL = "https://api2.realtor.ca/Listing.svc/PropertySearch_Post";
+/** Check listings in batches with concurrency limit */
+async function checkBatch(
+  listings: { address: string; city: string; province: string }[],
+  concurrency: number
+): Promise<Map<string, "live" | "dead" | "unknown">> {
+  const results = new Map<string, "live" | "dead" | "unknown">();
+  const queue = [...listings];
 
-/**
- * Fetch all live MLS numbers for a city via ScraperAPI.
- */
-async function fetchLiveMlsForCity(
-  bounds: CityBounds
-): Promise<Set<string>> {
-  const scraperApiKey = process.env.SCRAPER_API_KEY;
-  const mlsSet = new Set<string>();
-
-  const params = new URLSearchParams({
-    ZoomLevel: "11",
-    LatitudeMax: bounds.latMax.toString(),
-    LatitudeMin: bounds.latMin.toString(),
-    LongitudeMax: bounds.lngMax.toString(),
-    LongitudeMin: bounds.lngMin.toString(),
-    CurrentPage: "1",
-    RecordsPerPage: "200",
-    PropertySearchTypeId: "1",
-    TransactionTypeId: "2",
-    PropertyTypeGroupID: "1",
-    SortBy: "6",
-    SortOrder: "D",
-  });
-
-  try {
-    let res: Response;
-    if (scraperApiKey) {
-      const targetUrl = encodeURIComponent(API_URL);
-      res = await fetch(
-        `http://api.scraperapi.com?api_key=${scraperApiKey}&url=${targetUrl}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: params.toString(),
-          signal: AbortSignal.timeout(20000),
-        }
-      );
-    } else {
-      res = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Origin: "https://www.realtor.ca",
-          Referer: "https://www.realtor.ca/",
-        },
-        body: params.toString(),
-        signal: AbortSignal.timeout(10000),
-      });
+  async function worker() {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      if (!item) break;
+      const status = await checkFreshness(item.address, item.city, item.province);
+      results.set(item.address, status);
     }
-
-    if (!res.ok) return mlsSet;
-
-    const data = await res.json();
-    const results = data.Results || [];
-    for (const r of results) {
-      if (r.MlsNumber) mlsSet.add(r.MlsNumber);
-    }
-  } catch {
-    // API error — return empty set (will mark as "unknown")
   }
 
-  return mlsSet;
+  const workers = Array.from({ length: concurrency }, () => worker());
+  await Promise.all(workers);
+  return results;
 }
 
 export async function GET() {
@@ -97,99 +53,31 @@ export async function GET() {
     .filter(([, count]) => count > 1)
     .map(([address, count]) => ({ address, count }));
 
-  // Group listings by city slug (matching CITY_BOUNDS keys)
-  const cityKeys = Object.keys(CITY_BOUNDS);
-  const cityToListings = new Map<string, typeof listings>();
-
-  for (const l of listings) {
-    const key = cityKeys.find(
-      (k) => k.toLowerCase() === l.city.toLowerCase()
-    );
-    if (key) {
-      const arr = cityToListings.get(key) || [];
-      arr.push(l);
-      cityToListings.set(key, arr);
-    }
-  }
-
-  // Only check up to 6 cities per run to stay within 60s timeout.
-  // Rotate based on the current week number so all cities get checked over time.
-  const allCities = Array.from(cityToListings.keys()).sort();
+  // Check freshness — batch up to 40 listings per run to stay within 60s
+  // Rotate through listings based on the current week
   const weekNum = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
-  const batchStart = (weekNum * 6) % allCities.length;
-  const citiesToCheck = [];
-  for (let i = 0; i < Math.min(6, allCities.length); i++) {
-    citiesToCheck.push(allCities[(batchStart + i) % allCities.length]);
+  const batchSize = 40;
+  const batchStart = (weekNum * batchSize) % listings.length;
+  const toCheck: typeof listings = [];
+  for (let i = 0; i < Math.min(batchSize, listings.length); i++) {
+    toCheck.push(listings[(batchStart + i) % listings.length]);
   }
 
-  // For checked cities, fetch live MLS numbers and cross-reference
-  const results: {
-    address: string;
-    city: string;
-    province: string;
-    url: string;
-    mlsNumber: string;
-    status: "live" | "dead" | "unknown";
-  }[] = [];
+  const freshnessMap = await checkBatch(toCheck, 6);
 
-  const cityResults: { city: string; liveMls: number; checked: number; dead: number }[] = [];
-
-  // Mark unchecked cities as unknown
-  for (const [cityKey, cityListings] of cityToListings) {
-    if (!citiesToCheck.includes(cityKey)) {
-      for (const l of cityListings) {
-        results.push({
-          address: l.address, city: l.city, province: l.province,
-          url: l.url, mlsNumber: l.mlsNumber || "", status: "unknown",
-        });
-      }
-    }
-  }
-
-  for (const [cityKey, cityListings] of cityToListings) {
-    if (!citiesToCheck.includes(cityKey)) continue;
-    const bounds = CITY_BOUNDS[cityKey];
-    const liveMls = await fetchLiveMlsForCity(bounds);
-
-    let deadCount = 0;
-    for (const l of cityListings) {
-      let status: "live" | "dead" | "unknown";
-
-      if (liveMls.size === 0) {
-        // API call failed for this city — can't determine status
-        status = "unknown";
-      } else if (!l.mlsNumber) {
-        status = "unknown";
-      } else if (liveMls.has(l.mlsNumber)) {
-        status = "live";
-      } else {
-        // MLS not in live results — could be dead OR just not in top 200
-        // Mark as "dead" only if the city returned a reasonable number of results
-        status = liveMls.size >= 20 ? "dead" : "unknown";
-        if (status === "dead") deadCount++;
-      }
-
-      results.push({
-        address: l.address,
-        city: l.city,
-        province: l.province,
-        url: l.url,
-        mlsNumber: l.mlsNumber || "",
-        status,
-      });
-    }
-
-    cityResults.push({
-      city: cityKey,
-      liveMls: liveMls.size,
-      checked: cityListings.length,
-      dead: deadCount,
-    });
-  }
+  const results = listings.map((l) => ({
+    address: l.address,
+    city: l.city,
+    province: l.province,
+    url: l.url,
+    mlsNumber: l.mlsNumber || "",
+    status: freshnessMap.get(l.address) ?? ("unchecked" as const),
+  }));
 
   const live = results.filter((r) => r.status === "live");
   const dead = results.filter((r) => r.status === "dead");
   const unknown = results.filter((r) => r.status === "unknown");
+  const unchecked = results.filter((r) => r.status === "unchecked");
 
   // Auto-prune dead listings from KV
   let pruned = 0;
@@ -197,7 +85,7 @@ export async function GET() {
     try {
       pruned = await removeListings(dead.map((d) => d.address));
     } catch {
-      // KV not available or write failed — report but don't crash
+      // KV not available or write failed
     }
   }
 
@@ -226,14 +114,14 @@ export async function GET() {
 
   return NextResponse.json({
     total: listings.length,
+    checked: toCheck.length,
     live: live.length,
     dead: dead.length,
     unknown: unknown.length,
+    unchecked: unchecked.length,
     duplicates: duplicates.length,
     pruned,
     dedupPruned,
-    citiesChecked: citiesToCheck,
-    cityResults,
     deadListings: dead.map((d) => ({
       address: d.address,
       city: d.city,
@@ -242,10 +130,6 @@ export async function GET() {
       mlsNumber: d.mlsNumber,
     })),
     duplicateListings: duplicates,
-    unknownListings: unknown.slice(0, 20).map((u) => ({
-      address: u.address,
-      mlsNumber: u.mlsNumber,
-    })),
     checkedAt: new Date().toISOString(),
   });
 }

@@ -285,7 +285,10 @@ export function scoreV3(listing: Listing): ScoreV3Result {
     } else if (ratio < 1.0) {
       assessPts = 8;
       breakdown["Near Assessed"] = 8;
-    } else if (ratio > 1.2) {
+    } else if (ratio <= 1.2) {
+      // Listed 0–20% above assessed — normal range, no bonus or penalty
+      assessPts = 0;
+    } else {
       assessPts = -5;
       breakdown["Above Assessed penalty"] = -5;
     }
