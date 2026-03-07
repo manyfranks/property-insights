@@ -102,7 +102,6 @@ export async function GET() {
   const cityToListings = new Map<string, typeof listings>();
 
   for (const l of listings) {
-    // Find matching city bounds key
     const key = cityKeys.find(
       (k) => k.toLowerCase() === l.city.toLowerCase()
     );
@@ -113,7 +112,17 @@ export async function GET() {
     }
   }
 
-  // For each city, fetch live MLS numbers and cross-reference
+  // Only check up to 6 cities per run to stay within 60s timeout.
+  // Rotate based on the current week number so all cities get checked over time.
+  const allCities = Array.from(cityToListings.keys()).sort();
+  const weekNum = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+  const batchStart = (weekNum * 6) % allCities.length;
+  const citiesToCheck = [];
+  for (let i = 0; i < Math.min(6, allCities.length); i++) {
+    citiesToCheck.push(allCities[(batchStart + i) % allCities.length]);
+  }
+
+  // For checked cities, fetch live MLS numbers and cross-reference
   const results: {
     address: string;
     city: string;
@@ -125,7 +134,20 @@ export async function GET() {
 
   const cityResults: { city: string; liveMls: number; checked: number; dead: number }[] = [];
 
+  // Mark unchecked cities as unknown
   for (const [cityKey, cityListings] of cityToListings) {
+    if (!citiesToCheck.includes(cityKey)) {
+      for (const l of cityListings) {
+        results.push({
+          address: l.address, city: l.city, province: l.province,
+          url: l.url, mlsNumber: l.mlsNumber || "", status: "unknown",
+        });
+      }
+    }
+  }
+
+  for (const [cityKey, cityListings] of cityToListings) {
+    if (!citiesToCheck.includes(cityKey)) continue;
     const bounds = CITY_BOUNDS[cityKey];
     const liveMls = await fetchLiveMlsForCity(bounds);
 
@@ -210,6 +232,7 @@ export async function GET() {
     duplicates: duplicates.length,
     pruned,
     dedupPruned,
+    citiesChecked: citiesToCheck,
     cityResults,
     deadListings: dead.map((d) => ({
       address: d.address,
