@@ -20,7 +20,7 @@
 import { NextResponse } from "next/server";
 import { getAllListings, removeListings } from "@/lib/kv/listings";
 
-export const maxDuration = 60; // Allow up to 60s for all HEAD requests
+export const maxDuration = 300; // Allow up to 5 min for ScraperAPI MLS checks
 
 /**
  * Check if a realtor.ca listing URL is still live.
@@ -29,6 +29,12 @@ export const maxDuration = 60; // Allow up to 60s for all HEAD requests
  * Realtor.ca is a SPA — HEAD requests often return 403,
  * and GET always returns 200 (even for delisted listings).
  * Instead we check the MLS number via the realtor.ca API.
+ */
+const API_URL = "https://api2.realtor.ca/Listing.svc/PropertySearch_Post";
+
+/**
+ * Check a single MLS number against the realtor.ca API.
+ * Uses ScraperAPI to bypass Cloudflare when SCRAPER_API_KEY is set.
  */
 async function checkMls(mlsNumber: string): Promise<"live" | "dead" | "unknown"> {
   if (!mlsNumber) return "unknown";
@@ -47,16 +53,29 @@ async function checkMls(mlsNumber: string): Promise<"live" | "dead" | "unknown">
       ReferenceNumber: mlsNumber,
     });
 
-    const res = await fetch("https://api2.realtor.ca/Listing.svc/PropertySearch_Post", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Origin: "https://www.realtor.ca",
-        Referer: "https://www.realtor.ca/",
-      },
-      body: params.toString(),
-      signal: AbortSignal.timeout(10000),
-    });
+    const scraperApiKey = process.env.SCRAPER_API_KEY;
+    let res: Response;
+
+    if (scraperApiKey) {
+      const targetUrl = encodeURIComponent(API_URL);
+      res = await fetch(`http://api.scraperapi.com?api_key=${scraperApiKey}&url=${targetUrl}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+        signal: AbortSignal.timeout(15000),
+      });
+    } else {
+      res = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Origin: "https://www.realtor.ca",
+          Referer: "https://www.realtor.ca/",
+        },
+        body: params.toString(),
+        signal: AbortSignal.timeout(10000),
+      });
+    }
 
     if (!res.ok) return "unknown";
 
@@ -80,8 +99,8 @@ export async function GET() {
     .filter(([, count]) => count > 1)
     .map(([address, count]) => ({ address, count }));
 
-  // Check listings via MLS API in parallel batches
-  const batchSize = 5; // Smaller batches to avoid API rate limits
+  // Check listings via MLS API in parallel batches of 10
+  const batchSize = 10;
   const results: { address: string; city: string; province: string; url: string; mlsNumber: string; status: "live" | "dead" | "unknown" }[] = [];
 
   for (let i = 0; i < listings.length; i += batchSize) {
