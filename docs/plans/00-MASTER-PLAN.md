@@ -2,69 +2,113 @@
 
 ## Current State (March 2026)
 
-176 preloaded listings across BC (13 cities), AB (2 cities), ON (1 city).
-**Zero listings are fully complete.** 131/176 (74%) show "Offer Unavailable" on their property page.
+50 listings across BC (25), AB (10), ON (15) — fresh-seeded from Zoocasa.
+All listings have descriptions, MLS numbers, and Zoocasa URLs.
+Property pages compute analysis on-the-fly (assessment + offer model + LLM for HOT/WARM, deterministic for WATCH).
 
 ### What Works
-- realtor.ca fetch via ScraperAPI (server-side, no browser)
-- Offer model algorithm (assessment anchor -> DOM multiplier -> signal stack -> floor/ceiling)
-- LLM signal detection (Haiku via OpenRouter, ~$0.001/listing)
-- LLM narrative generation (Sonnet via OpenRouter, ~$0.01/listing)
-- scoreV2 (legacy, DOM-primary) + scoreV3 (new, language-first)
-- Pipeline orchestrator (`runCityPipeline`) with fetch/filter/dedup/score/rank stages
-- BC Assessment live scraper (Puppeteer via Browserless, 8-12s/lookup, fragile)
+- Zoocasa fetch (search + detail pages, `__NEXT_DATA__` extraction, no browser needed)
+- Two offer models: assessment-anchored (BC/AB) + language-based fallback (ON, uncached)
+- Combined LLM call (MiniMax M2.5 via OpenRouter): signal detection + Fulton-style narrative in one call
+- Deterministic WATCH-tier templates (no LLM cost for low-signal listings)
+- scoreV2 (DOM-primary, production) + scoreV3 (language-first, pipeline)
+- BC Assessment: cache + Puppeteer/Browserless live scrape
+- AB Assessment: Calgary + Edmonton SODA API (free, no auth)
+- Freshness cron: weekly Zoocasa 404 check, auto-removes delisted
+- KV (Upstash Redis): listings, slug indexes, dedup sets, metadata
 - User subscriptions via Clerk
 
-### What's Broken/Missing
-- 131 listings have no offer (missing assessment data or preOffer)
-- 45 listings have no description (LLM can't analyze them)
-- 118 missing lotSize, 87 missing taxes, 76 missing yearBuilt
-- HouseSigma integration is stubbed (returns Google search URL only)
+### What Needs Work
+- No automated listing refresh (manual seed script only)
+- 23/25 BC listings uncached in assessment store (trigger Puppeteer on page view)
+- ON: no sqft, yearBuilt, or assessment data (Zoocasa + MPAC limitations)
+- AB: no taxes data (Zoocasa limitation)
+- No pre-computed narratives (LLM runs on every HOT/WARM page view)
 - Email delivery is stubbed
-- Cron scheduling is not wired
-- Ontario assessment strategy is wrong (frozen 2016 MPAC values)
+- No user-submitted property assessment flow
 
 ---
 
 ## Phases
 
+### Completed
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | UX Graceful Degradation | **Done** — No "Offer Unavailable" anywhere |
+| 2A | BC Assessment Batch Scrape | **Done** — +73 entries (but needs refresh for new listings) |
+| 2 AB | Alberta SODA API | **Done** — Live lookups for Calgary + Edmonton |
+| 2B/2C | Description + Detail Backfill | **Superseded** — Zoocasa detail fetch provides all data at seed time |
+| 3 | Ontario Offer Strategy | **Done** — `offerModelLanguage()` with 85% floor |
+| — | Zoocasa Migration | **Done** — Replaced realtor.ca + HouseSigma entirely |
+| — | Flush & Re-seed | **Done** — 50 fresh listings, stale KV purged |
+
+### Active Roadmap
+
 | Phase | Name | Priority | Effort | Dependency |
 |-------|------|----------|--------|------------|
-| **1** | [UX Graceful Degradation](./01-UX-GRACEFUL-DEGRADATION.md) | CRITICAL | 1-2 hours | None |
-| **2** | [Data Backfill](./02-DATA-BACKFILL.md) | CRITICAL | 1-2 days | None |
-| **3** | [Ontario Offer Strategy](./03-ONTARIO-OFFER-STRATEGY.md) | HIGH | 1 day | Phase 1 |
-| **4** | [Pipeline & Cron](./04-PIPELINE-CRON.md) | HIGH | 2-3 days | Phase 2 |
-| **5** | [Email Delivery](./05-EMAIL-DELIVERY.md) | MEDIUM | 1 day | Phase 4 |
+| **4** | [Pipeline & Cron](./04-PIPELINE-CRON.md) | CRITICAL | 2 days | None |
+| **5** | [Email Delivery](./05-EMAIL-DELIVERY.md) | HIGH | 1 day | Phase 4 |
+| **6** | User Inquiry (on-demand assessment) | MEDIUM | 1-2 days | Phase 5 |
 
-### Phase Dependency Graph
+### Dependency Graph
 
 ```
-Phase 1 (UX fix) ─────────────────> Phase 3 (ON offer strategy)
-                                          |
-Phase 2 (Data backfill) ──────────> Phase 4 (Pipeline & Cron) ──> Phase 5 (Email)
+Phase 4 (Pipeline & Cron)
+    ├── 4A: Semi-daily listing refresh (Zoocasa → KV)
+    ├── 4B: BC assessment batch scrape (Browserless)
+    └── 4C: Narrative pre-computation (score → offer → LLM → write preOffer/preNarrative to KV)
+           |
+           v
+Phase 5 (Email Delivery)
+    └── Daily digest via Resend after pipeline generates picks
+           |
+           v
+Phase 6 (User Inquiry)
+    └── On-demand: user submits address/URL → assess → email result
 ```
 
-Phases 1 and 2 can run in parallel. Phase 3 depends on Phase 1 (same property page).
-Phase 4 depends on Phase 2 (data must be clean before automating).
-Phase 5 depends on Phase 4 (need the cron pipeline to generate picks to email).
+Phase 4 is the foundation. Everything else depends on it.
 
 ---
 
 ## Key Architecture Decisions
 
-### Assessment-anchored offers are BC/AB only
-Ontario's MPAC values are frozen at 2016. The offer model's ratio-based anchor is meaningless when assessments are 10 years stale. Ontario needs a different strategy — see Phase 3.
+### Zoocasa is the sole listing source
+No scraping protection, no API keys needed. Server-rendered Next.js pages with `__NEXT_DATA__` JSON. Free and reliable.
 
-### Language-first scoring (scoreV3) is the future
-scoreV2 is DOM-primary, which breaks on relisted properties (DOM resets to 0). scoreV3 treats DOM as a multiplier on language signals. All new work should use scoreV3.
+### Assessment strategy varies by province
+- **BC:** Cache + Puppeteer live scrape (land/building split available)
+- **AB:** SODA API live (total value only, no land/building split)
+- **ON:** Language-based fallback (no live assessment API, frozen MPAC values)
 
-### Pre-computed vs live analysis
-Preloaded listings use `preOffer`/`preScore`/`preNarrative` fields baked into `listings.ts`. The live pipeline (`analyzeListingAsync`) can compute these on the fly if assessment data exists. The long-term architecture is: cron pipeline generates picks -> enriches them (assessment + LLM) -> stores pre-computed results.
+### LLM architecture: tiered by signal strength
+- **WATCH tier:** Deterministic template — zero API cost, instant
+- **HOT/WARM tier:** Single LLM call (signal detection + Fulton-style narrative)
+- Pre-computation in Phase 4 eliminates per-pageview LLM calls entirely
 
-### Cost model
-- ScraperAPI: ~$0.001/call (2 calls per city fetch)
-- Browserless (BC Assessment): ~$0.01/lookup
-- OpenRouter Haiku (signal detection): ~$0.001/listing
-- OpenRouter Sonnet (narrative): ~$0.01/listing
-- **Per city per day: ~$0.10**
-- **20 cities daily: ~$2/day = ~$60/month**
+### KV is the primary data store
+No Postgres needed. Vercel KV (Upstash Redis) handles listings, slug indexes, dedup sets, and metadata. Static `listings.ts` is the fallback for local dev.
+
+### Cost model (post-Phase 4)
+
+| Resource | Per Run (10 cities) | 2x Daily | Monthly |
+|----------|-------------------|----------|---------|
+| Zoocasa fetch | Free | Free | Free |
+| Browserless (BC assessment, ~25 listings) | $3.00 | $6.00 | ~$180 |
+| OpenRouter MiniMax M2.5 (~15 HOT/WARM) | $0.05 | $0.10 | ~$3 |
+| Vercel KV | — | — | ~$5 |
+| **Total** | **~$3.05** | **~$6.10** | **~$188** |
+
+Browserless is the dominant cost. Once BC assessments are cached, it drops to near-zero for repeat listings. First-run cost is front-loaded.
+
+---
+
+## Superseded Documents
+
+| Doc | Status | Notes |
+|-----|--------|-------|
+| `01-UX-GRACEFUL-DEGRADATION.md` | Completed | No action needed |
+| `02-DATA-BACKFILL.md` | Superseded by Zoocasa migration | Assessment batch (2A) still relevant for new BC listings; handled in Phase 4B |
+| `03-ONTARIO-OFFER-STRATEGY.md` | Completed | `offerModelLanguage()` in production |
+| `06-ZOLO-VS-HOUSESIGMA-RESEARCH.md` | Superseded | Zoocasa solved the data source problem |
