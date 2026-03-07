@@ -33,6 +33,8 @@ export const CITY_METADATA: CityMeta[] = [
   { name: "Edmonton", slug: "edmonton", province: "AB", description: "Provincial capital, affordable markets", listingCount: countListings("Edmonton") },
   // ON
   { name: "Toronto", slug: "toronto", province: "ON", description: "Canada's largest city, diverse market", listingCount: countListings("Toronto") },
+  { name: "Hamilton", slug: "hamilton", province: "ON", description: "Steel city with revitalizing neighborhoods", listingCount: countListings("Hamilton") },
+  { name: "Ottawa", slug: "ottawa", province: "ON", description: "National capital, stable government market", listingCount: countListings("Ottawa") },
 ];
 
 export const PROVINCE_GROUPS: { province: string; label: string; active: boolean }[] = [

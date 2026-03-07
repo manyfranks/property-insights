@@ -77,6 +77,11 @@ function OfferCascade({ offer }: { offer: OfferResult }) {
   );
 }
 
+function realtorSearchUrl(mlsNumber?: string, address?: string, city?: string): string {
+  const query = mlsNumber || `${address} ${city}`;
+  return `https://www.realtor.ca/map#view=list&Sort=6-D&Keywords=${encodeURIComponent(query)}`;
+}
+
 function domColor(dom: number): string {
   if (dom >= 90) return "bg-red-500";
   if (dom >= 45) return "bg-amber-500";
@@ -111,7 +116,7 @@ export default async function PropertyPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             <a
-              href={listing.url}
+              href={realtorSearchUrl(listing.mlsNumber, listing.address, listing.city)}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:underline"
@@ -367,21 +372,21 @@ export default async function PropertyPage({
       {/* I. Footer links */}
       <div className="pt-6 border-t border-border flex justify-center gap-6">
         <a
-          href={listing.url}
+          href={realtorSearchUrl(listing.mlsNumber, listing.address, listing.city)}
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm text-muted hover:text-foreground transition-colors"
         >
-          View on realtor.ca &rarr;
+          View on Realtor.ca &rarr;
         </a>
-        {listingHistory && (
+        {listing.url && (
           <a
-            href={listingHistory.houseSigmaUrl}
+            href={listing.url}
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-muted hover:text-foreground transition-colors"
           >
-            View history on HouseSigma &rarr;
+            View on Zoocasa &rarr;
           </a>
         )}
       </div>

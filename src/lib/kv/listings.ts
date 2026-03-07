@@ -213,6 +213,40 @@ export async function removeListings(addresses: string[]): Promise<number> {
 }
 
 /**
+ * Delete all listings:by-slug:* keys that aren't in the provided valid slugs set.
+ * Uses SCAN to iterate through keys without loading them all at once.
+ */
+export async function purgeStaleSlugKeys(validSlugs: Set<string>): Promise<number> {
+  if (!kvAvailable()) return 0;
+
+  let cursor = "0";
+  let purged = 0;
+
+  do {
+    const url = kvUrl()!;
+    const res = await fetch(
+      `${url}/scan/${encodeURIComponent(cursor)}/match/${encodeURIComponent("listings:by-slug:*")}/count/100`,
+      { method: "GET", headers: kvHeaders() }
+    );
+    if (!res.ok) break;
+
+    const body = await res.json();
+    const [nextCursor, keys] = body.result as [string, string[]];
+    cursor = nextCursor;
+
+    for (const key of keys) {
+      const slug = key.replace("listings:by-slug:", "");
+      if (!validSlugs.has(slug)) {
+        await kvDel(key);
+        purged++;
+      }
+    }
+  } while (cursor !== "0");
+
+  return purged;
+}
+
+/**
  * Get metadata about stored listings.
  */
 export async function getListingsMeta(): Promise<{

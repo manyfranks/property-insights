@@ -1,10 +1,18 @@
-import { Listing, AnalysisResult, OfferResult } from "./types";
+import { Listing, AnalysisResult, OfferResult, ListingHistory } from "./types";
 import { scoreV2 } from "./scoring";
 import { offerModel, offerModelLanguage } from "./offer-model";
 import { getSignals } from "./signals";
 import { lookupAssessmentSync, lookupAssessment } from "./assessment";
-import { getLinkOnlyHistory } from "./housesigma";
-import { analyzeDescription, generateOfferNarrative } from "./llm";
+import { buildDetailUrl } from "./zoocasa";
+import { analyzeAndNarrate, deterministicNarrative } from "./llm";
+
+function getZoocasaHistory(address: string, city: string, province: string): ListingHistory {
+  return {
+    found: false,
+    source: "zoocasa",
+    zoocasaUrl: buildDetailUrl(address, city, province),
+  };
+}
 
 /**
  * Convert pre-computed offer (snake_case from JSON) to OfferResult (camelCase).
@@ -33,7 +41,7 @@ function preOfferToResult(pre: NonNullable<Listing["preOffer"]>, listing: Listin
  */
 export function analyzeListing(listing: Listing): AnalysisResult {
   const assessment = lookupAssessmentSync(listing.address, listing.province);
-  const history = getLinkOnlyHistory(listing.address, listing.province);
+  const history = getZoocasaHistory(listing.address, listing.city, listing.province);
   const score = scoreV2(listing);
   const offer = listing.preOffer
     ? preOfferToResult(listing.preOffer, listing)
@@ -45,7 +53,10 @@ export function analyzeListing(listing: Listing): AnalysisResult {
 
 /**
  * Full async analysis with LLM enrichment + live assessment lookup.
- * Uses pre-computed data when available, falls back to LLM calls.
+ *
+ * Per ALGORITHM.md:
+ * - WATCH tier → deterministic template (no LLM call, saves cost)
+ * - HOT/WARM tier → single combined LLM call (signals + narrative)
  */
 export async function analyzeListingAsync(listing: Listing): Promise<AnalysisResult & {
   llmSignals?: string[];
@@ -54,10 +65,10 @@ export async function analyzeListingAsync(listing: Listing): Promise<AnalysisRes
 }> {
   const hasPre = !!(listing.preNarrative || listing.preSignals || listing.preOffer);
 
-  // If we have pre-computed data, skip LLM calls entirely
+  // If we have pre-computed data, skip all external calls
   if (hasPre) {
     const assessment = lookupAssessmentSync(listing.address, listing.province);
-    const history = getLinkOnlyHistory(listing.address, listing.province);
+    const history = getZoocasaHistory(listing.address, listing.city, listing.province);
     const score = listing.preScore != null && listing.preTier
       ? { total: listing.preScore, tier: listing.preTier, breakdown: scoreV2(listing).breakdown }
       : scoreV2(listing);
@@ -78,33 +89,29 @@ export async function analyzeListingAsync(listing: Listing): Promise<AnalysisRes
     };
   }
 
-  // No pre-computed data — run LLM pipeline
-  const [assessment, llmResult] = await Promise.all([
-    lookupAssessment(listing.address, listing.province),
-    analyzeDescription(listing.description),
-  ]);
-
-  const history = getLinkOnlyHistory(listing.address, listing.province);
+  // No pre-computed data — run assessment lookup + compute offer
+  const assessment = await lookupAssessment(listing.address, listing.province);
+  const history = getZoocasaHistory(listing.address, listing.city, listing.province);
   const score = scoreV2(listing);
   const offer = assessment ? offerModel(listing, assessment) : offerModelLanguage(listing);
   const signals = getSignals(listing);
 
-  let narrative = "";
-  if (offer && assessment) {
-    narrative = await generateOfferNarrative({
-      address: listing.address,
-      listPrice: listing.price,
-      assessedValue: assessment.totalValue,
-      finalOffer: offer.finalOffer,
-      savings: offer.savings,
-      percentOfList: offer.percentOfList,
-      domTag: offer.domTag,
-      dom: listing.dom,
-      anchorTag: offer.anchorTag,
-      signalTags: offer.signalTags,
-      signals: [...signals, ...llmResult.signals],
-    });
+  // WATCH tier: deterministic template, no LLM call (per ALGORITHM.md Stage 8)
+  if (score.tier === "WATCH") {
+    const narrative = deterministicNarrative({ listing, assessment, offer, signals });
+    return {
+      listing,
+      assessment,
+      history,
+      score,
+      offer,
+      signals,
+      narrative,
+    };
   }
+
+  // HOT/WARM tier: single combined LLM call (signals + Fulton-style narrative)
+  const llmResult = await analyzeAndNarrate({ listing, assessment, offer, signals });
 
   return {
     listing,
@@ -115,6 +122,6 @@ export async function analyzeListingAsync(listing: Listing): Promise<AnalysisRes
     signals,
     llmSignals: llmResult.signals.length > 0 ? llmResult.signals : undefined,
     llmConfidence: llmResult.confidence > 0 ? llmResult.confidence : undefined,
-    narrative: narrative || undefined,
+    narrative: llmResult.narrative || undefined,
   };
 }
