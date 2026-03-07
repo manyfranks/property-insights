@@ -1,6 +1,6 @@
 import { Listing } from "./types";
 import { CityBounds } from "./data/city-bounds";
-import { PRELOADED_LISTINGS } from "./data/listings";
+import { getAllListings } from "./kv/listings";
 
 const API_URL = "https://api2.realtor.ca/Listing.svc/PropertySearch_Post";
 
@@ -165,7 +165,8 @@ export async function searchListingsWithFallback(
   }
 ): Promise<{ listings: Listing[]; source: "live" | "cached" }> {
   // 1. Check for cached listings first — return immediately if available
-  const cached = PRELOADED_LISTINGS.filter(
+  const allListings = await getAllListings();
+  const cached = allListings.filter(
     (l) => l.city.toLowerCase() === city.toLowerCase() && l.province === province
   );
   if (cached.length > 0) {

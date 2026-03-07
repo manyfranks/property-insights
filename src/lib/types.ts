@@ -85,6 +85,7 @@ export interface ScoreResult {
 export interface OfferResult {
   anchor: number;
   anchorTag: string;
+  anchorType: "assessment" | "language";
   listToAssessedRatio: number;
   domAdjusted: number;
   domMultiplier: number;

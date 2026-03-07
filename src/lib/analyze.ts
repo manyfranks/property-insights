@@ -1,6 +1,6 @@
 import { Listing, AnalysisResult, OfferResult } from "./types";
 import { scoreV2 } from "./scoring";
-import { offerModel } from "./offer-model";
+import { offerModel, offerModelLanguage } from "./offer-model";
 import { getSignals } from "./signals";
 import { lookupAssessmentSync, lookupAssessment } from "./assessment";
 import { getLinkOnlyHistory } from "./housesigma";
@@ -13,6 +13,7 @@ function preOfferToResult(pre: NonNullable<Listing["preOffer"]>, listing: Listin
   return {
     anchor: pre.anchor,
     anchorTag: pre.anchor_tag,
+    anchorType: "assessment",
     listToAssessedRatio: pre.ratio,
     domAdjusted: pre.dom_adjusted,
     domMultiplier: pre.dom_mult,
@@ -36,7 +37,7 @@ export function analyzeListing(listing: Listing): AnalysisResult {
   const score = scoreV2(listing);
   const offer = listing.preOffer
     ? preOfferToResult(listing.preOffer, listing)
-    : assessment ? offerModel(listing, assessment) : null;
+    : assessment ? offerModel(listing, assessment) : offerModelLanguage(listing);
   const signals = getSignals(listing);
 
   return { listing, assessment, history, score, offer, signals };
@@ -62,7 +63,7 @@ export async function analyzeListingAsync(listing: Listing): Promise<AnalysisRes
       : scoreV2(listing);
     const offer = listing.preOffer
       ? preOfferToResult(listing.preOffer, listing)
-      : assessment ? offerModel(listing, assessment) : null;
+      : assessment ? offerModel(listing, assessment) : offerModelLanguage(listing);
     const signals = getSignals(listing);
 
     return {
@@ -85,7 +86,7 @@ export async function analyzeListingAsync(listing: Listing): Promise<AnalysisRes
 
   const history = getLinkOnlyHistory(listing.address, listing.province);
   const score = scoreV2(listing);
-  const offer = assessment ? offerModel(listing, assessment) : null;
+  const offer = assessment ? offerModel(listing, assessment) : offerModelLanguage(listing);
   const signals = getSignals(listing);
 
   let narrative = "";

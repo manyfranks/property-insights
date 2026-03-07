@@ -5,6 +5,18 @@
     },
     "src/app/api/analyze/route.ts": {
       "maxDuration": 30
+    },
+    "src/app/api/pipeline/run/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/pipeline/freshness/route.ts": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/pipeline/freshness",
+      "schedule": "0 6 * * 1"
+    }
+  ]
 }

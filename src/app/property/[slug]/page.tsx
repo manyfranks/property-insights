@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { PRELOADED_LISTINGS } from "@/lib/data/listings";
+import { getListingBySlug } from "@/lib/kv/listings";
 import { analyzeListingAsync } from "@/lib/analyze";
 import { OfferResult } from "@/lib/types";
-import { slugify, cityToSlug, fmt, pct } from "@/lib/utils";
+import { cityToSlug, fmt, pct } from "@/lib/utils";
 import TierBadge from "@/components/tier-badge";
 import ExpandableSection from "@/components/expandable-section";
 
@@ -22,14 +22,15 @@ function ScoreBreakdown({ breakdown }: { breakdown: Record<string, number> }) {
 }
 
 function OfferCascade({ offer }: { offer: OfferResult }) {
+  const isLanguage = offer.anchorType === "language";
   const steps = [
     {
       num: 1,
-      title: "Assessment Anchor",
+      title: isLanguage ? "Language Anchor" : "Assessment Anchor",
       value: fmt(offer.anchor),
       detail: offer.anchorTag,
-      sub: `List/Assessed: ${offer.listToAssessedRatio.toFixed(2)}x`,
-      color: "border-blue-200 bg-blue-50",
+      sub: isLanguage ? "Based on listing signals and market duration" : `List/Assessed: ${offer.listToAssessedRatio.toFixed(2)}x`,
+      color: isLanguage ? "border-indigo-200 bg-indigo-50" : "border-blue-200 bg-blue-50",
     },
     {
       num: 2,
@@ -88,7 +89,7 @@ export default async function PropertyPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const listing = PRELOADED_LISTINGS.find((l) => slugify(l.address) === slug);
+  const listing = await getListingBySlug(slug);
   if (!listing) notFound();
 
   const analysis = await analyzeListingAsync(listing);
@@ -130,44 +131,63 @@ export default async function PropertyPage({
         {offer ? (
           <>
             <div className="text-xs uppercase tracking-widest text-muted mb-2">
-              Recommended Offer
+              {offer.anchorType === "language" ? "Estimated Offer" : "Recommended Offer"}
             </div>
             <div className="text-4xl sm:text-5xl font-mono font-bold mb-2">
               {fmt(offer.finalOffer)}
             </div>
-            <div className="text-sm text-green-600 mb-6">
+            <div className="text-sm text-green-600 mb-4">
               Save {fmt(offer.savings)} &middot; {pct(offer.percentOfList)} of list
             </div>
+            {offer.anchorType === "language" && (
+              <p className="text-xs text-muted mb-4 max-w-sm mx-auto">
+                Based on listing language and market duration. No government assessment available.
+              </p>
+            )}
             <div className="border-t border-border pt-4 flex justify-center gap-8 text-center">
               <div>
                 <div className="text-xs text-muted">List Price</div>
                 <div className="font-mono font-medium">{fmt(listing.price)}</div>
               </div>
-              <div>
-                <div className="text-xs text-muted">Assessed</div>
-                <div className="font-mono font-medium">
-                  {assessment ? fmt(assessment.totalValue) : "N/A"}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-muted">Ratio</div>
-                <div className="font-mono font-medium">
-                  {offer.listToAssessedRatio.toFixed(2)}x
-                </div>
-              </div>
+              {offer.anchorType === "assessment" && (
+                <>
+                  <div>
+                    <div className="text-xs text-muted">Assessed</div>
+                    <div className="font-mono font-medium">
+                      {assessment ? fmt(assessment.totalValue) : "N/A"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted">Ratio</div>
+                    <div className="font-mono font-medium">
+                      {offer.listToAssessedRatio.toFixed(2)}x
+                    </div>
+                  </div>
+                </>
+              )}
+              {offer.anchorType === "language" && (
+                <>
+                  <div>
+                    <div className="text-xs text-muted">Signals</div>
+                    <div className="font-mono font-medium">
+                      {offer.signalTags.length || "0"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted">DOM</div>
+                    <div className="font-mono font-medium">{listing.dom}d</div>
+                  </div>
+                </>
+              )}
             </div>
           </>
         ) : (
           <div className="py-4">
             <div className="text-xs uppercase tracking-widest text-muted mb-2">
-              Offer Unavailable
+              List Price
             </div>
-            <p className="text-sm text-muted">
-              No assessment data available. The offer model requires a government assessment value to anchor pricing.
-            </p>
-            <div className="border-t border-border pt-4 mt-4">
-              <div className="text-xs text-muted">List Price</div>
-              <div className="font-mono text-2xl font-bold">{fmt(listing.price)}</div>
+            <div className="font-mono text-4xl sm:text-5xl font-bold mb-3">
+              {fmt(listing.price)}
             </div>
           </div>
         )}
@@ -186,10 +206,10 @@ export default async function PropertyPage({
         {narrative ? (
           <p className="text-sm text-foreground leading-relaxed">{narrative}</p>
         ) : (
-          <p className="text-sm text-muted leading-relaxed italic">
+          <p className="text-sm text-foreground leading-relaxed">
             {offer
               ? "Generating analysis — check back shortly."
-              : "No assessment data available to generate an analysis for this property."}
+              : `This ${listing.beds}-bed property in ${listing.city} has been on market for ${listing.dom} days${signals.length > 0 || (llmSignals && llmSignals.length > 0) ? ` with ${(signals.length + (llmSignals?.length ?? 0))} motivation signal${(signals.length + (llmSignals?.length ?? 0)) > 1 ? "s" : ""} detected` : ""}.${score.tier === "HOT" ? " It scores in the HOT tier — worth a closer look." : score.tier === "WARM" ? " It scores in the WARM tier." : " It\u2019s currently in the WATCH tier."}`}
           </p>
         )}
       </div>
@@ -225,7 +245,7 @@ export default async function PropertyPage({
               )}
             </div>
           ) : (
-            <p className="text-sm text-muted">No assessment data available</p>
+            <p className="text-sm text-muted">Assessment not yet cached for this address.</p>
           )}
         </div>
 

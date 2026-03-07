@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { PRELOADED_LISTINGS } from "@/lib/data/listings";
+import { getAllListings } from "@/lib/kv/listings";
 import { analyzeListing } from "@/lib/analyze";
 import { slugify, fmt } from "@/lib/utils";
 import TierBadge from "@/components/tier-badge";
 
-export default function DashboardPage() {
-  const analyses = PRELOADED_LISTINGS
+export default async function DashboardPage() {
+  const listings = await getAllListings();
+  const analyses = listings
     .map((l) => analyzeListing(l))
     .sort((a, b) => (b.offer?.savings ?? 0) - (a.offer?.savings ?? 0));
 

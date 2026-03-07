@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PRELOADED_LISTINGS } from "@/lib/data/listings";
+import { getAllListings } from "@/lib/kv/listings";
 import { analyzeListingAsync } from "@/lib/analyze";
 
 export const maxDuration = 30;
@@ -11,7 +11,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Address is required" }, { status: 400 });
   }
 
-  const listing = PRELOADED_LISTINGS.find(
+  const listings = await getAllListings();
+  const listing = listings.find(
     (l) => l.address.toLowerCase() === address.toLowerCase()
   );
 

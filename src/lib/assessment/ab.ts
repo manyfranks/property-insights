@@ -1,13 +1,41 @@
 import { Assessment } from "../types";
 import { AB_ASSESSMENT_CACHE } from "../data/assessments";
 
-// Alberta assessment — cache lookup against municipal assessment data.
-// Calgary and Edmonton have public lookup tools but each requires a custom scraper. Post-MVP.
+// Street type abbreviations: our listings use mixed formats, SODA APIs use specific ones
+const CALGARY_ABBREVS: [RegExp, string][] = [
+  [/\bStreet\b/gi, "ST"],
+  [/\bAvenue\b/gi, "AV"],
+  [/\bDrive\b/gi, "DR"],
+  [/\bPlace\b/gi, "PL"],
+  [/\bCrescent\b/gi, "CR"],
+  [/\bTerrace\b/gi, "TERR"],
+  [/\bBoulevard\b/gi, "BV"],
+  [/\bCourt\b/gi, "CT"],
+  [/\bRoad\b/gi, "RD"],
+  [/\bClose\b/gi, "CL"],
+  [/\bCircle\b/gi, "CI"],
+  [/\bGreen\b/gi, "GR"],
+  [/\bGate\b/gi, "GA"],
+  [/\bWay\b/gi, "WY"],
+  [/\bTrail\b/gi, "TR"],
+  [/\bLane\b/gi, "LA"],
+  [/\bPoint\b/gi, "PT"],
+];
 
-export function lookupAB(address: string): Assessment | null {
-  return lookupABSync(address);
-}
+const EDMONTON_ABBREVS: [RegExp, string][] = [
+  [/\bST\b/gi, "STREET"],
+  [/\bAV\b/gi, "AVENUE"],
+  [/\bDR\b/gi, "DRIVE"],
+  [/\bPL\b/gi, "PLACE"],
+  [/\bCR\b/gi, "CRESCENT"],
+  [/\bBV\b/gi, "BOULEVARD"],
+  [/\bRD\b/gi, "ROAD"],
+  [/\bCL\b/gi, "CLOSE"],
+];
 
+/**
+ * Sync cache-only lookup.
+ */
 export function lookupABSync(address: string): Assessment | null {
   const cached = AB_ASSESSMENT_CACHE[address];
   if (!cached) return null;
@@ -18,4 +46,124 @@ export function lookupABSync(address: string): Assessment | null {
     assessmentYear: "2025",
     found: true,
   };
+}
+
+/**
+ * Async lookup — tries cache first, then live SODA API.
+ */
+export async function lookupAB(address: string): Promise<Assessment | null> {
+  const cached = lookupABSync(address);
+  if (cached) return cached;
+
+  // Determine city from address quadrant
+  const quadrant = address.match(/\b(NW|NE|SW|SE)\b/i)?.[1]?.toUpperCase();
+  if (!quadrant) return null;
+
+  // Try Calgary first (most of our AB listings), then Edmonton
+  const result = await lookupCalgarySODA(address) ?? await lookupEdmontonSODA(address);
+  return result;
+}
+
+/**
+ * Calgary SODA API — dataset 4bsw-nn7w
+ * Address format: "3410 1 ST NW" (unit prefix if applicable: "108 150 LEBEL CR NW")
+ */
+async function lookupCalgarySODA(address: string): Promise<Assessment | null> {
+  try {
+    // Normalize: strip # prefix, apply Calgary abbreviations, uppercase
+    let normalized = address.replace(/^#/, "").trim().toUpperCase();
+    for (const [pat, repl] of CALGARY_ABBREVS) {
+      normalized = normalized.replace(pat, repl);
+    }
+    // Remove comma-space format: "108, 150 Lebel" -> "108 150 LEBEL"
+    normalized = normalized.replace(/,\s*/g, " ");
+
+    const url = new URL("https://data.calgary.ca/resource/4bsw-nn7w.json");
+    url.searchParams.set("$where", `address='${normalized}'`);
+    url.searchParams.set("$limit", "1");
+
+    const res = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (!data?.length) return null;
+
+    const value = Math.round(parseFloat(data[0].assessed_value));
+    if (!value || value <= 0) return null;
+
+    return {
+      totalValue: value,
+      landValue: 0,
+      buildingValue: 0,
+      assessmentYear: data[0].roll_year || "2026",
+      found: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Edmonton SODA API — dataset q7d6-ambg
+ * Uses separate house_number + street_name fields, optional suite field.
+ * Street names use full words: "109 STREET NW" not "109 ST NW"
+ */
+async function lookupEdmontonSODA(address: string): Promise<Assessment | null> {
+  try {
+    // Parse address: "#1801 9939 109 ST NW" -> suite=1801, house=9939, street="109 STREET NW"
+    let cleaned = address.replace(/^#/, "").trim().toUpperCase();
+
+    // Extract suite/unit if present (leading number before house number)
+    let suite: string | null = null;
+    const unitMatch = cleaned.match(/^(\d+[A-Z]?)\s+(\d+\s+.+)$/);
+    if (unitMatch) {
+      suite = unitMatch[1];
+      cleaned = unitMatch[2];
+    }
+
+    // Split into house number and street name
+    const parts = cleaned.match(/^(\d+)\s+(.+)$/);
+    if (!parts) return null;
+
+    const houseNumber = parts[1];
+    let streetName = parts[2];
+
+    // Expand abbreviations for Edmonton format
+    for (const [pat, repl] of EDMONTON_ABBREVS) {
+      streetName = streetName.replace(pat, repl);
+    }
+
+    const url = new URL("https://data.edmonton.ca/resource/q7d6-ambg.json");
+    let where = `house_number='${houseNumber}' AND street_name='${streetName}'`;
+    if (suite) {
+      where += ` AND suite='${suite}'`;
+    }
+    url.searchParams.set("$where", where);
+    url.searchParams.set("$limit", "1");
+
+    const res = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (!data?.length) return null;
+
+    const value = parseInt(data[0].assessed_value, 10);
+    if (!value || value <= 0) return null;
+
+    return {
+      totalValue: value,
+      landValue: 0,
+      buildingValue: 0,
+      assessmentYear: "2026",
+      found: true,
+    };
+  } catch {
+    return null;
+  }
 }
