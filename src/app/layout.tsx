@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { ClerkProvider, Show, SignInButton, UserButton } from "@clerk/nextjs";
+import { Analytics } from "@vercel/analytics/next";
 import NavbarSearch from "@/components/navbar-search";
 import "./globals.css";
 
@@ -66,6 +67,7 @@ export default function RootLayout({
           </header>
           {children}
         </ClerkProvider>
+        <Analytics />
       </body>
     </html>
   );
