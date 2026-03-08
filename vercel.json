@@ -9,6 +9,9 @@
     "src/app/api/pipeline/run/route.ts": {
       "maxDuration": 30
     },
+    "src/app/api/assess/route.ts": {
+      "maxDuration": 60
+    },
     "src/app/api/pipeline/freshness/route.ts": {
       "maxDuration": 60
     },
