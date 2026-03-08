@@ -23,7 +23,7 @@
     },
     {
       "path": "/api/pipeline/refresh",
-      "schedule": "0 14,23 * * *"
+      "schedule": "0 14 * * *"
     }
   ]
 }
