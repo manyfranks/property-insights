@@ -34,8 +34,8 @@ const openrouter = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY || "",
 });
 
-// Use Claude Sonnet 4 for initial enrichment (higher quality than MiniMax)
-const MODEL = "anthropic/claude-sonnet-4";
+// Use Claude Sonnet 4.5 for initial enrichment (higher quality than MiniMax)
+const MODEL = "anthropic/claude-sonnet-4.5";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
