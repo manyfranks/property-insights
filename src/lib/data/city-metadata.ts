@@ -41,6 +41,11 @@ export const PROVINCE_GROUPS: { province: string; label: string; active: boolean
   { province: "BC", label: "BC", active: true },
   { province: "AB", label: "AB", active: true },
   { province: "ON", label: "ON", active: true },
+  { province: "QC", label: "QC", active: false },
+  { province: "MB", label: "MB", active: false },
+  { province: "SK", label: "SK", active: false },
+  { province: "NS", label: "NS", active: false },
+  { province: "NB", label: "NB", active: false },
 ];
 
 export function getCityBySlug(slug: string): CityMeta | undefined {

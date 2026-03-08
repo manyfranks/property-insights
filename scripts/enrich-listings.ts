@@ -32,6 +32,7 @@ import OpenAI from "openai";
 const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENROUTER_API_KEY || "",
+  timeout: 30000,
 });
 
 // Use Claude Sonnet 4.5 for initial enrichment (higher quality than MiniMax)
@@ -192,20 +193,13 @@ async function main() {
   for (let i = 0; i < listings.length; i++) {
     const listing = listings[i];
 
-    // Skip already-enriched WATCH listings (deterministic is fine)
-    // Re-enrich HOT/WARM that may have fallen back to deterministic
-    const preCheck = scoreV2(listing);
-    if (listing.preNarrative && listing.preOffer && preCheck.tier === "WATCH") {
-      skipped++;
-      continue;
-    }
-    if (listing.preNarrative && listing.preOffer && preCheck.tier !== "WATCH") {
-      const isDeterministic = listing.preNarrative.startsWith(listing.address);
-      if (!isDeterministic) {
-        skipped++;
-        continue;
-      }
-    }
+    // Force re-enrichment: strip existing pre-computed fields
+    listing.preNarrative = undefined;
+    listing.preOffer = undefined;
+    listing.preScore = undefined;
+    listing.preTier = undefined;
+    listing.preSignals = undefined;
+    listing.assessmentNote = undefined;
 
     console.log(`[${i + 1}/${listings.length}] ${listing.address}, ${listing.city}`);
 
@@ -238,24 +232,20 @@ async function main() {
     let narrative: string;
     let llmSignals: string[] = [];
 
-    if (score.tier === "WATCH") {
+    // All listings get Sonnet 4.5 narrative (one-time fill)
+    try {
+      console.log(`  Calling LLM...`);
+      const result = await llmNarrative(listing, assessment, offer, signals);
+      narrative = result.narrative;
+      llmSignals = result.signals;
+      llmCalls++;
+      console.log(`  ${score.tier} (${score.total}pts) — LLM (${llmSignals.length} extra signals)`);
+      // Rate limit: 1.5s between LLM calls
+      await sleep(1500);
+    } catch (err) {
+      console.log(`  LLM failed, using deterministic: ${err}`);
       narrative = deterministicNarrative({ listing, assessment, offer, signals });
       deterministicCount++;
-      console.log(`  ${score.tier} (${score.total}pts) — deterministic`);
-    } else {
-      try {
-        const result = await llmNarrative(listing, assessment, offer, signals);
-        narrative = result.narrative;
-        llmSignals = result.signals;
-        llmCalls++;
-        console.log(`  ${score.tier} (${score.total}pts) — LLM (${llmSignals.length} extra signals)`);
-        // Rate limit: 2s between LLM calls
-        await sleep(2000);
-      } catch (err) {
-        console.log(`  LLM failed, using deterministic: ${err}`);
-        narrative = deterministicNarrative({ listing, assessment, offer, signals });
-        deterministicCount++;
-      }
     }
 
     // Write pre-computed fields

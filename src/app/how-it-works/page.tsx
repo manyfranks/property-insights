@@ -2,9 +2,9 @@ import Link from "next/link";
 
 export default function HowItWorksPage() {
   return (
-    <main className="max-w-3xl mx-auto px-6 py-16">
+    <main className="max-w-3xl mx-auto px-6 py-8 sm:py-16">
       {/* Hero */}
-      <div className="text-center mb-20">
+      <div className="text-center mb-12 sm:mb-20">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground mb-3">
           Acquisition intelligence, not another listing site.
         </h1>
@@ -16,12 +16,12 @@ export default function HowItWorksPage() {
       </div>
 
       {/* 3 Steps */}
-      <div className="mb-20">
+      <div className="mb-12 sm:mb-20">
         <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-8 text-center">
           How it works
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-10 text-center">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-10 text-center">
           <div>
             <div className="w-10 h-10 rounded-full border border-border flex items-center justify-center mx-auto mb-4">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-foreground" xmlns="http://www.w3.org/2000/svg">
@@ -31,7 +31,7 @@ export default function HowItWorksPage() {
             </div>
             <h3 className="text-sm font-medium text-foreground mb-1">Find the data</h3>
             <p className="text-sm text-muted leading-relaxed">
-              Government assessment values, realtor.ca listings, and
+              Government assessment values, active listings, and
               days-on-market history for every property.
             </p>
           </div>
@@ -67,7 +67,7 @@ export default function HowItWorksPage() {
       </div>
 
       {/* What you see */}
-      <div className="mb-20">
+      <div className="mb-12 sm:mb-20">
         <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-8 text-center">
           What you see on every property
         </h2>

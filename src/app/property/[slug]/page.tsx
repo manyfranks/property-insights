@@ -77,11 +77,6 @@ function OfferCascade({ offer }: { offer: OfferResult }) {
   );
 }
 
-function realtorSearchUrl(mlsNumber?: string, address?: string, city?: string): string {
-  const query = mlsNumber || `${address} ${city}`;
-  return `https://www.realtor.ca/map#view=list&Sort=6-D&Keywords=${encodeURIComponent(query)}`;
-}
-
 function domColor(dom: number): string {
   if (dom >= 90) return "bg-red-500";
   if (dom >= 45) return "bg-amber-500";
@@ -102,7 +97,7 @@ export default async function PropertyPage({
   const listingHistory = analysis.history;
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-10">
+    <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
       {/* A. Back link */}
       <Link
         href={`/discover/${cityToSlug(listing.city)}`}
@@ -115,14 +110,18 @@ export default async function PropertyPage({
       <div className="mt-6 mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            <a
-              href={realtorSearchUrl(listing.mlsNumber, listing.address, listing.city)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:underline"
-            >
-              {listing.address}
-            </a>
+            {listing.url ? (
+              <a
+                href={listing.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
+                {listing.address}
+              </a>
+            ) : (
+              listing.address
+            )}
           </h1>
           <p className="text-sm text-muted mt-0.5">
             {listing.city}, {listing.province}
@@ -132,7 +131,7 @@ export default async function PropertyPage({
       </div>
 
       {/* C. Hero Card — Recommended Offer */}
-      <div className="border border-border rounded-xl p-8 mb-6 text-center bg-white">
+      <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
         {offer ? (
           <>
             <div className="text-xs uppercase tracking-widest text-muted mb-2">
@@ -149,7 +148,7 @@ export default async function PropertyPage({
                 Based on listing language and market duration. No government assessment available.
               </p>
             )}
-            <div className="border-t border-border pt-4 flex justify-center gap-8 text-center">
+            <div className="border-t border-border pt-4 flex justify-center gap-4 sm:gap-8 text-center">
               <div>
                 <div className="text-xs text-muted">List Price</div>
                 <div className="font-mono font-medium">{fmt(listing.price)}</div>
@@ -221,6 +220,42 @@ export default async function PropertyPage({
 
       {/* E. Bento Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        {/* Property Details */}
+        <div className="border border-border rounded-xl p-4 bg-white">
+          <div className="text-xs uppercase tracking-widest text-muted mb-3">Property</div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <span className="text-muted text-xs">Beds</span>
+              <div className="font-medium">{listing.beds}</div>
+            </div>
+            <div>
+              <span className="text-muted text-xs">Baths</span>
+              <div className="font-medium">{listing.baths}</div>
+            </div>
+            <div>
+              <span className="text-muted text-xs">Sqft</span>
+              <div className="font-medium">{listing.sqft || "N/A"}</div>
+            </div>
+            <div>
+              <span className="text-muted text-xs">Built</span>
+              <div className="font-medium">{listing.yearBuilt || "N/A"}</div>
+            </div>
+            <div>
+              <span className="text-muted text-xs">Lot</span>
+              <div className="font-medium">{listing.lotSize || "N/A"}</div>
+            </div>
+            <div>
+              <span className="text-muted text-xs">Taxes</span>
+              <div className="font-medium">{listing.taxes || "N/A"}</div>
+            </div>
+          </div>
+          {listing.mlsNumber && (
+            <div className="text-xs text-muted mt-3 pt-2 border-t border-border">
+              MLS# {listing.mlsNumber}
+            </div>
+          )}
+        </div>
+
         {/* Assessment */}
         <div className="border border-border rounded-xl p-4 bg-white">
           <div className="text-xs uppercase tracking-widest text-muted mb-3">Assessment</div>
@@ -307,42 +342,6 @@ export default async function PropertyPage({
             </div>
           )}
         </div>
-
-        {/* Property Details */}
-        <div className="border border-border rounded-xl p-4 bg-white">
-          <div className="text-xs uppercase tracking-widest text-muted mb-3">Property</div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <span className="text-muted text-xs">Beds</span>
-              <div className="font-medium">{listing.beds}</div>
-            </div>
-            <div>
-              <span className="text-muted text-xs">Baths</span>
-              <div className="font-medium">{listing.baths}</div>
-            </div>
-            <div>
-              <span className="text-muted text-xs">Sqft</span>
-              <div className="font-medium">{listing.sqft || "N/A"}</div>
-            </div>
-            <div>
-              <span className="text-muted text-xs">Built</span>
-              <div className="font-medium">{listing.yearBuilt || "N/A"}</div>
-            </div>
-            <div>
-              <span className="text-muted text-xs">Lot</span>
-              <div className="font-medium">{listing.lotSize || "N/A"}</div>
-            </div>
-            <div>
-              <span className="text-muted text-xs">Taxes</span>
-              <div className="font-medium">{listing.taxes || "N/A"}</div>
-            </div>
-          </div>
-          {listing.mlsNumber && (
-            <div className="text-xs text-muted mt-3 pt-2 border-t border-border">
-              MLS# {listing.mlsNumber}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* F. Expandable: Offer Cascade */}
@@ -370,16 +369,8 @@ export default async function PropertyPage({
       )}
 
       {/* I. Footer links */}
-      <div className="pt-6 border-t border-border flex justify-center gap-6">
-        <a
-          href={realtorSearchUrl(listing.mlsNumber, listing.address, listing.city)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-muted hover:text-foreground transition-colors"
-        >
-          View on Realtor.ca &rarr;
-        </a>
-        {listing.url && (
+      {listing.url && (
+        <div className="pt-6 border-t border-border flex justify-center">
           <a
             href={listing.url}
             target="_blank"
@@ -388,8 +379,8 @@ export default async function PropertyPage({
           >
             View on Zoocasa &rarr;
           </a>
-        )}
-      </div>
+        </div>
+      )}
     </main>
   );
 }
