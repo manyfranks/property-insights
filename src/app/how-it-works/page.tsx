@@ -115,6 +115,34 @@ export default function HowItWorksPage() {
         </div>
       </div>
 
+      {/* Request any property */}
+      <div className="mb-12 sm:mb-20">
+        <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-8 text-center">
+          Don&apos;t see your property?
+        </h2>
+
+        <div className="border border-border rounded-xl p-6 sm:p-8 text-center">
+          <div className="w-10 h-10 rounded-full border border-border flex items-center justify-center mx-auto mb-4">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-foreground" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 10.5L12 3l9 7.5V21a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V10.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M12 11v4m-2-2h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <h3 className="text-base font-medium text-foreground mb-2">
+            Submit any Canadian property for assessment
+          </h3>
+          <p className="text-sm text-muted leading-relaxed max-w-md mx-auto mb-4">
+            Found a listing on Realtor.ca or Zoocasa? Search for the address in the
+            navigation bar above. If we don&apos;t have it yet, sign up and
+            we&apos;ll look it up, run the full assessment with offer modeling, and
+            email you the analysis.
+          </p>
+          <p className="text-xs text-muted max-w-sm mx-auto">
+            Works with any active residential listing across BC, Alberta, and Ontario.
+          </p>
+        </div>
+      </div>
+
       {/* CTA */}
       <div className="text-center mb-16">
         <Link

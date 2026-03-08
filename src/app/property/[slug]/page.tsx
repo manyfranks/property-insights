@@ -218,7 +218,23 @@ export default async function PropertyPage({
         )}
       </div>
 
-      {/* E. Bento Grid */}
+      {/* E. Expandable: Offer Cascade */}
+      {offer && (
+        <div className="mb-4">
+          <ExpandableSection title="How we calculated this" defaultOpen={false}>
+            <OfferCascade offer={offer} />
+          </ExpandableSection>
+        </div>
+      )}
+
+      {/* F. Expandable: Score Breakdown */}
+      <div className="mb-4">
+        <ExpandableSection title="Score breakdown" defaultOpen={false}>
+          <ScoreBreakdown breakdown={score.breakdown} />
+        </ExpandableSection>
+      </div>
+
+      {/* G. Bento Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         {/* Property Details */}
         <div className="border border-border rounded-xl p-4 bg-white">
@@ -327,37 +343,38 @@ export default async function PropertyPage({
             <span className="text-sm text-muted">/100</span>
             <TierBadge tier={score.tier} />
           </div>
-          {(signals.length > 0 || (llmSignals && llmSignals.length > 0)) && (
-            <div className="flex flex-wrap gap-1.5">
-              {signals.map((s) => (
-                <span key={s} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-                  {s}
-                </span>
-              ))}
-              {llmSignals?.map((s) => (
-                <span key={s} className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">
-                  {s}
-                </span>
-              ))}
-            </div>
-          )}
+          {(() => {
+            // Deduplicate: normalize to lowercase for comparison, keep first occurrence
+            const seen = new Set<string>();
+            const allSignals: { text: string; isLlm: boolean }[] = [];
+            for (const s of signals) {
+              const key = s.toLowerCase().trim();
+              if (!seen.has(key)) { seen.add(key); allSignals.push({ text: s, isLlm: false }); }
+            }
+            for (const s of (llmSignals || [])) {
+              const key = s.toLowerCase().trim();
+              // Also check if deterministic signal already covers this
+              const isDupe = seen.has(key) || [...seen].some(k => key.includes(k) || k.includes(key));
+              if (!isDupe) { seen.add(key); allSignals.push({ text: s, isLlm: true }); }
+            }
+            if (allSignals.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-1.5">
+                {allSignals.map((s) => (
+                  <span
+                    key={s.text}
+                    title={s.text.length > 40 ? s.text : undefined}
+                    className={`text-xs px-2 py-0.5 rounded-full max-w-[200px] truncate ${
+                      s.isLlm ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {s.text.length > 40 ? s.text.slice(0, 37) + "..." : s.text}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
         </div>
-      </div>
-
-      {/* F. Expandable: Offer Cascade */}
-      {offer && (
-        <div className="mb-4">
-          <ExpandableSection title="How we calculated this" defaultOpen={false}>
-            <OfferCascade offer={offer} />
-          </ExpandableSection>
-        </div>
-      )}
-
-      {/* G. Expandable: Score Breakdown */}
-      <div className="mb-4">
-        <ExpandableSection title="Score breakdown" defaultOpen={false}>
-          <ScoreBreakdown breakdown={score.breakdown} />
-        </ExpandableSection>
       </div>
 
       {/* H. Description */}

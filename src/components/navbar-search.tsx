@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useUser, SignInButton } from "@clerk/nextjs";
 import { slugify } from "@/lib/utils";
 
 interface SearchResult {
@@ -10,32 +11,55 @@ interface SearchResult {
   price: number;
 }
 
+interface PlaceSuggestion {
+  address: string;
+  placeId: string;
+}
+
 export default function NavbarSearch() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [places, setPlaces] = useState<PlaceSuggestion[]>([]);
   const [open, setOpen] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [selectedAddress, setSelectedAddress] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const router = useRouter();
+  const { isSignedIn } = useUser();
 
   useEffect(() => {
     if (query.length < 2) {
       setResults([]);
+      setPlaces([]);
+      setSearched(false);
+      setSubmitStatus("idle");
+      setSelectedAddress("");
       return;
     }
 
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-        if (res.ok) {
-          setResults(await res.json());
-          setOpen(true);
+        // Fetch our listings and Google Places in parallel
+        const [localRes, placesRes] = await Promise.all([
+          fetch(`/api/search?q=${encodeURIComponent(query)}`),
+          fetch(`/api/autocomplete?q=${encodeURIComponent(query)}`),
+        ]);
+
+        if (localRes.ok) {
+          setResults(await localRes.json());
         }
+        if (placesRes.ok) {
+          setPlaces(await placesRes.json());
+        }
+        setSearched(true);
+        setOpen(true);
       } catch {
         // Silently fail
       }
-    }, 200);
+    }, 250);
 
     return () => clearTimeout(debounceRef.current);
   }, [query]);
@@ -43,7 +67,30 @@ export default function NavbarSearch() {
   function handleSelect(address: string) {
     setQuery("");
     setOpen(false);
+    setSearched(false);
     router.push(`/property/${slugify(address)}`);
+  }
+
+  function handleSelectPlace(place: PlaceSuggestion) {
+    setSelectedAddress(place.address);
+    setSubmitStatus("idle");
+  }
+
+  async function handleRequestAssessment() {
+    const address = selectedAddress || query.trim();
+    if (!address) return;
+    setSubmitStatus("sending");
+    try {
+      const res = await fetch("/api/request-city", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ city: address, type: "assessment" }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setSubmitStatus("done");
+    } catch {
+      setSubmitStatus("error");
+    }
   }
 
   useEffect(() => {
@@ -56,8 +103,77 @@ export default function NavbarSearch() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const hasLocal = results.length > 0;
+  const hasPlaces = places.length > 0;
+  const noResults = searched && query.length > 1 && !hasLocal && !hasPlaces;
+
+  // Google suggestion selected — show assess CTA
+  if (open && selectedAddress) {
+    return (
+      <div ref={containerRef} className="absolute left-1/2 -translate-x-1/2 hidden sm:block">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setSelectedAddress(""); }}
+          onFocus={() => query.length > 1 && setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setOpen(false);
+              setSelectedAddress("");
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          placeholder="Search an address..."
+          className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
+        />
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-80 bg-white border border-border rounded-lg shadow-lg p-4 z-50">
+          {submitStatus === "done" ? (
+            <div className="text-center">
+              <p className="text-sm font-medium text-green-700 mb-1">Request received</p>
+              <p className="text-xs text-muted">
+                We&apos;ll assess this property and email you the results.
+              </p>
+            </div>
+          ) : isSignedIn ? (
+            <div className="text-center">
+              <p className="text-sm font-medium text-foreground mb-1">
+                We don&apos;t have this listing yet
+              </p>
+              <p className="text-xs text-muted mb-1 break-words">{selectedAddress}</p>
+              <p className="text-xs text-muted mb-3">
+                If it&apos;s currently for sale, we&apos;ll look it up, run a full assessment with offer modeling, and email you the analysis.
+              </p>
+              <button
+                onClick={handleRequestAssessment}
+                disabled={submitStatus === "sending"}
+                className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 disabled:opacity-40 transition-all"
+              >
+                {submitStatus === "sending" ? "Submitting..." : submitStatus === "error" ? "Retry" : "Assess this property"}
+              </button>
+            </div>
+          ) : (
+            <div className="text-center">
+              <p className="text-sm font-medium text-foreground mb-1">
+                We don&apos;t have this listing yet
+              </p>
+              <p className="text-xs text-muted mb-1 break-words">{selectedAddress}</p>
+              <p className="text-xs text-muted mb-3">
+                Sign in and we&apos;ll look it up, run a full assessment with offer modeling, and email you the results.
+              </p>
+              <SignInButton mode="modal">
+                <button className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all">
+                  Sign in to request
+                </button>
+              </SignInButton>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div ref={containerRef} className="relative hidden sm:block">
+    <div ref={containerRef} className="absolute left-1/2 -translate-x-1/2 hidden sm:block">
       <input
         type="text"
         value={query}
@@ -72,11 +188,12 @@ export default function NavbarSearch() {
         placeholder="Search an address..."
         className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
       />
-      {open && results.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-lg overflow-hidden z-50 max-h-64 overflow-y-auto">
-          {results.map((r) => (
+      {open && (hasLocal || hasPlaces) && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-80 bg-white border border-border rounded-lg shadow-lg overflow-hidden z-50 max-h-80 overflow-y-auto">
+          {/* Our listings */}
+          {hasLocal && results.map((r, i) => (
             <button
-              key={r.address}
+              key={`${r.address}-${i}`}
               onClick={() => handleSelect(r.address)}
               className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors border-b border-border last:border-b-0"
             >
@@ -86,11 +203,73 @@ export default function NavbarSearch() {
               </span>
             </button>
           ))}
+
+          {/* Google Places suggestions */}
+          {hasPlaces && (
+            <>
+              {hasLocal && (
+                <div className="px-3 py-1.5 bg-gray-50 border-b border-border">
+                  <span className="text-[10px] font-medium text-muted uppercase tracking-wide">Other addresses</span>
+                </div>
+              )}
+              {places.map((p) => (
+                <button
+                  key={p.placeId}
+                  onClick={() => handleSelectPlace(p)}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors border-b border-border last:border-b-0"
+                >
+                  <span className="text-sm text-foreground">{p.address}</span>
+                  <span className="text-[10px] text-muted ml-2">Request assessment</span>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
-      {open && query.length > 1 && results.length === 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-lg p-3 z-50">
-          <p className="text-xs text-muted text-center">No matching properties</p>
+      {noResults && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-80 bg-white border border-border rounded-lg shadow-lg p-4 z-50">
+          {isSignedIn ? (
+            <div className="text-center">
+              {submitStatus === "done" ? (
+                <>
+                  <p className="text-sm font-medium text-green-700 mb-1">Request received</p>
+                  <p className="text-xs text-muted">
+                    We&apos;ll assess this property and email you the results.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-foreground mb-1">
+                    No matches found
+                  </p>
+                  <p className="text-xs text-muted mb-3">
+                    Try a more specific address, or submit what you have and we&apos;ll try to find and assess it.
+                  </p>
+                  <button
+                    onClick={handleRequestAssessment}
+                    disabled={submitStatus === "sending"}
+                    className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 disabled:opacity-40 transition-all"
+                  >
+                    {submitStatus === "sending" ? "Submitting..." : submitStatus === "error" ? "Retry" : "Request assessment"}
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="text-center">
+              <p className="text-sm font-medium text-foreground mb-1">
+                No matches found
+              </p>
+              <p className="text-xs text-muted mb-3">
+                Sign in and we&apos;ll look up any Canadian property, run a full assessment, and email you the analysis.
+              </p>
+              <SignInButton mode="modal">
+                <button className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all">
+                  Sign in to request
+                </button>
+              </SignInButton>
+            </div>
+          )}
         </div>
       )}
     </div>

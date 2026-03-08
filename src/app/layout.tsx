@@ -33,7 +33,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ClerkProvider>
-          <header className="border-b border-border">
+          <header className="relative z-50 border-b border-border bg-white">
             <div className="relative max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
               <Link href="/" className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
