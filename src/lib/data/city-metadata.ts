@@ -1,4 +1,5 @@
-import { PRELOADED_LISTINGS } from "./listings";
+import { Listing } from "../types";
+import { cityToSlug } from "../utils";
 
 export interface CityMeta {
   name: string;
@@ -8,34 +9,27 @@ export interface CityMeta {
   listingCount: number;
 }
 
-function countListings(city: string): number {
-  return PRELOADED_LISTINGS.filter((l) => l.city === city).length;
-}
-
-export const CITY_METADATA: CityMeta[] = [
-  // BC — Southern Vancouver Island
-  { name: "Victoria", slug: "victoria", province: "BC", description: "Capital city, heritage homes and urban core", listingCount: countListings("Victoria") },
-  { name: "Saanich", slug: "saanich", province: "BC", description: "Largest municipality, diverse neighborhoods", listingCount: countListings("Saanich") },
-  { name: "Langford", slug: "langford", province: "BC", description: "Fast-growing Westshore hub", listingCount: countListings("Langford") },
-  { name: "Colwood", slug: "colwood", province: "BC", description: "Waterfront community near Royal Roads", listingCount: countListings("Colwood") },
-  { name: "Esquimalt", slug: "esquimalt", province: "BC", description: "Naval base community, compact and affordable", listingCount: countListings("Esquimalt") },
-  { name: "Oak Bay", slug: "oak-bay", province: "BC", description: "Upscale seaside village character", listingCount: countListings("Oak Bay") },
-  { name: "View Royal", slug: "view-royal", province: "BC", description: "Central location between city and Westshore", listingCount: countListings("View Royal") },
-  { name: "Sooke", slug: "sooke", province: "BC", description: "Rural coastal town, growing market", listingCount: countListings("Sooke") },
-  { name: "Metchosin", slug: "metchosin", province: "BC", description: "Rural acreages near Victoria", listingCount: countListings("Metchosin") },
-  // BC — Metro Vancouver
-  { name: "Vancouver", slug: "vancouver", province: "BC", description: "Major metro, diverse housing stock", listingCount: countListings("Vancouver") },
-  { name: "Burnaby", slug: "burnaby", province: "BC", description: "Urban centre east of Vancouver", listingCount: countListings("Burnaby") },
-  { name: "Richmond", slug: "richmond", province: "BC", description: "Waterfront city south of Vancouver", listingCount: countListings("Richmond") },
-  { name: "Surrey", slug: "surrey", province: "BC", description: "BC's second largest city, fast growth", listingCount: countListings("Surrey") },
-  // AB
-  { name: "Calgary", slug: "calgary", province: "AB", description: "Alberta's largest city, energy hub", listingCount: countListings("Calgary") },
-  { name: "Edmonton", slug: "edmonton", province: "AB", description: "Provincial capital, affordable markets", listingCount: countListings("Edmonton") },
-  // ON
-  { name: "Toronto", slug: "toronto", province: "ON", description: "Canada's largest city, diverse market", listingCount: countListings("Toronto") },
-  { name: "Hamilton", slug: "hamilton", province: "ON", description: "Steel city with revitalizing neighborhoods", listingCount: countListings("Hamilton") },
-  { name: "Ottawa", slug: "ottawa", province: "ON", description: "National capital, stable government market", listingCount: countListings("Ottawa") },
-];
+/** Static descriptions for known cities — used when available */
+const CITY_DESCRIPTIONS: Record<string, string> = {
+  Victoria: "Capital city, heritage homes and urban core",
+  Saanich: "Largest municipality, diverse neighborhoods",
+  Langford: "Fast-growing Westshore hub",
+  Colwood: "Waterfront community near Royal Roads",
+  Esquimalt: "Naval base community, compact and affordable",
+  "Oak Bay": "Upscale seaside village character",
+  "View Royal": "Central location between city and Westshore",
+  Sooke: "Rural coastal town, growing market",
+  Metchosin: "Rural acreages near Victoria",
+  Vancouver: "Major metro, diverse housing stock",
+  Burnaby: "Urban centre east of Vancouver",
+  Richmond: "Waterfront city south of Vancouver",
+  Surrey: "BC's second largest city, fast growth",
+  Calgary: "Alberta's largest city, energy hub",
+  Edmonton: "Provincial capital, affordable markets",
+  Toronto: "Canada's largest city, diverse market",
+  Hamilton: "Steel city with revitalizing neighborhoods",
+  Ottawa: "National capital, stable government market",
+};
 
 export const PROVINCE_GROUPS: { province: string; label: string; active: boolean }[] = [
   { province: "BC", label: "BC", active: true },
@@ -48,6 +42,50 @@ export const PROVINCE_GROUPS: { province: string; label: string; active: boolean
   { province: "NB", label: "NB", active: false },
 ];
 
-export function getCityBySlug(slug: string): CityMeta | undefined {
-  return CITY_METADATA.find((c) => c.slug === slug);
+/**
+ * Build city metadata dynamically from a set of listings.
+ * Known cities get curated descriptions; new cities get auto-generated ones.
+ * Activates province pills dynamically when listings exist for that province.
+ */
+export function buildCityMetadata(listings: Listing[]): {
+  cities: CityMeta[];
+  provinces: typeof PROVINCE_GROUPS;
+} {
+  // Count listings per city and track province
+  const cityMap = new Map<string, { province: string; count: number }>();
+  for (const l of listings) {
+    const existing = cityMap.get(l.city);
+    if (existing) {
+      existing.count++;
+    } else {
+      cityMap.set(l.city, { province: l.province, count: 1 });
+    }
+  }
+
+  const cities: CityMeta[] = [];
+  for (const [name, { province, count }] of cityMap) {
+    cities.push({
+      name,
+      slug: cityToSlug(name),
+      province,
+      description: CITY_DESCRIPTIONS[name] || `${count} assessed listing${count > 1 ? "s" : ""}`,
+      listingCount: count,
+    });
+  }
+
+  // Sort: most listings first within each province
+  cities.sort((a, b) => b.listingCount - a.listingCount);
+
+  // Activate province pills that have listings
+  const activeProvs = new Set(cities.map((c) => c.province));
+  const provinces = PROVINCE_GROUPS.map((g) => ({
+    ...g,
+    active: g.active || activeProvs.has(g.province),
+  }));
+
+  return { cities, provinces };
+}
+
+export function getCityBySlug(slug: string, cities: CityMeta[]): CityMeta | undefined {
+  return cities.find((c) => c.slug === slug);
 }

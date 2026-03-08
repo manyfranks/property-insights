@@ -2,13 +2,16 @@
 
 import { useUser, SignInButton } from "@clerk/nextjs";
 import CityInterestForm from "./city-interest-form";
+import type { CityMeta } from "@/lib/data/city-metadata";
 
 export default function DiscoverEmptyState({
   citySlug,
   cityName,
+  cities = [],
 }: {
   citySlug: string;
   cityName: string;
+  cities?: CityMeta[];
 }) {
   const { isSignedIn, isLoaded } = useUser();
 
@@ -29,7 +32,7 @@ export default function DiscoverEmptyState({
           </button>
         </SignInButton>
       ) : (
-        <CityInterestForm preselectedCity={citySlug} />
+        <CityInterestForm preselectedCity={citySlug} cities={cities} />
       )}
     </div>
   );

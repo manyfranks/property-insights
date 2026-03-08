@@ -2,8 +2,9 @@
 
 import { useUser, SignInButton } from "@clerk/nextjs";
 import CityInterestForm from "./city-interest-form";
+import type { CityMeta } from "@/lib/data/city-metadata";
 
-export default function HomeCta() {
+export default function HomeCta({ cities = [] }: { cities?: CityMeta[] }) {
   const { isSignedIn, user, isLoaded } = useUser();
 
   if (!isLoaded) return null;
@@ -43,7 +44,7 @@ export default function HomeCta() {
       <p className="text-xs text-muted mb-4">
         Pick your cities and we&apos;ll email you the top motivated listings.
       </p>
-      <CityInterestForm />
+      <CityInterestForm cities={cities} />
     </div>
   );
 }

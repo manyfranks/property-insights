@@ -1,8 +1,5 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { CITY_METADATA } from "@/lib/data/city-metadata";
-
-const validSlugs = new Set(CITY_METADATA.map((c) => c.slug));
 
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -17,7 +14,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No cities provided" }, { status: 400 });
   }
 
-  const validCities = cities.filter((c) => validSlugs.has(c));
+  // Accept any city slug (no longer restricted to hardcoded list)
+  const validCities = cities.filter((c) => typeof c === "string" && c.length > 0 && c.length < 100);
   if (validCities.length === 0) {
     return NextResponse.json({ error: "No valid cities" }, { status: 400 });
   }

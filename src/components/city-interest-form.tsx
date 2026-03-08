@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { CITY_METADATA } from "@/lib/data/city-metadata";
+import type { CityMeta } from "@/lib/data/city-metadata";
 
 export default function CityInterestForm({
   preselectedCity,
+  cities,
 }: {
   preselectedCity?: string;
+  cities: CityMeta[];
 }) {
   const { user } = useUser();
   const [selected, setSelected] = useState<Set<string>>(
@@ -45,7 +47,7 @@ export default function CityInterestForm({
 
   if (status === "done") {
     const names = subscribedCities
-      .map((s) => CITY_METADATA.find((c) => c.slug === s)?.name || s)
+      .map((s) => cities.find((c) => c.slug === s)?.name || s)
       .join(", ");
     return (
       <div className="text-center py-4">
@@ -59,7 +61,7 @@ export default function CityInterestForm({
   return (
     <div>
       <div className="flex flex-wrap gap-2 justify-center mb-4">
-        {CITY_METADATA.map((city) => (
+        {cities.map((city) => (
           <button
             key={city.slug}
             onClick={() => toggle(city.slug)}
