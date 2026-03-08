@@ -1,11 +1,51 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getListingBySlug } from "@/lib/kv/listings";
 import { analyzeListingAsync } from "@/lib/analyze";
 import { OfferResult } from "@/lib/types";
-import { cityToSlug, fmt, pct } from "@/lib/utils";
+import { cityToSlug, fmt, pct, slugify } from "@/lib/utils";
+import { BASE_URL } from "@/lib/seo";
+import { PropertyJsonLd, BreadcrumbJsonLd } from "@/components/json-ld";
 import TierBadge from "@/components/tier-badge";
 import ExpandableSection from "@/components/expandable-section";
+import TrackView from "@/components/track-view";
+import PartnerCta from "@/components/partner-cta";
+
+// ISR: serve cached page for 10 minutes, revalidate in background
+export const revalidate = 600;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const listing = await getListingBySlug(slug);
+  if (!listing) return { title: "Property Not Found" };
+
+  const price = `$${(listing.price / 1000).toFixed(0)}K`;
+  const title = `${listing.address}, ${listing.city} ${listing.province} — ${price}`;
+  const description = `Property analysis for ${listing.address} in ${listing.city}, ${listing.province}. ${listing.beds} bed, ${listing.baths} bath. Listed at ${fmt(listing.price)}. Get assessment data, offer modeling, and seller motivation signals.`;
+  const url = `${BASE_URL}/property/${slug}`;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description,
+      url,
+      type: "article",
+    },
+    twitter: {
+      card: "summary",
+      title,
+      description,
+    },
+  };
+}
 
 function ScoreBreakdown({ breakdown }: { breakdown: Record<string, number> }) {
   const entries = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
@@ -98,6 +138,24 @@ export default async function PropertyPage({
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
+      <PropertyJsonLd
+        url={`${BASE_URL}/property/${slugify(listing.address)}`}
+        address={listing.address}
+        city={listing.city}
+        province={listing.province}
+        beds={listing.beds}
+        baths={listing.baths}
+        price={listing.price}
+        description={listing.description}
+      />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: BASE_URL },
+          { name: listing.city, url: `${BASE_URL}/dashboard?city=${cityToSlug(listing.city)}` },
+          { name: listing.address, url: `${BASE_URL}/property/${slugify(listing.address)}` },
+        ]}
+      />
+      <TrackView slug={slugify(listing.address)} city={listing.city} price={listing.price} />
       {/* A. Back link */}
       <Link
         href={`/discover/${cityToSlug(listing.city)}`}
@@ -208,7 +266,11 @@ export default async function PropertyPage({
           )}
         </div>
         {narrative ? (
-          <p className="text-sm text-foreground leading-relaxed">{narrative}</p>
+          <div className="space-y-3">
+            {narrative.split(/\n\n+/).map((para, i) => (
+              <p key={i} className="text-sm text-foreground leading-relaxed">{para.trim()}</p>
+            ))}
+          </div>
         ) : (
           <p className="text-sm text-foreground leading-relaxed">
             {offer
@@ -385,7 +447,17 @@ export default async function PropertyPage({
         </div>
       )}
 
-      {/* I. Footer links */}
+      {/* I. Next Steps */}
+      <div className="border border-border rounded-xl p-5 mb-6 bg-white">
+        <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
+        <div className="flex flex-wrap gap-4">
+          <PartnerCta type="mortgage" propertySlug={slugify(listing.address)} city={listing.city} />
+          <PartnerCta type="agent" propertySlug={slugify(listing.address)} city={listing.city} />
+          <PartnerCta type="inspection" propertySlug={slugify(listing.address)} city={listing.city} />
+        </div>
+      </div>
+
+      {/* J. Footer links */}
       {listing.url && (
         <div className="pt-6 border-t border-border flex justify-center">
           <a

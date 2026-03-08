@@ -1,9 +1,17 @@
+import type { Metadata } from "next";
 import { buildCityMetadata } from "@/lib/data/city-metadata";
 import { getAllListings } from "@/lib/kv/listings";
 import HomeCta from "@/components/home-cta";
 import ProvinceExplorer from "@/components/province-explorer";
 
 export const revalidate = 300; // Re-fetch from KV every 5 min
+
+export const metadata: Metadata = {
+  title: "Property Insights — Canadian Real Estate Offer Intelligence",
+  description:
+    "Find out what to offer on any Canadian property. AI-powered analysis using government assessments, days on market, and seller motivation signals across BC, Alberta, and Ontario.",
+  alternates: { canonical: "/" },
+};
 
 export default async function Home() {
   const listings = await getAllListings();

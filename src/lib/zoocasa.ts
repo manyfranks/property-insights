@@ -101,9 +101,48 @@ function provSlug(province: string): string {
   return province.toLowerCase();
 }
 
+// Zoocasa uses abbreviated street types and directionals in URL slugs.
+// Google Places gives full names — we must abbreviate to match.
+const SLUG_ABBREVS: [RegExp, string][] = [
+  // Directionals (must come before street types to avoid partial matches)
+  [/\bnorthwest\b/gi, "nw"],
+  [/\bnortheast\b/gi, "ne"],
+  [/\bsouthwest\b/gi, "sw"],
+  [/\bsoutheast\b/gi, "se"],
+  // Street types
+  [/\bstreet\b/gi, "st"],
+  [/\bavenue\b/gi, "ave"],
+  [/\bdrive\b/gi, "dr"],
+  [/\bcrescent\b/gi, "cres"],
+  [/\bboulevard\b/gi, "blvd"],
+  [/\broad\b/gi, "rd"],
+  [/\bplace\b/gi, "pl"],
+  [/\bcourt\b/gi, "crt"],
+  [/\bterrace\b/gi, "terr"],
+  [/\bcircle\b/gi, "cir"],
+  [/\blane\b/gi, "lane"],
+  [/\btrail\b/gi, "trail"],
+  [/\bway\b/gi, "way"],
+  [/\bclose\b/gi, "close"],
+  [/\bgate\b/gi, "gate"],
+  [/\bheights\b/gi, "hts"],
+  [/\bpoint\b/gi, "pt"],
+  [/\bgreen\b/gi, "green"],
+  [/\bgrove\b/gi, "grove"],
+  [/\bcove\b/gi, "cove"],
+  [/\blanding\b/gi, "landing"],
+  [/\brise\b/gi, "rise"],
+  [/\bsquare\b/gi, "sq"],
+  [/\bpark\b/gi, "pk"],
+  [/\bparkway\b/gi, "pkwy"],
+];
+
 function addressSlug(address: string): string {
-  return address
-    .toLowerCase()
+  let slug = address.toLowerCase();
+  for (const [pat, repl] of SLUG_ABBREVS) {
+    slug = slug.replace(pat, repl);
+  }
+  return slug
     .replace(/[#,\.]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
@@ -476,10 +515,30 @@ export async function fetchDetail(
   province: string,
   slug?: string
 ): Promise<DetailResult> {
+  const base = `https://www.zoocasa.com/${citySlug(city)}-${provSlug(province)}-real-estate`;
   const detailSlug = slug || addressSlug(address);
-  const url = `https://www.zoocasa.com/${citySlug(city)}-${provSlug(province)}-real-estate/${detailSlug}`;
 
-  const html = await fetchPage(url);
+  let html: string;
+  try {
+    html = await fetchPage(`${base}/${detailSlug}`);
+  } catch (err) {
+    // If abbreviated slug 404s, try raw slug (some markets use full names)
+    if (!slug && err instanceof ZoocasaNotFoundError) {
+      const rawSlug = address
+        .toLowerCase()
+        .replace(/[#,\.]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      if (rawSlug !== detailSlug) {
+        html = await fetchPage(`${base}/${rawSlug}`);
+      } else {
+        throw err;
+      }
+    } else {
+      throw err;
+    }
+  }
   const data = extractNextData(html);
   if (!data) throw new Error("Could not extract __NEXT_DATA__ from detail page");
 
@@ -493,6 +552,45 @@ export async function fetchDetail(
   raw.province = raw.province || province;
 
   const listing = mapDetailListing(raw, city, province);
+  const history = parseHistory(raw);
+
+  return { listing, history, raw };
+}
+
+/**
+ * Parse a Zoocasa listing URL into city, province, and slug.
+ * Accepts: https://www.zoocasa.com/langford-bc-real-estate/316-2341-bear-mountain-pky
+ */
+export function parseZoocasaUrl(url: string): { city: string; province: string; slug: string } | null {
+  const match = url.match(/zoocasa\.com\/([a-z][a-z0-9-]*)-([a-z]{2})-real-estate\/([a-z0-9][a-z0-9-]+)/i);
+  if (!match) return null;
+  // Convert city slug back to title case: "langford" → "Langford", "west-vancouver" → "West Vancouver"
+  const city = match[1].split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  return { city, province: match[2].toLowerCase(), slug: match[3].toLowerCase() };
+}
+
+/**
+ * Fetch a listing directly from a full Zoocasa URL.
+ * Bypasses address parsing and slug construction entirely.
+ */
+export async function fetchDetailByUrl(url: string): Promise<DetailResult> {
+  const parsed = parseZoocasaUrl(url);
+  if (!parsed) throw new Error("Invalid Zoocasa URL");
+
+  const html = await fetchPage(url);
+  const data = extractNextData(html);
+  if (!data) throw new Error("Could not extract __NEXT_DATA__ from detail page");
+
+  const props = data.props as Record<string, unknown> | undefined;
+  const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+  const innerProps = pageProps?.props as Record<string, unknown> | undefined;
+  const activeListing = innerProps?.activeListing as Record<string, unknown> | undefined;
+  const raw = (activeListing?.listing || {}) as ZoocasaDetailResult;
+
+  raw.city = raw.city || parsed.city;
+  raw.province = raw.province || parsed.province;
+
+  const listing = mapDetailListing(raw, parsed.city, parsed.province);
   const history = parseHistory(raw);
 
   return { listing, history, raw };

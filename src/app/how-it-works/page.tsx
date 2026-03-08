@@ -1,4 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "How It Works — Assessment-Backed Offer Intelligence",
+  description:
+    "Learn how Property Insights uses government assessment values, days on market, and AI listing analysis to calculate what you should offer on a Canadian property.",
+  alternates: { canonical: "/how-it-works" },
+};
 
 export default function HowItWorksPage() {
   return (
@@ -153,12 +161,6 @@ export default function HowItWorksPage() {
         </Link>
       </div>
 
-      {/* Footer */}
-      <div className="text-center pt-8 border-t border-border">
-        <p className="text-xs text-muted">
-          Built by Matt Francis &middot; propertyinsights.xyz
-        </p>
-      </div>
     </main>
   );
 }

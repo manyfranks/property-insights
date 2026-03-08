@@ -5,6 +5,10 @@ import { ClerkProvider, Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { Analytics } from "@vercel/analytics/next";
 import NavbarSearch from "@/components/navbar-search";
 import MobileNav from "@/components/mobile-nav";
+import { OrganizationJsonLd } from "@/components/json-ld";
+import Footer from "@/components/footer";
+import ConsentBanner from "@/components/consent-banner";
+import { BASE_URL, SITE_NAME, SITE_DESCRIPTION, SITE_LOCALE } from "@/lib/seo";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,8 +22,53 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Property Insights",
-  description: "Data-driven property acquisition intelligence",
+  title: {
+    default: `${SITE_NAME} — Canadian Real Estate Offer Intelligence`,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  metadataBase: new URL(BASE_URL),
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: SITE_LOCALE,
+    siteName: SITE_NAME,
+    title: `${SITE_NAME} — Canadian Real Estate Offer Intelligence`,
+    description: SITE_DESCRIPTION,
+    url: BASE_URL,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME} — Canadian Real Estate Offer Intelligence`,
+    description: SITE_DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-snippet": -1,
+      "max-image-preview": "large",
+    },
+  },
+  keywords: [
+    "Canadian real estate",
+    "property assessment",
+    "home offer calculator",
+    "real estate offer tool",
+    "BC assessment",
+    "Alberta property assessment",
+    "Ontario property assessment",
+    "home buying Canada",
+    "below asking price",
+    "real estate negotiation",
+    "property analysis",
+    "days on market",
+    "seller motivation",
+  ],
 };
 
 export default function RootLayout({
@@ -32,6 +81,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <OrganizationJsonLd url={BASE_URL} />
         <ClerkProvider>
           <header className="relative z-50 border-b border-border bg-white">
             <div className="relative max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
@@ -65,6 +115,8 @@ export default function RootLayout({
             </div>
           </header>
           {children}
+          <Footer />
+          <ConsentBanner />
         </ClerkProvider>
         <Analytics />
       </body>

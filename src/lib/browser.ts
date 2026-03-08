@@ -1,12 +1,23 @@
 import puppeteer, { Browser } from "puppeteer-core";
 
+const CONNECT_TIMEOUT_MS = 10_000;
+
 export async function getBrowser(): Promise<Browser> {
   const browserlessKey = process.env.BROWSERLESS_API_KEY;
 
   if (browserlessKey) {
-    return puppeteer.connect({
+    // Race the websocket connection against a hard timeout —
+    // Browserless can hang indefinitely if the service is down.
+    const connected = puppeteer.connect({
       browserWSEndpoint: `wss://chrome.browserless.io?token=${browserlessKey}`,
+      protocolTimeout: 15_000,
     });
+
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Browserless connection timed out")), CONNECT_TIMEOUT_MS)
+    );
+
+    return Promise.race([connected, timeout]);
   }
 
   // Local development: connect to a local Chrome/Chromium

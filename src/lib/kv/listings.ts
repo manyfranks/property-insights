@@ -176,7 +176,9 @@ export async function writeAllListings(listings: Listing[]): Promise<{ written: 
 
 /**
  * Add or update a single listing in KV.
- * Reads the full list, upserts by address, writes back.
+ * Reads the full list, upserts by address, writes back the array +
+ * the single slug key + meta. Does NOT rewrite all 250 slug keys
+ * (that's only needed for bulk operations like writeAllListings).
  */
 export async function upsertListing(listing: Listing): Promise<void> {
   const all = await getAllListings();
@@ -186,7 +188,20 @@ export async function upsertListing(listing: Listing): Promise<void> {
   } else {
     all.push(listing);
   }
-  await writeAllListings(all);
+
+  const slug = slugify(listing.address);
+  const cities = [...new Set(all.map((l) => l.city))];
+
+  // 3 KV writes instead of 250+
+  await Promise.all([
+    kvSet("listings:all", all),
+    kvSet(`listings:by-slug:${slug}`, listing),
+    kvSet("listings:meta", {
+      count: all.length,
+      cities,
+      updatedAt: new Date().toISOString(),
+    }),
+  ]);
 }
 
 /**

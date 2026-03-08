@@ -43,7 +43,7 @@ export function offerModel(listing: Listing, assessment: Assessment): OfferResul
 
   if (dom >= 150) {
     domMultiplier = 0.9;
-    domTag = "DESPERATE";
+    domTag = "HIGH MOTIVATION";
   } else if (dom >= 120) {
     domMultiplier = 0.92;
     domTag = "VERY STALE";
@@ -183,7 +183,7 @@ export function offerModelLanguage(listing: Listing): OfferResult {
 
   if (dom >= 150) {
     domMultiplier = 0.9;
-    domTag = "DESPERATE";
+    domTag = "HIGH MOTIVATION";
   } else if (dom >= 120) {
     domMultiplier = 0.92;
     domTag = "VERY STALE";

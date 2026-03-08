@@ -181,7 +181,7 @@ const TIER3_SIGNALS: SignalDef[] = [
  */
 function domMultiplier(dom: number): { multiplier: number; tag: string } {
   if (dom >= 300) return { multiplier: 1.5, tag: "300d+ — extreme staleness" };
-  if (dom >= 210) return { multiplier: 1.4, tag: "210d+ — desperate" };
+  if (dom >= 210) return { multiplier: 1.4, tag: "210d+ — high motivation" };
   if (dom >= 150) return { multiplier: 1.3, tag: "150d+ — very stale" };
   if (dom >= 90)  return { multiplier: 1.2, tag: "90d+ — stale" };
   if (dom >= 60)  return { multiplier: 1.1, tag: "60d+ — aging" };

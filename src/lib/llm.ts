@@ -138,7 +138,7 @@ export async function analyzeAndNarrate(context: {
 
     const response = await openrouter.chat.completions.create({
       model: "anthropic/claude-haiku-4.5",
-      max_tokens: 500,
+      max_tokens: 800,
       messages: [
         {
           role: "system",
@@ -159,15 +159,13 @@ Detect signals that require reading between the lines — things our keyword sys
 Do NOT flag keywords already detected: "estate sale", "price reduced", "motivated seller", "must sell", "bring offers". Only flag what requires reading comprehension.
 
 NARRATIVE — ANALYTICAL FRAMEWORK:
-Structure your assessment across these dimensions (cover what the data allows):
+Write 2-3 SHORT paragraphs separated by blank lines (\\n\\n). Each paragraph should be 2-3 sentences max. Cover these dimensions (skip any that lack data):
 
-1. DESCRIPTION QUALITY: Is this generic marketing filler (agent wrote it in two minutes), or does it reveal motivation? A zero-signal description from a professional agent means the seller is comfortable waiting. Say so.
+PARAGRAPH 1 — LEVERAGE: What creates negotiation power here? The assessment gap and what the numbers actually mean (not just reciting them). If land/building split is available, explain what the buyer is really paying for. If no assessment, say so and note the higher uncertainty.
 
-2. ASSESSMENT GAP (when assessment data is provided): What does the list-to-assessed ratio mean? If land/building split is available, what does it tell us about what the buyer is really paying for? A building valued at $250K on a $750K assessment means you're paying for dirt. Say what the numbers mean, don't just recite them.
+PARAGRAPH 2 — PROPERTY READ: Functional limitations that shrink the buyer pool (1 bath for 3+ beds, small sqft, dated construction, no suite potential). Description quality — generic agent copy means the seller is comfortable waiting. Any motivation signals detected.
 
-3. FUNCTIONAL ANALYSIS: Note limitations that shrink the buyer pool — 1 bathroom for 3+ bedrooms eliminates families, small sqft for the bedroom count, dated construction requiring renovation budget, no suite potential. These affect how long the property sits and who competes for it.
-
-4. HONEST VERDICT: Is this a good negotiation opportunity or a weak trade? If the offer model produces savings of only 2-3% off list with no leverage signals, say it's a weak trade. If the assessment gap creates real anchor leverage, explain why.
+PARAGRAPH 3 — VERDICT: Is this a good trade or a weak one? If savings are only 2-3% with no leverage signals, say it's weak. If the assessment gap creates real anchor leverage, explain why. One clear sentence on whether to pursue or pass.
 
 CRITICAL RULES:
 - NEVER use time-sensitive freshness language: "just listed", "fresh to market", "newly listed", "brand new listing", "0 DOM", "only X days on market" for listings under 60 days
@@ -175,9 +173,10 @@ CRITICAL RULES:
 - DOM at 60+ IS relevant as a pressure indicator — reference the bracket tag, not the raw number
 - When data is missing (no sqft, no assessment, no year), acknowledge the gap and what it means for analysis confidence — don't fabricate
 - Be direct and analytical. No sales language. No exclamation marks. Write like the Fulton analysis.
+- Separate paragraphs with a blank line (\\n\\n). Do NOT write a single wall of text.
 
 Return ONLY valid JSON:
-{"signals": ["signal1"], "confidence": 0.0, "narrative": "Your 4-6 sentence assessment..."}`,
+{"signals": ["signal1"], "confidence": 0.0, "narrative": "Paragraph one.\\n\\nParagraph two.\\n\\nParagraph three."}`,
         },
         {
           role: "user",
@@ -196,16 +195,32 @@ ${desc || "(No description available)"}`,
     });
 
     const text = response.choices[0]?.message?.content?.trim() || "";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { signals: [], confidence: 0, narrative: "" };
+    const finishReason = response.choices[0]?.finish_reason;
+    if (finishReason === "length") {
+      console.warn(`  [llm] WARNING: response truncated (hit max_tokens). Raw length: ${text.length}`);
+    }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn(`  [llm] No JSON found in response. Raw: ${text.slice(0, 200)}`);
+      return { signals: [], confidence: 0, narrative: "" };
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      console.warn(`  [llm] JSON parse failed. finish_reason=${finishReason}. Raw: ${jsonMatch[0].slice(0, 300)}`);
+      return { signals: [], confidence: 0, narrative: "" };
+    }
+
     return {
       signals: Array.isArray(parsed.signals) ? parsed.signals : [],
       confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
       narrative: typeof parsed.narrative === "string" ? parsed.narrative : "",
     };
-  } catch {
+  } catch (err) {
+    console.warn(`  [llm] Error: ${err instanceof Error ? err.message : String(err)}`);
     return { signals: [], confidence: 0, narrative: "" };
   }
 }

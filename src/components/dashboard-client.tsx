@@ -157,7 +157,7 @@ export default function DashboardClient({ rows, stats, initialCity }: {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
           { label: "Properties", value: stats.total },
-          { label: "With Assessments", value: stats.withOffers },
+          { label: "With Offers", value: stats.withOffers },
           { label: "In Target Range", value: stats.inRange },
           { label: "Avg Savings", value: fmt(stats.avgSavings) },
         ].map((s) => (

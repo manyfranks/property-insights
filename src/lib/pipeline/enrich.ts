@@ -39,11 +39,18 @@ export async function enrichListing(
   listing: Listing,
   options?: { skipLlm?: boolean; forceLlm?: boolean }
 ): Promise<Listing> {
+  const t0 = Date.now();
+  const log = (step: string, extra?: string) =>
+    console.log(`  [enrich] ${step} (${Date.now() - t0}ms)${extra ? " — " + extra : ""}`);
+
   // Assessment: try async (live lookup), fall back to sync (cache only)
   let assessment: Assessment | null = null;
   try {
-    assessment = await lookupAssessment(listing.address, listing.province);
-  } catch {
+    log("assessment lookup", `${listing.province} ${listing.address}`);
+    assessment = await lookupAssessment(listing.address, listing.province, listing.city);
+    log("assessment done", assessment?.found ? `${fmt(assessment.totalValue)}` : "not found");
+  } catch (err) {
+    log("assessment error, trying sync", err instanceof Error ? err.message : String(err));
     assessment = lookupAssessmentSync(listing.address, listing.province);
   }
 
@@ -53,6 +60,7 @@ export async function enrichListing(
     ? offerModel(listing, assessment)
     : offerModelLanguage(listing);
   const signals = getSignals(listing);
+  log("score+offer", `tier=${score.tier} offer=${offer?.finalOffer}`);
 
   // Narrative
   let narrative: string;
@@ -60,12 +68,16 @@ export async function enrichListing(
 
   if ((score.tier === "WATCH" && !options?.forceLlm) || options?.skipLlm) {
     narrative = deterministicNarrative({ listing, assessment, offer, signals });
+    log("narrative", "deterministic");
   } else {
     try {
+      log("llm start");
       const result = await analyzeAndNarrate({ listing, assessment, offer, signals });
       narrative = result.narrative || deterministicNarrative({ listing, assessment, offer, signals });
       llmSignals = result.signals;
-    } catch {
+      log("llm done", `${narrative.length} chars`);
+    } catch (err) {
+      log("llm error", err instanceof Error ? err.message : String(err));
       narrative = deterministicNarrative({ listing, assessment, offer, signals });
     }
   }
@@ -78,6 +90,7 @@ export async function enrichListing(
     preSignals: [...signals, ...llmSignals],
     preNarrative: narrative,
     preOffer: offer ? offerToPrecomputed(offer) : undefined,
+    preAssessment: assessment?.found ? assessment : undefined,
     assessmentNote: assessment?.found
       ? `${assessment.assessmentYear}: ${fmt(assessment.totalValue)}`
       : undefined,

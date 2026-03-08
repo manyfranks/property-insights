@@ -39,6 +39,7 @@ export interface Listing {
   preSignals?: string[];
   preNarrative?: string;
   preOffer?: PrecomputedOffer;
+  preAssessment?: Assessment;
   assessmentNote?: string;
 }
 

@@ -4,13 +4,17 @@ import { lookupON, lookupONSync } from "./on";
 import { lookupAB, lookupABSync } from "./ab";
 
 /**
- * Async lookup — tries cache first, then live scrape.
+ * Async lookup — tries cache first, then live scrape/API.
  * Use in API routes where async is fine.
  */
-export async function lookupAssessment(address: string, province: string): Promise<Assessment | null> {
+export async function lookupAssessment(
+  address: string,
+  province: string,
+  city?: string
+): Promise<Assessment | null> {
   switch (province) {
     case "BC":
-      return lookupBC(address);
+      return lookupBC(address, city);
     case "ON":
       return lookupON(address);
     case "AB":

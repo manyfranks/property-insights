@@ -1,4 +1,4 @@
-import { Listing, AnalysisResult, OfferResult, ListingHistory } from "./types";
+import { Listing, Assessment, AnalysisResult, OfferResult, ListingHistory } from "./types";
 import { scoreV2 } from "./scoring";
 import { offerModel, offerModelLanguage } from "./offer-model";
 import { getSignals } from "./signals";
@@ -17,11 +17,15 @@ function getZoocasaHistory(address: string, city: string, province: string): Lis
 /**
  * Convert pre-computed offer (snake_case from JSON) to OfferResult (camelCase).
  */
-function preOfferToResult(pre: NonNullable<Listing["preOffer"]>, listing: Listing): OfferResult {
+function preOfferToResult(
+  pre: NonNullable<Listing["preOffer"]>,
+  listing: Listing,
+  assessment: Assessment | null
+): OfferResult {
   return {
     anchor: pre.anchor,
     anchorTag: pre.anchor_tag,
-    anchorType: "assessment",
+    anchorType: assessment?.found ? "assessment" : "language",
     listToAssessedRatio: pre.ratio,
     domAdjusted: pre.dom_adjusted,
     domMultiplier: pre.dom_mult,
@@ -40,11 +44,11 @@ function preOfferToResult(pre: NonNullable<Listing["preOffer"]>, listing: Listin
  * Used by server components (dashboard, property pages) where preloaded data is sufficient.
  */
 export function analyzeListing(listing: Listing): AnalysisResult {
-  const assessment = lookupAssessmentSync(listing.address, listing.province);
+  const assessment = listing.preAssessment || lookupAssessmentSync(listing.address, listing.province);
   const history = getZoocasaHistory(listing.address, listing.city, listing.province);
   const score = scoreV2(listing);
   const offer = listing.preOffer
-    ? preOfferToResult(listing.preOffer, listing)
+    ? preOfferToResult(listing.preOffer, listing, assessment)
     : assessment ? offerModel(listing, assessment) : offerModelLanguage(listing);
   const signals = getSignals(listing);
 
@@ -67,13 +71,13 @@ export async function analyzeListingAsync(listing: Listing): Promise<AnalysisRes
 
   // If we have pre-computed data, skip all external calls
   if (hasPre) {
-    const assessment = lookupAssessmentSync(listing.address, listing.province);
+    const assessment = listing.preAssessment || lookupAssessmentSync(listing.address, listing.province);
     const history = getZoocasaHistory(listing.address, listing.city, listing.province);
     const score = listing.preScore != null && listing.preTier
       ? { total: listing.preScore, tier: listing.preTier, breakdown: scoreV2(listing).breakdown }
       : scoreV2(listing);
     const offer = listing.preOffer
-      ? preOfferToResult(listing.preOffer, listing)
+      ? preOfferToResult(listing.preOffer, listing, assessment)
       : assessment ? offerModel(listing, assessment) : offerModelLanguage(listing);
     const signals = getSignals(listing);
 

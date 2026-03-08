@@ -20,6 +20,18 @@ const CALGARY_ABBREVS: [RegExp, string][] = [
   [/\bTrail\b/gi, "TR"],
   [/\bLane\b/gi, "LA"],
   [/\bPoint\b/gi, "PT"],
+  [/\bHeights\b/gi, "HT"],
+  [/\bRise\b/gi, "RI"],
+  [/\bGrove\b/gi, "GV"],
+  [/\bCove\b/gi, "CV"],
+  [/\bMews\b/gi, "ME"],
+  [/\bLink\b/gi, "LK"],
+  [/\bPark\b/gi, "PK"],
+  [/\bHeath\b/gi, "HE"],
+  [/\bView\b/gi, "VW"],
+  [/\bSquare\b/gi, "SQ"],
+  [/\bLanding\b/gi, "LD"],
+  [/\bManor\b/gi, "MR"],
 ];
 
 const EDMONTON_ABBREVS: [RegExp, string][] = [
@@ -31,6 +43,19 @@ const EDMONTON_ABBREVS: [RegExp, string][] = [
   [/\bBV\b/gi, "BOULEVARD"],
   [/\bRD\b/gi, "ROAD"],
   [/\bCL\b/gi, "CLOSE"],
+  [/\bCRT\b/gi, "COURT"],
+  [/\bCT\b/gi, "COURT"],
+  [/\bTERR\b/gi, "TERRACE"],
+  [/\bWY\b/gi, "WAY"],
+  [/\bLA\b/gi, "LANE"],
+  [/\bTR\b/gi, "TRAIL"],
+  [/\bGR\b/gi, "GREEN"],
+  [/\bGA\b/gi, "GATE"],
+  [/\bPT\b/gi, "POINT"],
+  [/\bHT\b/gi, "HEIGHTS"],
+  [/\bRI\b/gi, "RISE"],
+  [/\bGV\b/gi, "GROVE"],
+  [/\bCV\b/gi, "COVE"],
 ];
 
 /**
@@ -78,32 +103,47 @@ async function lookupCalgarySODA(address: string): Promise<Assessment | null> {
     // Remove comma-space format: "108, 150 Lebel" -> "108 150 LEBEL"
     normalized = normalized.replace(/,\s*/g, " ");
 
-    const url = new URL("https://data.calgary.ca/resource/4bsw-nn7w.json");
-    url.searchParams.set("$where", `address='${normalized}'`);
-    url.searchParams.set("$limit", "1");
+    // Extract house number + street name for starts_with prefix.
+    // "149 MITCHELL RD NW" → houseAndStreet = "149 MITCHELL"
+    // starts_with is indexed (~600ms) vs exact match (~17s, always times out).
+    const parts = normalized.match(/^(\d+)\s+([A-Z]+)/);
+    if (!parts) return null;
+    const prefix = `${parts[1]} ${parts[2]}`;
 
-    const res = await fetch(url.toString(), {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return null;
+    const where = `starts_with(address, '${prefix}') AND assessment_class='RE'`;
+    const result = await queryCalgary(where);
+    if (result) return result;
 
-    const data = await res.json();
-    if (!data?.length) return null;
-
-    const value = Math.round(parseFloat(data[0].assessed_value));
-    if (!value || value <= 0) return null;
-
-    return {
-      totalValue: value,
-      landValue: 0,
-      buildingValue: 0,
-      assessmentYear: data[0].roll_year || "2026",
-      found: true,
-    };
+    return null;
   } catch {
     return null;
   }
+}
+
+async function queryCalgary(where: string): Promise<Assessment | null> {
+  const url = new URL("https://data.calgary.ca/resource/4bsw-nn7w.json");
+  url.searchParams.set("$where", where);
+  url.searchParams.set("$limit", "1");
+
+  const res = await fetch(url.toString(), {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  if (!data?.length) return null;
+
+  const value = Math.round(parseFloat(data[0].assessed_value));
+  if (!value || value <= 0) return null;
+
+  return {
+    totalValue: value,
+    landValue: 0,
+    buildingValue: 0,
+    assessmentYear: data[0].roll_year || "2026",
+    found: true,
+  };
 }
 
 /**
@@ -136,34 +176,52 @@ async function lookupEdmontonSODA(address: string): Promise<Assessment | null> {
       streetName = streetName.replace(pat, repl);
     }
 
-    const url = new URL("https://data.edmonton.ca/resource/q7d6-ambg.json");
-    let where = `house_number='${houseNumber}' AND street_name='${streetName}'`;
+    // Try exact match first
+    const exact = await queryEdmonton(houseNumber, streetName, suite);
+    if (exact) return exact;
+
+    // Fuzzy fallback: try without suite
     if (suite) {
-      where += ` AND suite='${suite}'`;
+      const noSuite = await queryEdmonton(houseNumber, streetName, null);
+      if (noSuite) return noSuite;
     }
-    url.searchParams.set("$where", where);
-    url.searchParams.set("$limit", "1");
 
-    const res = await fetch(url.toString(), {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    if (!data?.length) return null;
-
-    const value = parseInt(data[0].assessed_value, 10);
-    if (!value || value <= 0) return null;
-
-    return {
-      totalValue: value,
-      landValue: 0,
-      buildingValue: 0,
-      assessmentYear: "2026",
-      found: true,
-    };
+    return null;
   } catch {
     return null;
   }
+}
+
+async function queryEdmonton(
+  houseNumber: string,
+  streetName: string,
+  suite: string | null
+): Promise<Assessment | null> {
+  const url = new URL("https://data.edmonton.ca/resource/q7d6-ambg.json");
+  let where = `house_number='${houseNumber}' AND street_name='${streetName}'`;
+  if (suite) {
+    where += ` AND suite='${suite}'`;
+  }
+  url.searchParams.set("$where", where);
+  url.searchParams.set("$limit", "1");
+
+  const res = await fetch(url.toString(), {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  if (!data?.length) return null;
+
+  const value = parseInt(data[0].assessed_value, 10);
+  if (!value || value <= 0) return null;
+
+  return {
+    totalValue: value,
+    landValue: 0,
+    buildingValue: 0,
+    assessmentYear: "2026",
+    found: true,
+  };
 }

@@ -16,6 +16,12 @@ interface PlaceSuggestion {
   placeId: string;
 }
 
+const LISTING_URL_RE = /zoocasa\.com\/[a-z][a-z0-9-]*-[a-z]{2}-real-estate\/[a-z0-9-]+/i;
+
+function isListingUrl(text: string): boolean {
+  return LISTING_URL_RE.test(text);
+}
+
 export default function NavbarSearch() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -28,7 +34,20 @@ export default function NavbarSearch() {
   const router = useRouter();
   const { isSignedIn } = useUser();
 
+  // Detect URL paste and immediately show assess CTA
+  const detectedUrl = isListingUrl(query) ? query.trim() : null;
+
   useEffect(() => {
+    // Skip autocomplete when a listing URL is pasted
+    if (detectedUrl) {
+      setResults([]);
+      setPlaces([]);
+      setSearched(false);
+      setSelectedAddress("");
+      setOpen(true);
+      return;
+    }
+
     if (query.length < 2) {
       setResults([]);
       setPlaces([]);
@@ -60,7 +79,7 @@ export default function NavbarSearch() {
     }, 250);
 
     return () => clearTimeout(debounceRef.current);
-  }, [query]);
+  }, [query, detectedUrl]);
 
   function handleSelect(address: string) {
     setQuery("");
@@ -74,7 +93,7 @@ export default function NavbarSearch() {
   }
 
   function handleRequestAssessment() {
-    const address = selectedAddress || query.trim();
+    const address = detectedUrl || selectedAddress || query.trim();
     if (!address) return;
     setQuery("");
     setOpen(false);
@@ -94,6 +113,61 @@ export default function NavbarSearch() {
   const hasLocal = results.length > 0;
   const hasPlaces = places.length > 0;
   const noResults = searched && query.length > 1 && !hasLocal && !hasPlaces;
+
+  // Listing URL detected — show assess CTA immediately
+  if (open && detectedUrl) {
+    return (
+      <div ref={containerRef} className="absolute left-1/2 -translate-x-1/2 hidden sm:block">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setOpen(false);
+              (e.target as HTMLInputElement).blur();
+            }
+            if (e.key === "Enter") handleRequestAssessment();
+          }}
+          placeholder="Search an address..."
+          className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
+        />
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-80 bg-white border border-border rounded-lg shadow-lg p-4 z-50">
+          {isSignedIn ? (
+            <div className="text-center">
+              <p className="text-sm font-medium text-foreground mb-1">
+                Zoocasa listing detected
+              </p>
+              <p className="text-xs text-muted mb-3">
+                We&apos;ll fetch this listing directly, run a full assessment with offer modeling, and email you the analysis.
+              </p>
+              <button
+                onClick={handleRequestAssessment}
+                className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all"
+              >
+                Assess this listing
+              </button>
+            </div>
+          ) : (
+            <div className="text-center">
+              <p className="text-sm font-medium text-foreground mb-1">
+                Zoocasa listing detected
+              </p>
+              <p className="text-xs text-muted mb-3">
+                Sign in and we&apos;ll fetch this listing, run a full assessment, and email you the results.
+              </p>
+              <SignInButton mode="modal">
+                <button className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all">
+                  Sign in to request
+                </button>
+              </SignInButton>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Google suggestion selected — show assess CTA
   if (open && selectedAddress) {
@@ -164,8 +238,12 @@ export default function NavbarSearch() {
             setOpen(false);
             (e.target as HTMLInputElement).blur();
           }
+          if (e.key === "Enter" && detectedUrl) {
+            e.preventDefault();
+            handleRequestAssessment();
+          }
         }}
-        placeholder="Search an address..."
+        placeholder="Search an address or paste a Zoocasa link..."
         className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
       />
       {open && (hasLocal || hasPlaces) && (

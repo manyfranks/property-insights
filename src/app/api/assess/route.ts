@@ -11,9 +11,10 @@
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { fetchDetail, ZoocasaNotFoundError } from "@/lib/zoocasa";
+import { fetchDetail, fetchDetailByUrl, parseZoocasaUrl, ZoocasaNotFoundError } from "@/lib/zoocasa";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { upsertListing } from "@/lib/kv/listings";
+import { trackEvent } from "@/lib/kv/user-events";
 import { sendAssessmentEmail } from "@/lib/email";
 import { slugify } from "@/lib/utils";
 
@@ -78,60 +79,105 @@ function parseAddress(raw: string): {
 }
 
 export async function POST(req: Request) {
+  const t0 = Date.now();
+  const log = (step: string, extra?: string) =>
+    console.log(`[assess] ${step} (${Date.now() - t0}ms)${extra ? " — " + extra : ""}`);
+
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Sign in to request an assessment" }, { status: 401 });
   }
 
-  const body = await req.json();
-  const rawAddress: string = body.address?.trim();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
-  if (!rawAddress || rawAddress.length > 200) {
+  const rawAddress = typeof body.address === "string" ? body.address.trim() : "";
+  log("start", rawAddress);
+
+  // Length check + reject control characters and obvious injection patterns
+  if (!rawAddress || rawAddress.length > 500 || /[\x00-\x1f<>{}]/.test(rawAddress)) {
     return NextResponse.json({ error: "Invalid address" }, { status: 400 });
   }
 
-  // Parse the address
-  const parsed = parseAddress(rawAddress);
-  if (!parsed) {
-    return NextResponse.json(
-      { error: "Could not parse address. Please use a full Canadian address (e.g., 123 Main St, Vancouver, BC)." },
-      { status: 400 }
-    );
-  }
+  // Check if input is a Zoocasa URL
+  const isZoocasaUrl = parseZoocasaUrl(rawAddress);
 
-  const { street, city, province } = parsed;
-
-  // Fetch from Zoocasa
   let detail;
-  try {
-    detail = await fetchDetail(street, city, province);
-  } catch (err) {
-    if (err instanceof ZoocasaNotFoundError) {
+
+  if (isZoocasaUrl) {
+    // Direct URL fetch — bypass address parsing entirely
+    log("url detected", `zoocasa → ${isZoocasaUrl.city}, ${isZoocasaUrl.province}`);
+    try {
+      detail = await fetchDetailByUrl(rawAddress);
+      log("zoocasa ok", detail.listing.address);
+    } catch (err) {
+      log("zoocasa error", err instanceof Error ? err.message : String(err));
+      if (err instanceof ZoocasaNotFoundError) {
+        return NextResponse.json(
+          { error: "This listing wasn't found on Zoocasa. It may no longer be active." },
+          { status: 404 }
+        );
+      }
       return NextResponse.json(
-        { error: "This property wasn't found on Zoocasa. It may not be currently listed for sale." },
-        { status: 404 }
+        { error: "Failed to load this listing. Please try again." },
+        { status: 502 }
       );
     }
-    return NextResponse.json(
-      { error: "Failed to look up this property. Please try again." },
-      { status: 502 }
-    );
+  } else {
+    // Standard address parsing flow
+    const parsed = parseAddress(rawAddress);
+    if (!parsed) {
+      log("parse failed");
+      return NextResponse.json(
+        { error: "Could not parse address. Please use a full Canadian address (e.g., 123 Main St, Vancouver, BC) or paste a Zoocasa listing URL." },
+        { status: 400 }
+      );
+    }
+
+    const { street, city, province } = parsed;
+    log("parsed", `${street} | ${city} | ${province}`);
+
+    try {
+      detail = await fetchDetail(street, city, province);
+      log("zoocasa ok", detail.listing.address);
+    } catch (err) {
+      log("zoocasa error", err instanceof Error ? err.message : String(err));
+      if (err instanceof ZoocasaNotFoundError) {
+        return NextResponse.json(
+          { error: "This property wasn't found on Zoocasa. It may not be currently listed for sale." },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json(
+        { error: "Failed to look up this property. Please try again." },
+        { status: 502 }
+      );
+    }
   }
 
   const listing = detail.listing;
 
   // Enrich with scoring, offer model, and LLM narrative
   // Always use LLM for on-demand user requests (even WATCH tier)
+  log("enrich start");
   const enriched = await enrichListing(listing, { forceLlm: true });
+  log("enrich done", `tier=${enriched.preTier} score=${enriched.preScore} offer=${enriched.preOffer?.final_offer}`);
 
   // Save to KV
+  log("kv write");
   await upsertListing(enriched);
+  log("kv done");
 
   const slug = slugify(enriched.address);
 
   // Get user email from Clerk and send assessment
   let emailSent = false;
   try {
+    log("email start");
     const client = await clerkClient();
     const user = await client.users.getUser(userId);
     const email = user.emailAddresses?.[0]?.emailAddress;
@@ -147,11 +193,23 @@ export async function POST(req: Request) {
         percentOfList: enriched.preOffer?.pct_of_list,
       });
       emailSent = result.success;
+      log("email done", emailSent ? "sent" : "not sent");
+    } else {
+      log("email skip", `email=${!!email} narrative=${!!enriched.preNarrative}`);
     }
-  } catch {
-    // Email failure shouldn't block the response
+  } catch (err) {
+    log("email error", err instanceof Error ? err.message : String(err));
   }
 
+  // Track assessment request (strongest intent signal)
+  trackEvent(userId, "assessment_request", {
+    address: enriched.address,
+    city: enriched.city,
+    price: enriched.price,
+    slug,
+  }).catch(() => {}); // fire and forget
+
+  log("done", slug);
   return NextResponse.json({
     ok: true,
     slug,

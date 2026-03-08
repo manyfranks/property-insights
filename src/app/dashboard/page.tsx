@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { getAllListings } from "@/lib/kv/listings";
 import { analyzeListing } from "@/lib/analyze";
 import { slugify } from "@/lib/utils";
 import DashboardClient from "@/components/dashboard-client";
+
+export const metadata: Metadata = {
+  title: "Discover Properties — Analyzed Listings Across Canada",
+  description:
+    "Browse analyzed Canadian real estate listings with offer modeling, assessment data, and seller motivation scores. Filter by city across BC, Alberta, and Ontario.",
+  alternates: { canonical: "/dashboard" },
+};
 
 export default async function DashboardPage({
   searchParams,
@@ -53,9 +61,6 @@ export default async function DashboardPage({
         initialCity={initialCity || null}
       />
 
-      <div className="mt-8 text-center text-xs text-muted">
-        Built by Matt Francis &middot; 2026
-      </div>
     </main>
   );
 }
