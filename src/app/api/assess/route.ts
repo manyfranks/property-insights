@@ -121,7 +121,8 @@ export async function POST(req: Request) {
   const listing = detail.listing;
 
   // Enrich with scoring, offer model, and LLM narrative
-  const enriched = await enrichListing(listing);
+  // Always use LLM for on-demand user requests (even WATCH tier)
+  const enriched = await enrichListing(listing, { forceLlm: true });
 
   // Save to KV
   await upsertListing(enriched);

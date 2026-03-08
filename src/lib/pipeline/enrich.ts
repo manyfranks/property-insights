@@ -37,7 +37,7 @@ export function offerToPrecomputed(offer: OfferResult): PrecomputedOffer {
  */
 export async function enrichListing(
   listing: Listing,
-  options?: { skipLlm?: boolean }
+  options?: { skipLlm?: boolean; forceLlm?: boolean }
 ): Promise<Listing> {
   // Assessment: try async (live lookup), fall back to sync (cache only)
   let assessment: Assessment | null = null;
@@ -58,7 +58,7 @@ export async function enrichListing(
   let narrative: string;
   let llmSignals: string[] = [];
 
-  if (score.tier === "WATCH" || options?.skipLlm) {
+  if ((score.tier === "WATCH" && !options?.forceLlm) || options?.skipLlm) {
     narrative = deterministicNarrative({ listing, assessment, offer, signals });
   } else {
     try {
