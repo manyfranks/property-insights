@@ -1,284 +1,1753 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RE:Intel — Real Estate Acquisition Intelligence</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
-*{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0a0e1a;--card:#111827;--card2:#1a2235;--border:#1e293b;--accent:#3b82f6;--accent2:#6366f1;--green:#10b981;--red:#ef4444;--orange:#f59e0b;--text:#e2e8f0;--muted:#64748b;--dim:#334155}
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
-.container{max-width:1280px;margin:0 auto;padding:0 24px}
-header{padding:32px 0 16px;border-bottom:1px solid var(--border)}
-.logo{display:flex;align-items:center;gap:12px}
-.logo-mark{width:40px;height:40px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff}
-.logo h1{font-size:24px;font-weight:700;letter-spacing:-0.5px}
-.logo h1 span{color:var(--accent);font-weight:800}
-.subtitle{color:var(--muted);font-size:13px;margin-top:2px}
-.hero{padding:48px 0 32px;text-align:center}
-.hero h2{font-size:36px;font-weight:800;letter-spacing:-1px;background:linear-gradient(135deg,#fff,var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
-.hero p{color:var(--muted);font-size:15px;max-width:680px;margin:0 auto;line-height:1.6}
-.search-wrap{max-width:640px;margin:32px auto 0;position:relative}
-.search-wrap input{width:100%;padding:16px 20px 16px 48px;background:var(--card);border:1px solid var(--border);border-radius:12px;font-size:16px;color:var(--text);font-family:'Inter',sans-serif;outline:none;transition:border-color .2s}
-.search-wrap input:focus{border-color:var(--accent)}
-.search-wrap input::placeholder{color:var(--dim)}
-.search-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px}
-.dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;max-height:320px;overflow-y:auto;z-index:100;box-shadow:0 16px 48px rgba(0,0,0,.5)}
-.dropdown-item{padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);transition:background .15s}
-.dropdown-item:last-child{border-bottom:none}
-.dropdown-item:hover{background:var(--card2)}
-.dropdown-item .addr{font-weight:500;font-size:14px}
-.dropdown-item .city{color:var(--muted);font-size:12px}
-.dropdown-item .price{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--accent)}
-.stats-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:24px 0}
-.stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center}
-.stat .val{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace}
-.stat .label{color:var(--muted);font-size:12px;margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
-.stat.green .val{color:var(--green)}
-.stat.blue .val{color:var(--accent)}
-.stat.orange .val{color:var(--orange)}
-.stat.red .val{color:var(--red)}
-.analysis{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:32px}
-.analysis-header{padding:24px 28px;background:linear-gradient(135deg,#1e3a5f,#1a2235);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px}
-.analysis-header h3{font-size:22px;font-weight:700}
-.analysis-header .meta{display:flex;gap:12px;flex-wrap:wrap}
-.tag{display:inline-flex;align-items:center;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;letter-spacing:.3px}
-.tag.hot{background:rgba(239,68,68,.15);color:#f87171}
-.tag.warm{background:rgba(245,158,11,.15);color:#fbbf24}
-.tag.watch{background:rgba(100,116,139,.15);color:#94a3b8}
-.tag.green{background:rgba(16,185,129,.15);color:#34d399}
-.tag.blue{background:rgba(59,130,246,.15);color:#60a5fa}
-.props-row{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
-.props-row>div{background:var(--card);padding:16px 24px}
-.prop-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
-.prop-val{font-size:16px;font-weight:600;font-family:'JetBrains Mono',monospace}
-.cascade{padding:28px}
-.cascade h4{font-size:16px;font-weight:700;margin-bottom:20px;color:var(--accent)}
-.step{display:grid;grid-template-columns:48px 1fr;gap:16px;margin-bottom:20px;position:relative}
-.step:not(:last-child)::after{content:'';position:absolute;left:23px;top:48px;bottom:-12px;width:2px;background:var(--border)}
-.step-num{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:#fff;position:relative;z-index:1}
-.step-num.s1{background:linear-gradient(135deg,#3b82f6,#6366f1)}
-.step-num.s2{background:linear-gradient(135deg,#f59e0b,#ef4444)}
-.step-num.s3{background:linear-gradient(135deg,#8b5cf6,#ec4899)}
-.step-num.s4{background:linear-gradient(135deg,#10b981,#059669)}
-.step-content{padding-top:4px}
-.step-title{font-weight:600;font-size:14px;margin-bottom:4px}
-.step-detail{color:var(--muted);font-size:13px;line-height:1.5}
-.step-val{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;margin-top:6px}
-.offer-box{margin:24px 28px 28px;background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(59,130,246,.08));border:2px solid var(--green);border-radius:12px;padding:24px;text-align:center}
-.offer-box .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
-.offer-box .amount{font-size:42px;font-weight:900;font-family:'JetBrains Mono',monospace;color:var(--green);letter-spacing:-1px}
-.offer-box .sub{color:var(--muted);font-size:13px;margin-top:8px}
-.offer-box .sub strong{color:var(--text)}
-.signals-box{margin:0 28px 28px;display:flex;flex-wrap:wrap;gap:8px}
-.signal{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.2)}
-.table-section{padding:32px 0}
-.table-section h3{font-size:20px;font-weight:700;margin-bottom:16px}
-.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{background:var(--card2);padding:12px 16px;text-align:left;font-weight:600;color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.5px;white-space:nowrap;position:sticky;top:0}
-td{padding:10px 16px;border-top:1px solid var(--border);white-space:nowrap}
-tr{background:var(--card);transition:background .15s;cursor:pointer}
-tr:hover{background:var(--card2)}
-.mono{font-family:'JetBrains Mono',monospace}
-.green{color:var(--green)}.red{color:var(--red)}.orange{color:var(--orange)}.blue{color:var(--accent)}
-.methodology{padding:48px 0;border-top:1px solid var(--border)}
-.methodology h3{font-size:24px;font-weight:800;margin-bottom:24px;text-align:center}
-.method-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
-.method-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px}
-.method-card h4{font-size:14px;font-weight:700;margin-bottom:8px;color:var(--accent)}
-.method-card p{color:var(--muted);font-size:13px;line-height:1.6}
-footer{padding:32px 0;border-top:1px solid var(--border);text-align:center;color:var(--dim);font-size:12px}
-.back-btn{background:none;border:1px solid var(--border);border-radius:8px;padding:8px 16px;color:var(--muted);font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s}
-.back-btn:hover{border-color:var(--accent);color:var(--accent)}
-.no-bca{margin:0 28px 28px;padding:20px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;color:var(--orange);font-size:13px}
-@media(max-width:768px){.stats-bar,.props-row,.method-grid{grid-template-columns:1fr}.hero h2{font-size:26px}.step{grid-template-columns:36px 1fr}}
-</style>
-</head>
-<body>
-<div id="root"></div>
-<script type="text/babel">
-const DATA=[{"a":"727 Chesterlea Rd","c":"Saanich","d":164,"p":1199800,"b":"4","ba":"2","sf":"2492","yr":"1964","tx":"5,264","ln":"9359 sqft","pr":0,"su":1,"es":0,"ds":"Updated family home across from Rogers Park, Saanich. Suite potential.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28886661/727-chesterlea-rd-saanich-high-quadra","bca":1049000},{"a":"777 Cuaulta Cres","c":"Colwood","d":158,"p":950000,"b":"5","ba":"3","sf":"3718","yr":"1980","tx":"4,870","ln":"","pr":0,"su":1,"es":0,"ds":"Spacious 5-bed/3-bath in desirable area. Suite potential. Updates needed.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28913449/777-cuaulta-cres-colwood-triangle","bca":1048000},{"a":"1560 Prairie St","c":"Saanich","d":147,"p":1350000,"b":"7","ba":"3","sf":"2740","yr":"1987","tx":"5,462","ln":"7008 sqft","pr":0,"su":1,"es":0,"ds":"7-bed family/investment home in Gordon Head.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28956363/1560-prairie-st-saanich-gordon-head","bca":1169000},{"a":"966 Jenkins Ave","c":"Langford","d":145,"p":1399900,"b":"5","ba":"2","sf":"3962","yr":"1962","tx":"4,756","ln":"16559 sqft","pr":0,"su":1,"es":0,"ds":"First time on market in 53 years. 16,559 sqft lot with subdivision potential. Rare opportunity.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28965680/966-jenkins-ave-langford-glen-lake","bca":1000000},{"a":"1817 Hartwood Pl","c":"Saanich","d":145,"p":1345000,"b":"6","ba":"3","sf":"2285","yr":"1972","tx":"5,738","ln":"7187 sqft","pr":0,"su":1,"es":0,"ds":"Quiet street near UVic and Mount Douglas Secondary. South-facing yard. Suite potential.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28967092/1817-hartwood-pl-saanich-lambrick-park","bca":1159000},{"a":"796 Worthington Pl","c":"Saanich","d":144,"p":1499000,"b":"3","ba":"3","sf":"2947","yr":"1991","tx":"7,321","ln":"11728 sqft","pr":0,"su":1,"es":0,"ds":"Cordova Bay cul-de-sac. Well-maintained, private setting.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28970617/796-worthington-pl-saanich-cordova-bay","bca":1483000},{"a":"2161 Stone Gate","c":"Langford","d":144,"p":1050000,"b":"4","ba":"4","sf":"2689","yr":"2005","tx":"6,046","ln":"4682 sqft","pr":0,"su":1,"es":0,"ds":"Bear Mountain family home with golf course community.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28972233/2161-stone-gate-langford-bear-mountain","bca":1235000},{"a":"2617 Country Terr","c":"Langford","d":143,"p":949900,"b":"4","ba":"3","sf":"2464","yr":"2001","tx":"4,308","ln":"3229 sqft","pr":0,"su":1,"es":0,"ds":"Backs onto Galloping Goose Trail. Quiet no-through street.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28976199/2617-country-terr-langford-atkins","bca":857000},{"a":"1295 Santa Rosa Ave","c":"Saanich","d":142,"p":1199999,"b":"7","ba":"2","sf":"3430","yr":"1917","tx":"4,567","ln":"6028 sqft","pr":0,"su":1,"es":0,"ds":"1917 character home, 7 beds, 10-ft ceilings, Strawberry Vale. Investment potential.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28980255/1295-santa-rosa-ave-saanich-strawberry-vale","bca":921000},{"a":"2901 Harriet Rd","c":"Victoria","d":138,"p":949999,"b":"3","ba":"2","sf":"1806","yr":"2002","tx":"4,564","ln":"3315 sqft","pr":0,"su":1,"es":0,"ds":"Charming 3-bed/2-bath in Burnside, Victoria.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28990774/2901-harriet-rd-victoria-burnside","bca":906000},{"a":"2151 Harrow Gate","c":"Langford","d":137,"p":1160000,"b":"4","ba":"3","sf":"2481","yr":"2004","tx":"5,786","ln":"5931 sqft","pr":0,"su":1,"es":0,"ds":"Well-maintained Bear Mountain home on quiet no-through street.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28995554/2151-harrow-gate-langford-bear-mountain","bca":1189000},{"a":"838 Princess Ave","c":"Victoria","d":137,"p":1049900,"b":"4","ba":"2","sf":"2644","yr":"1911","tx":"4,161","ln":"3567 sqft","pr":0,"su":0,"es":0,"ds":"1911 character home near downtown Victoria.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/28997617/838-princess-ave-victoria-central-park","bca":1013000},{"a":"4010 Saanich Rd","c":"Saanich","d":129,"p":1500000,"b":"3","ba":"1","sf":"2649","yr":"1901","tx":"6,395","ln":"16650 sqft","pr":0,"su":0,"es":0,"ds":"Development opportunity. RS-6 zoning. 16,650 sqft lot in heart of Saanich.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/29029708/4010-saanich-rd-saanich-swan-lake","bca":1281000},{"a":"746 Gorge Rd W","c":"Saanich","d":116,"p":1150000,"b":"4","ba":"2","sf":"2000","yr":"1960","tx":"4,600","ln":"7500 sqft","pr":0,"su":1,"es":0,"ds":"Saanich Gorge area home with suite potential.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/29081403/746-gorge-rd-w-saanich-gorge","bca":1138000},{"a":"2652 Blackwood St","c":"Victoria","d":111,"p":1398880,"b":"9","ba":"3","sf":"3777","yr":"1912","tx":"6149","ln":"6098 sqft","pr":0,"su":1,"es":0,"ds":"Exceptional Investment Opportunity! Renovated for maximum rental income.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/29091652/2652-blackwood-st-victoria-hillside","bca":1215000},{"a":"1941 Mayfair Dr","c":"Saanich","d":108,"p":1475000,"b":"4","ba":"3","sf":"2530","yr":"1940","tx":"6385","ln":"13405 sqft","pr":0,"su":1,"es":0,"ds":"Level 0.31-acre lot eligible for SSMUH - rare blend of development potential.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/29101686/1941-mayfair-dr-saanich-mt-tolmie","bca":1311000},{"a":"2367 Swallow Pl","c":"Langford","d":108,"p":1365000,"b":"4","ba":"4","sf":"3015","yr":"2024","tx":"5829","ln":"4337 sqft","pr":0,"su":1,"es":0,"ds":"Nearly new by Cameron Developments in Bear Mountain. Open-concept with legal suite.","nt":"","cl":"Bear Mountain","url":"https://www.realtor.ca/real-estate/29101794/2367-swallow-pl-langford-bear-mountain","bca":1168000},{"a":"4465 Emily Carr Dr","c":"Saanich","d":104,"p":1600000,"b":"4","ba":"3","sf":"2328","yr":"1979","tx":"7287","ln":"13068 sqft","pr":0,"su":1,"es":0,"ds":"Updated Broadmead home on spacious corner lot with mature landscaping.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/29113965/4465-emily-carr-dr-saanich-broadmead","bca":1477000},{"a":"2210 Archer Gate","c":"Langford","d":102,"p":1349900,"b":"4","ba":"5","sf":"3705","yr":"2024","tx":"7144","ln":"3425 sqft","pr":0,"su":1,"es":0,"ds":"Dramatic views and quality new construction from Bear Mountain. 4bed 5bath plus den with 1000sqft suite.","nt":"","cl":"Bear Mountain","url":"https://www.realtor.ca/real-estate/29120519/2210-archer-gate-langford-bear-mountain","bca":1461000},{"a":"2524 Alabaster Crt","c":"Langford","d":101,"p":1450000,"b":"5","ba":"4","sf":"3613","yr":"2026","tx":"0","ln":"4564 sqft","pr":0,"su":1,"es":0,"ds":"$25K credit promotion! Single family homes with legal suites by Verity.","nt":"","cl":"Verity/Alabaster","url":"https://www.realtor.ca/real-estate/29124605/2524-alabaster-crt-langford-bear-mountain","bca":1239000},{"a":"1579 Kenmore Rd","c":"Saanich","d":97,"p":1350000,"b":"8","ba":"5","sf":"3201","yr":"1967","tx":"5709","ln":"8750 sqft","pr":0,"su":1,"es":0,"ds":"Extensively renovated 8-bedroom home with two kitchens in Gordon Head.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/29135803/1579-kenmore-rd-saanich-gordon-head","bca":1163000},{"a":"833 Alvarado Terr","c":"Saanich","d":95,"p":1349000,"b":"4","ba":"3","sf":"3567","yr":"1969","tx":"5738","ln":"10916 sqft","pr":0,"su":1,"es":0,"ds":"Well-maintained family home in Cordova Bay on large lot.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/29141836/833-alvarado-terr-saanich-cordova-bay","bca":1200000},{"a":"5087 Catalina Terr","c":"Saanich","d":88,"p":1399000,"b":"4","ba":"3","sf":"4166","yr":"1972","tx":"6605","ln":"20232 sqft","pr":0,"su":1,"es":0,"ds":"Beautifully updated on expansive 20,000+ sqft lot in Cordova Bay.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/29160661/5087-catalina-terr-saanich-cordova-bay","bca":1368000},{"a":"3883 Douglas St","c":"Saanich","d":55,"p":924900,"b":"6","ba":"2","sf":"2246","yr":"1923","tx":"4728","ln":"10301 sqft","pr":0,"su":1,"es":1,"ds":"Rare opportunity to reimagine a character home on 10,301sqft lot. Must sell motivation.","nt":"","cl":"","url":"https://www.realtor.ca/real-estate/29219719/3883-douglas-st-saanich-swan-lake","bca":935900},{"a":"1153 DEERVIEW Pl","c":"Langford","d":42,"p":1279900,"b":"7","ba":"3","sf":"4445","yr":"2007","tx":"6,204","ln":"6307 sqft","pr":0,"su":1,"es":1,"ds":"Priced for quick sale! Bear Mountain home. Executive comfort & smart technology. Motivated Seller - Quick Possession Available. Bring your offer!","nt":"Benchmark property - listed/pulled/relisted ~2 years, cycled agents, multiple price drops","cl":"","url":"https://www.realtor.ca/real-estate/29264335/1153-deerview-pl-langford-bear-mountain","bca":1269000}];
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RE:Intel — Real Estate Acquisition Intelligence</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap");
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      :root {
+        --bg: #0a0e1a;
+        --card: #111827;
+        --card2: #1a2235;
+        --border: #1e293b;
+        --accent: #3b82f6;
+        --accent2: #6366f1;
+        --green: #10b981;
+        --red: #ef4444;
+        --orange: #f59e0b;
+        --text: #e2e8f0;
+        --muted: #64748b;
+        --dim: #334155;
+      }
+      body {
+        font-family: "Inter", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+      .container {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      header {
+        padding: 32px 0 16px;
+        border-bottom: 1px solid var(--border);
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .logo-mark {
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 18px;
+        color: #fff;
+      }
+      .logo h1 {
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+      .logo h1 span {
+        color: var(--accent);
+        font-weight: 800;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 2px;
+      }
+      .hero {
+        padding: 48px 0 32px;
+        text-align: center;
+      }
+      .hero h2 {
+        font-size: 36px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        background: linear-gradient(135deg, #fff, var(--accent));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 12px;
+      }
+      .hero p {
+        color: var(--muted);
+        font-size: 15px;
+        max-width: 680px;
+        margin: 0 auto;
+        line-height: 1.6;
+      }
+      .search-wrap {
+        max-width: 640px;
+        margin: 32px auto 0;
+        position: relative;
+      }
+      .search-wrap input {
+        width: 100%;
+        padding: 16px 20px 16px 48px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        font-size: 16px;
+        color: var(--text);
+        font-family: "Inter", sans-serif;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .search-wrap input:focus {
+        border-color: var(--accent);
+      }
+      .search-wrap input::placeholder {
+        color: var(--dim);
+      }
+      .search-icon {
+        position: absolute;
+        left: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted);
+        font-size: 18px;
+      }
+      .dropdown {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        max-height: 320px;
+        overflow-y: auto;
+        z-index: 100;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+      }
+      .dropdown-item {
+        padding: 12px 20px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid var(--border);
+        transition: background 0.15s;
+      }
+      .dropdown-item:last-child {
+        border-bottom: none;
+      }
+      .dropdown-item:hover {
+        background: var(--card2);
+      }
+      .dropdown-item .addr {
+        font-weight: 500;
+        font-size: 14px;
+      }
+      .dropdown-item .city {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .dropdown-item .price {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        color: var(--accent);
+      }
+      .stats-bar {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        padding: 24px 0;
+      }
+      .stat {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+      }
+      .stat .val {
+        font-size: 28px;
+        font-weight: 800;
+        font-family: "JetBrains Mono", monospace;
+      }
+      .stat .label {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .stat.green .val {
+        color: var(--green);
+      }
+      .stat.blue .val {
+        color: var(--accent);
+      }
+      .stat.orange .val {
+        color: var(--orange);
+      }
+      .stat.red .val {
+        color: var(--red);
+      }
+      .analysis {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        overflow: hidden;
+        margin-bottom: 32px;
+      }
+      .analysis-header {
+        padding: 24px 28px;
+        background: linear-gradient(135deg, #1e3a5f, #1a2235);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      .analysis-header h3 {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .analysis-header .meta {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+      }
+      .tag.hot {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+      }
+      .tag.warm {
+        background: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+      }
+      .tag.watch {
+        background: rgba(100, 116, 139, 0.15);
+        color: #94a3b8;
+      }
+      .tag.green {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+      }
+      .tag.blue {
+        background: rgba(59, 130, 246, 0.15);
+        color: #60a5fa;
+      }
+      .props-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: var(--border);
+      }
+      .props-row > div {
+        background: var(--card);
+        padding: 16px 24px;
+      }
+      .prop-label {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin-bottom: 4px;
+      }
+      .prop-val {
+        font-size: 16px;
+        font-weight: 600;
+        font-family: "JetBrains Mono", monospace;
+      }
+      .cascade {
+        padding: 28px;
+      }
+      .cascade h4 {
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 20px;
+        color: var(--accent);
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 48px 1fr;
+        gap: 16px;
+        margin-bottom: 20px;
+        position: relative;
+      }
+      .step:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        left: 23px;
+        top: 48px;
+        bottom: -12px;
+        width: 2px;
+        background: var(--border);
+      }
+      .step-num {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 16px;
+        color: #fff;
+        position: relative;
+        z-index: 1;
+      }
+      .step-num.s1 {
+        background: linear-gradient(135deg, #3b82f6, #6366f1);
+      }
+      .step-num.s2 {
+        background: linear-gradient(135deg, #f59e0b, #ef4444);
+      }
+      .step-num.s3 {
+        background: linear-gradient(135deg, #8b5cf6, #ec4899);
+      }
+      .step-num.s4 {
+        background: linear-gradient(135deg, #10b981, #059669);
+      }
+      .step-content {
+        padding-top: 4px;
+      }
+      .step-title {
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+      .step-detail {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .step-val {
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 700;
+        font-size: 18px;
+        margin-top: 6px;
+      }
+      .offer-box {
+        margin: 24px 28px 28px;
+        background: linear-gradient(
+          135deg,
+          rgba(16, 185, 129, 0.08),
+          rgba(59, 130, 246, 0.08)
+        );
+        border: 2px solid var(--green);
+        border-radius: 12px;
+        padding: 24px;
+        text-align: center;
+      }
+      .offer-box .label {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+      }
+      .offer-box .amount {
+        font-size: 42px;
+        font-weight: 900;
+        font-family: "JetBrains Mono", monospace;
+        color: var(--green);
+        letter-spacing: -1px;
+      }
+      .offer-box .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 8px;
+      }
+      .offer-box .sub strong {
+        color: var(--text);
+      }
+      .signals-box {
+        margin: 0 28px 28px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .signal {
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        background: rgba(99, 102, 241, 0.1);
+        color: #818cf8;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+      }
+      .table-section {
+        padding: 32px 0;
+      }
+      .table-section h3 {
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 16px;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th {
+        background: var(--card2);
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+      }
+      td {
+        padding: 10px 16px;
+        border-top: 1px solid var(--border);
+        white-space: nowrap;
+      }
+      tr {
+        background: var(--card);
+        transition: background 0.15s;
+        cursor: pointer;
+      }
+      tr:hover {
+        background: var(--card2);
+      }
+      .mono {
+        font-family: "JetBrains Mono", monospace;
+      }
+      .green {
+        color: var(--green);
+      }
+      .red {
+        color: var(--red);
+      }
+      .orange {
+        color: var(--orange);
+      }
+      .blue {
+        color: var(--accent);
+      }
+      .methodology {
+        padding: 48px 0;
+        border-top: 1px solid var(--border);
+      }
+      .methodology h3 {
+        font-size: 24px;
+        font-weight: 800;
+        margin-bottom: 24px;
+        text-align: center;
+      }
+      .method-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+      .method-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+      }
+      .method-card h4 {
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: var(--accent);
+      }
+      .method-card p {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      footer {
+        padding: 32px 0;
+        border-top: 1px solid var(--border);
+        text-align: center;
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .back-btn {
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 16px;
+        color: var(--muted);
+        font-size: 13px;
+        cursor: pointer;
+        font-family: "Inter", sans-serif;
+        transition: all 0.2s;
+      }
+      .back-btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .no-bca {
+        margin: 0 28px 28px;
+        padding: 20px;
+        background: rgba(245, 158, 11, 0.06);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        border-radius: 10px;
+        color: var(--orange);
+        font-size: 13px;
+      }
+      @media (max-width: 768px) {
+        .stats-bar,
+        .props-row,
+        .method-grid {
+          grid-template-columns: 1fr;
+        }
+        .hero h2 {
+          font-size: 26px;
+        }
+        .step {
+          grid-template-columns: 36px 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      const DATA = [
+        {
+          a: "727 Chesterlea Rd",
+          c: "Saanich",
+          d: 164,
+          p: 1199800,
+          b: "4",
+          ba: "2",
+          sf: "2492",
+          yr: "1964",
+          tx: "5,264",
+          ln: "9359 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Updated family home across from Rogers Park, Saanich. Suite potential.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28886661/727-chesterlea-rd-saanich-high-quadra",
+          bca: 1049000,
+        },
+        {
+          a: "777 Cuaulta Cres",
+          c: "Colwood",
+          d: 158,
+          p: 950000,
+          b: "5",
+          ba: "3",
+          sf: "3718",
+          yr: "1980",
+          tx: "4,870",
+          ln: "",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Spacious 5-bed/3-bath in desirable area. Suite potential. Updates needed.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28913449/777-cuaulta-cres-colwood-triangle",
+          bca: 1048000,
+        },
+        {
+          a: "1560 Prairie St",
+          c: "Saanich",
+          d: 147,
+          p: 1350000,
+          b: "7",
+          ba: "3",
+          sf: "2740",
+          yr: "1987",
+          tx: "5,462",
+          ln: "7008 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "7-bed family/investment home in Gordon Head.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28956363/1560-prairie-st-saanich-gordon-head",
+          bca: 1169000,
+        },
+        {
+          a: "966 Jenkins Ave",
+          c: "Langford",
+          d: 145,
+          p: 1399900,
+          b: "5",
+          ba: "2",
+          sf: "3962",
+          yr: "1962",
+          tx: "4,756",
+          ln: "16559 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "First time on market in 53 years. 16,559 sqft lot with subdivision potential. Rare opportunity.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28965680/966-jenkins-ave-langford-glen-lake",
+          bca: 1000000,
+        },
+        {
+          a: "1817 Hartwood Pl",
+          c: "Saanich",
+          d: 145,
+          p: 1345000,
+          b: "6",
+          ba: "3",
+          sf: "2285",
+          yr: "1972",
+          tx: "5,738",
+          ln: "7187 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Quiet street near UVic and Mount Douglas Secondary. South-facing yard. Suite potential.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28967092/1817-hartwood-pl-saanich-lambrick-park",
+          bca: 1159000,
+        },
+        {
+          a: "796 Worthington Pl",
+          c: "Saanich",
+          d: 144,
+          p: 1499000,
+          b: "3",
+          ba: "3",
+          sf: "2947",
+          yr: "1991",
+          tx: "7,321",
+          ln: "11728 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Cordova Bay cul-de-sac. Well-maintained, private setting.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28970617/796-worthington-pl-saanich-cordova-bay",
+          bca: 1483000,
+        },
+        {
+          a: "2161 Stone Gate",
+          c: "Langford",
+          d: 144,
+          p: 1050000,
+          b: "4",
+          ba: "4",
+          sf: "2689",
+          yr: "2005",
+          tx: "6,046",
+          ln: "4682 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Bear Mountain family home with golf course community.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28972233/2161-stone-gate-langford-bear-mountain",
+          bca: 1235000,
+        },
+        {
+          a: "2617 Country Terr",
+          c: "Langford",
+          d: 143,
+          p: 949900,
+          b: "4",
+          ba: "3",
+          sf: "2464",
+          yr: "2001",
+          tx: "4,308",
+          ln: "3229 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Backs onto Galloping Goose Trail. Quiet no-through street.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28976199/2617-country-terr-langford-atkins",
+          bca: 857000,
+        },
+        {
+          a: "1295 Santa Rosa Ave",
+          c: "Saanich",
+          d: 142,
+          p: 1199999,
+          b: "7",
+          ba: "2",
+          sf: "3430",
+          yr: "1917",
+          tx: "4,567",
+          ln: "6028 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "1917 character home, 7 beds, 10-ft ceilings, Strawberry Vale. Investment potential.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28980255/1295-santa-rosa-ave-saanich-strawberry-vale",
+          bca: 921000,
+        },
+        {
+          a: "2901 Harriet Rd",
+          c: "Victoria",
+          d: 138,
+          p: 949999,
+          b: "3",
+          ba: "2",
+          sf: "1806",
+          yr: "2002",
+          tx: "4,564",
+          ln: "3315 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Charming 3-bed/2-bath in Burnside, Victoria.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28990774/2901-harriet-rd-victoria-burnside",
+          bca: 906000,
+        },
+        {
+          a: "2151 Harrow Gate",
+          c: "Langford",
+          d: 137,
+          p: 1160000,
+          b: "4",
+          ba: "3",
+          sf: "2481",
+          yr: "2004",
+          tx: "5,786",
+          ln: "5931 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Well-maintained Bear Mountain home on quiet no-through street.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28995554/2151-harrow-gate-langford-bear-mountain",
+          bca: 1189000,
+        },
+        {
+          a: "838 Princess Ave",
+          c: "Victoria",
+          d: 137,
+          p: 1049900,
+          b: "4",
+          ba: "2",
+          sf: "2644",
+          yr: "1911",
+          tx: "4,161",
+          ln: "3567 sqft",
+          pr: 0,
+          su: 0,
+          es: 0,
+          ds: "1911 character home near downtown Victoria.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/28997617/838-princess-ave-victoria-central-park",
+          bca: 1013000,
+        },
+        {
+          a: "4010 Saanich Rd",
+          c: "Saanich",
+          d: 129,
+          p: 1500000,
+          b: "3",
+          ba: "1",
+          sf: "2649",
+          yr: "1901",
+          tx: "6,395",
+          ln: "16650 sqft",
+          pr: 0,
+          su: 0,
+          es: 0,
+          ds: "Development opportunity. RS-6 zoning. 16,650 sqft lot in heart of Saanich.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29029708/4010-saanich-rd-saanich-swan-lake",
+          bca: 1281000,
+        },
+        {
+          a: "746 Gorge Rd W",
+          c: "Saanich",
+          d: 116,
+          p: 1150000,
+          b: "4",
+          ba: "2",
+          sf: "2000",
+          yr: "1960",
+          tx: "4,600",
+          ln: "7500 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Saanich Gorge area home with suite potential.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29081403/746-gorge-rd-w-saanich-gorge",
+          bca: 1138000,
+        },
+        {
+          a: "2652 Blackwood St",
+          c: "Victoria",
+          d: 111,
+          p: 1398880,
+          b: "9",
+          ba: "3",
+          sf: "3777",
+          yr: "1912",
+          tx: "6149",
+          ln: "6098 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Exceptional Investment Opportunity! Renovated for maximum rental income.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29091652/2652-blackwood-st-victoria-hillside",
+          bca: 1215000,
+        },
+        {
+          a: "1941 Mayfair Dr",
+          c: "Saanich",
+          d: 108,
+          p: 1475000,
+          b: "4",
+          ba: "3",
+          sf: "2530",
+          yr: "1940",
+          tx: "6385",
+          ln: "13405 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Level 0.31-acre lot eligible for SSMUH - rare blend of development potential.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29101686/1941-mayfair-dr-saanich-mt-tolmie",
+          bca: 1311000,
+        },
+        {
+          a: "2367 Swallow Pl",
+          c: "Langford",
+          d: 108,
+          p: 1365000,
+          b: "4",
+          ba: "4",
+          sf: "3015",
+          yr: "2024",
+          tx: "5829",
+          ln: "4337 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Nearly new by Cameron Developments in Bear Mountain. Open-concept with legal suite.",
+          nt: "",
+          cl: "Bear Mountain",
+          url: "https://www.realtor.ca/real-estate/29101794/2367-swallow-pl-langford-bear-mountain",
+          bca: 1168000,
+        },
+        {
+          a: "4465 Emily Carr Dr",
+          c: "Saanich",
+          d: 104,
+          p: 1600000,
+          b: "4",
+          ba: "3",
+          sf: "2328",
+          yr: "1979",
+          tx: "7287",
+          ln: "13068 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Updated Broadmead home on spacious corner lot with mature landscaping.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29113965/4465-emily-carr-dr-saanich-broadmead",
+          bca: 1477000,
+        },
+        {
+          a: "2210 Archer Gate",
+          c: "Langford",
+          d: 102,
+          p: 1349900,
+          b: "4",
+          ba: "5",
+          sf: "3705",
+          yr: "2024",
+          tx: "7144",
+          ln: "3425 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Dramatic views and quality new construction from Bear Mountain. 4bed 5bath plus den with 1000sqft suite.",
+          nt: "",
+          cl: "Bear Mountain",
+          url: "https://www.realtor.ca/real-estate/29120519/2210-archer-gate-langford-bear-mountain",
+          bca: 1461000,
+        },
+        {
+          a: "2524 Alabaster Crt",
+          c: "Langford",
+          d: 101,
+          p: 1450000,
+          b: "5",
+          ba: "4",
+          sf: "3613",
+          yr: "2026",
+          tx: "0",
+          ln: "4564 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "$25K credit promotion! Single family homes with legal suites by Verity.",
+          nt: "",
+          cl: "Verity/Alabaster",
+          url: "https://www.realtor.ca/real-estate/29124605/2524-alabaster-crt-langford-bear-mountain",
+          bca: 1239000,
+        },
+        {
+          a: "1579 Kenmore Rd",
+          c: "Saanich",
+          d: 97,
+          p: 1350000,
+          b: "8",
+          ba: "5",
+          sf: "3201",
+          yr: "1967",
+          tx: "5709",
+          ln: "8750 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Extensively renovated 8-bedroom home with two kitchens in Gordon Head.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29135803/1579-kenmore-rd-saanich-gordon-head",
+          bca: 1163000,
+        },
+        {
+          a: "833 Alvarado Terr",
+          c: "Saanich",
+          d: 95,
+          p: 1349000,
+          b: "4",
+          ba: "3",
+          sf: "3567",
+          yr: "1969",
+          tx: "5738",
+          ln: "10916 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Well-maintained family home in Cordova Bay on large lot.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29141836/833-alvarado-terr-saanich-cordova-bay",
+          bca: 1200000,
+        },
+        {
+          a: "5087 Catalina Terr",
+          c: "Saanich",
+          d: 88,
+          p: 1399000,
+          b: "4",
+          ba: "3",
+          sf: "4166",
+          yr: "1972",
+          tx: "6605",
+          ln: "20232 sqft",
+          pr: 0,
+          su: 1,
+          es: 0,
+          ds: "Beautifully updated on expansive 20,000+ sqft lot in Cordova Bay.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29160661/5087-catalina-terr-saanich-cordova-bay",
+          bca: 1368000,
+        },
+        {
+          a: "3883 Douglas St",
+          c: "Saanich",
+          d: 55,
+          p: 924900,
+          b: "6",
+          ba: "2",
+          sf: "2246",
+          yr: "1923",
+          tx: "4728",
+          ln: "10301 sqft",
+          pr: 0,
+          su: 1,
+          es: 1,
+          ds: "Rare opportunity to reimagine a character home on 10,301sqft lot. Must sell motivation.",
+          nt: "",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29219719/3883-douglas-st-saanich-swan-lake",
+          bca: 935900,
+        },
+        {
+          a: "1153 DEERVIEW Pl",
+          c: "Langford",
+          d: 42,
+          p: 1279900,
+          b: "7",
+          ba: "3",
+          sf: "4445",
+          yr: "2007",
+          tx: "6,204",
+          ln: "6307 sqft",
+          pr: 0,
+          su: 1,
+          es: 1,
+          ds: "Priced for quick sale! Bear Mountain home. Executive comfort & smart technology. Motivated Seller - Quick Possession Available. Bring your offer!",
+          nt: "Benchmark property - listed/pulled/relisted ~2 years, cycled agents, multiple price drops",
+          cl: "",
+          url: "https://www.realtor.ca/real-estate/29264335/1153-deerview-pl-langford-bear-mountain",
+          bca: 1269000,
+        },
+      ];
 
-const fmt=n=>'$'+n.toLocaleString();
-const pct=n=>(n*100).toFixed(1)+'%';
-const ratio=n=>n.toFixed(2)+'x';
+      const fmt = (n) => "$" + n.toLocaleString();
+      const pct = (n) => (n * 100).toFixed(1) + "%";
+      const ratio = (n) => n.toFixed(2) + "x";
 
-function scoreV2(l){
-  let pts=0;const text=((l.ds||'')+(l.nt||'')).toLowerCase();const dom=l.d||0;
-  if(dom>=150)pts+=30;else if(dom>=120)pts+=27;else if(dom>=100)pts+=24;else if(dom>=90)pts+=20;else if(dom>=75)pts+=16;else if(dom>=60)pts+=10;else if(dom>=45)pts+=5;else pts+=2;
-  if(l.pr)pts+=15;if(l.es)pts+=18;
-  if(['priced to sell','priced for quick','must sell','sell quickly','quick sale'].some(k=>text.includes(k)))pts+=12;
-  if(['motivated seller','bring your offer','bring all offers','all offers considered'].some(k=>text.includes(k)))pts+=10;
-  if(['back on market','relisted','re-listed'].some(k=>text.includes(k)))pts+=10;
-  if(['price adjustment','great new price','new price','price improvement'].some(k=>text.includes(k))&&!l.pr)pts+=8;
-  if(['quick possession','immediate possession','vacant','move-in ready'].some(k=>text.includes(k)))pts+=6;
-  if(['divorce','executor','probate','estate sale'].some(k=>text.includes(k))&&!l.es)pts+=8;
-  if(['first time on market','first time offered','40 years','50 years'].some(k=>text.includes(k)))pts+=5;
-  if(['$25,000 credit','credit promotion','limited time credit','credit promo'].some(k=>text.includes(k)))pts+=5;
-  const b=parseInt(l.yr)||2000;if(b<1950)pts+=5;else if(b<1960)pts+=3;else if(b<1970)pts+=2;
-  if(l.su)pts+=4;
-  if(['assembly','subdivision','two title','ssmuh','development potential'].some(k=>text.includes(k)))pts+=7;
-  if((l.cl||'')==='Bear Mountain'||text.includes('bear mountain'))pts+=4;
-  if(['below assessed','under assessed'].some(k=>text.includes(k)))pts+=8;
-  return Math.min(pts,100);
-}
+      function scoreV2(l) {
+        let pts = 0;
+        const text = ((l.ds || "") + (l.nt || "")).toLowerCase();
+        const dom = l.d || 0;
+        if (dom >= 150) pts += 30;
+        else if (dom >= 120) pts += 27;
+        else if (dom >= 100) pts += 24;
+        else if (dom >= 90) pts += 20;
+        else if (dom >= 75) pts += 16;
+        else if (dom >= 60) pts += 10;
+        else if (dom >= 45) pts += 5;
+        else pts += 2;
+        if (l.pr) pts += 15;
+        if (l.es) pts += 18;
+        if (
+          [
+            "priced to sell",
+            "priced for quick",
+            "must sell",
+            "sell quickly",
+            "quick sale",
+          ].some((k) => text.includes(k))
+        )
+          pts += 12;
+        if (
+          [
+            "motivated seller",
+            "bring your offer",
+            "bring all offers",
+            "all offers considered",
+          ].some((k) => text.includes(k))
+        )
+          pts += 10;
+        if (
+          ["back on market", "relisted", "re-listed"].some((k) =>
+            text.includes(k),
+          )
+        )
+          pts += 10;
+        if (
+          [
+            "price adjustment",
+            "great new price",
+            "new price",
+            "price improvement",
+          ].some((k) => text.includes(k)) &&
+          !l.pr
+        )
+          pts += 8;
+        if (
+          [
+            "quick possession",
+            "immediate possession",
+            "vacant",
+            "move-in ready",
+          ].some((k) => text.includes(k))
+        )
+          pts += 6;
+        if (
+          ["divorce", "executor", "probate", "estate sale"].some((k) =>
+            text.includes(k),
+          ) &&
+          !l.es
+        )
+          pts += 8;
+        if (
+          [
+            "first time on market",
+            "first time offered",
+            "40 years",
+            "50 years",
+          ].some((k) => text.includes(k))
+        )
+          pts += 5;
+        if (
+          [
+            "$25,000 credit",
+            "credit promotion",
+            "limited time credit",
+            "credit promo",
+          ].some((k) => text.includes(k))
+        )
+          pts += 5;
+        const b = parseInt(l.yr) || 2000;
+        if (b < 1950) pts += 5;
+        else if (b < 1960) pts += 3;
+        else if (b < 1970) pts += 2;
+        if (l.su) pts += 4;
+        if (
+          [
+            "assembly",
+            "subdivision",
+            "two title",
+            "ssmuh",
+            "development potential",
+          ].some((k) => text.includes(k))
+        )
+          pts += 7;
+        if ((l.cl || "") === "Bear Mountain" || text.includes("bear mountain"))
+          pts += 4;
+        if (["below assessed", "under assessed"].some((k) => text.includes(k)))
+          pts += 8;
+        return Math.min(pts, 100);
+      }
 
-function offerModel(l){
-  if(!l.bca||!l.p)return null;
-  const listPrice=l.p,assessed=l.bca,dom=l.d||0;
-  const text=((l.ds||'')+(l.nt||'')).toLowerCase();
-  const r=listPrice/assessed;
-  let anchor,aTag;
-  if(r>=1.40){anchor=assessed*1.03;aTag='MASSIVE OVERREACH (+40%+)'}
-  else if(r>=1.25){anchor=assessed*1.05;aTag='MAJOR OVERREACH (+25-40%)'}
-  else if(r>=1.15){anchor=assessed*1.08;aTag='OVERPRICED (+15-25%)'}
-  else if(r>=1.05){anchor=assessed*1.10;aTag='ABOVE ASSESSED (+5-15%)'}
-  else if(r>=0.96){anchor=assessed*0.97;aTag='FAIRLY PRICED (+/-5%)'}
-  else if(r>=0.88){anchor=listPrice*0.95;aTag='BELOW ASSESSED (-4-12%)'}
-  else{anchor=listPrice*0.92;aTag='SELLER CAPITULATING (-12%+)'}
+      function offerModel(l) {
+        if (!l.bca || !l.p) return null;
+        const listPrice = l.p,
+          assessed = l.bca,
+          dom = l.d || 0;
+        const text = ((l.ds || "") + (l.nt || "")).toLowerCase();
+        const r = listPrice / assessed;
+        let anchor, aTag;
+        if (r >= 1.4) {
+          anchor = assessed * 1.03;
+          aTag = "MASSIVE OVERREACH (+40%+)";
+        } else if (r >= 1.25) {
+          anchor = assessed * 1.05;
+          aTag = "MAJOR OVERREACH (+25-40%)";
+        } else if (r >= 1.15) {
+          anchor = assessed * 1.08;
+          aTag = "OVERPRICED (+15-25%)";
+        } else if (r >= 1.05) {
+          anchor = assessed * 1.1;
+          aTag = "ABOVE ASSESSED (+5-15%)";
+        } else if (r >= 0.96) {
+          anchor = assessed * 0.97;
+          aTag = "FAIRLY PRICED (+/-5%)";
+        } else if (r >= 0.88) {
+          anchor = listPrice * 0.95;
+          aTag = "BELOW ASSESSED (-4-12%)";
+        } else {
+          anchor = listPrice * 0.92;
+          aTag = "SELLER CAPITULATING (-12%+)";
+        }
 
-  let dMult,dTag;
-  if(dom>=150){dMult=0.90;dTag='DESPERATE'}
-  else if(dom>=120){dMult=0.92;dTag='VERY STALE'}
-  else if(dom>=100){dMult=0.94;dTag='STALE'}
-  else if(dom>=90){dMult=0.95;dTag='AGING'}
-  else if(dom>=75){dMult=0.96;dTag='SITTING'}
-  else if(dom>=60){dMult=0.97;dTag='MATURING'}
-  else if(dom>=45){dMult=0.98;dTag='NORMAL'}
-  else{dMult=0.99;dTag='FRESH'}
-  const domAdj=anchor*dMult;
+        let dMult, dTag;
+        if (dom >= 150) {
+          dMult = 0.9;
+          dTag = "DESPERATE";
+        } else if (dom >= 120) {
+          dMult = 0.92;
+          dTag = "VERY STALE";
+        } else if (dom >= 100) {
+          dMult = 0.94;
+          dTag = "STALE";
+        } else if (dom >= 90) {
+          dMult = 0.95;
+          dTag = "AGING";
+        } else if (dom >= 75) {
+          dMult = 0.96;
+          dTag = "SITTING";
+        } else if (dom >= 60) {
+          dMult = 0.97;
+          dTag = "MATURING";
+        } else if (dom >= 45) {
+          dMult = 0.98;
+          dTag = "NORMAL";
+        } else {
+          dMult = 0.99;
+          dTag = "FRESH";
+        }
+        const domAdj = anchor * dMult;
 
-  let stack=1.0;const sTags=[];
-  if(l.es){stack*=0.97;sTags.push('Estate -3%')}
-  if(l.pr){stack*=0.98;sTags.push('Reduced -2%')}
-  if(['must sell','priced to sell','quick sale','priced for quick'].some(k=>text.includes(k))){stack*=0.97;sTags.push('MustSell -3%')}
-  if(['motivated seller','bring your offer','bring all offers'].some(k=>text.includes(k))){stack*=0.97;sTags.push('Motivated -3%')}
-  if(['first time on market','40 years','50 years'].some(k=>text.includes(k))){stack*=0.98;sTags.push('LongHeld -2%')}
-  if((l.cl||'')==='Bear Mountain'||text.includes('bear mountain')){stack*=0.97;sTags.push('BearMtn -3%')}
-  if(['below assessed','under assessed'].some(k=>text.includes(k))){stack*=0.97;sTags.push('BelowAssm -3%')}
-  const sigAdj=domAdj*stack;
-  const floor=listPrice*0.78;
-  let final=Math.max(sigAdj,floor);
-  final=Math.min(final,listPrice*0.97);
-  final=Math.round(final/1000)*1000;
-  return{anchor:Math.round(anchor/1000)*1000,domAdj:Math.round(domAdj/1000)*1000,final,pctList:final/listPrice,savings:listPrice-final,ratio:r,aTag,dTag,dMult,sTags,inRange:final>=900000&&final<=1250000};
-}
+        let stack = 1.0;
+        const sTags = [];
+        if (l.es) {
+          stack *= 0.97;
+          sTags.push("Estate -3%");
+        }
+        if (l.pr) {
+          stack *= 0.98;
+          sTags.push("Reduced -2%");
+        }
+        if (
+          [
+            "must sell",
+            "priced to sell",
+            "quick sale",
+            "priced for quick",
+          ].some((k) => text.includes(k))
+        ) {
+          stack *= 0.97;
+          sTags.push("MustSell -3%");
+        }
+        if (
+          ["motivated seller", "bring your offer", "bring all offers"].some(
+            (k) => text.includes(k),
+          )
+        ) {
+          stack *= 0.97;
+          sTags.push("Motivated -3%");
+        }
+        if (
+          ["first time on market", "40 years", "50 years"].some((k) =>
+            text.includes(k),
+          )
+        ) {
+          stack *= 0.98;
+          sTags.push("LongHeld -2%");
+        }
+        if (
+          (l.cl || "") === "Bear Mountain" ||
+          text.includes("bear mountain")
+        ) {
+          stack *= 0.97;
+          sTags.push("BearMtn -3%");
+        }
+        if (
+          ["below assessed", "under assessed"].some((k) => text.includes(k))
+        ) {
+          stack *= 0.97;
+          sTags.push("BelowAssm -3%");
+        }
+        const sigAdj = domAdj * stack;
+        const floor = listPrice * 0.78;
+        let final = Math.max(sigAdj, floor);
+        final = Math.min(final, listPrice * 0.97);
+        final = Math.round(final / 1000) * 1000;
+        return {
+          anchor: Math.round(anchor / 1000) * 1000,
+          domAdj: Math.round(domAdj / 1000) * 1000,
+          final,
+          pctList: final / listPrice,
+          savings: listPrice - final,
+          ratio: r,
+          aTag,
+          dTag,
+          dMult,
+          sTags,
+          inRange: final >= 900000 && final <= 1250000,
+        };
+      }
 
-function getSignals(l){
-  const text=((l.ds||'')+(l.nt||'')).toLowerCase();const s=[];
-  if(l.pr)s.push('Price Reduced');if(l.es)s.push('Estate/Distress');
-  if(['priced to sell','must sell','quick sale'].some(k=>text.includes(k)))s.push('Must Sell');
-  if(['motivated seller','bring your offer'].some(k=>text.includes(k)))s.push('Motivated Seller');
-  if(['price adjustment','great new price','new price'].some(k=>text.includes(k)))s.push('Price Adj');
-  if(['assembly','subdivision','ssmuh','development potential'].some(k=>text.includes(k)))s.push('Dev Opp');
-  if(['$25,000 credit','credit promotion','credit promo'].some(k=>text.includes(k)))s.push('$25K Credit');
-  if(['first time on market','40 years','50 years'].some(k=>text.includes(k)))s.push('Long Held');
-  if(['below assessed','under assessed'].some(k=>text.includes(k)))s.push('Below Assessed');
-  if((l.cl||'')==='Bear Mountain'||text.includes('bear mountain'))s.push('Bear Mtn');
-  if(l.su)s.push('Suite');
-  return s;
-}
+      function getSignals(l) {
+        const text = ((l.ds || "") + (l.nt || "")).toLowerCase();
+        const s = [];
+        if (l.pr) s.push("Price Reduced");
+        if (l.es) s.push("Estate/Distress");
+        if (
+          ["priced to sell", "must sell", "quick sale"].some((k) =>
+            text.includes(k),
+          )
+        )
+          s.push("Must Sell");
+        if (
+          ["motivated seller", "bring your offer"].some((k) => text.includes(k))
+        )
+          s.push("Motivated Seller");
+        if (
+          ["price adjustment", "great new price", "new price"].some((k) =>
+            text.includes(k),
+          )
+        )
+          s.push("Price Adj");
+        if (
+          ["assembly", "subdivision", "ssmuh", "development potential"].some(
+            (k) => text.includes(k),
+          )
+        )
+          s.push("Dev Opp");
+        if (
+          ["$25,000 credit", "credit promotion", "credit promo"].some((k) =>
+            text.includes(k),
+          )
+        )
+          s.push("$25K Credit");
+        if (
+          ["first time on market", "40 years", "50 years"].some((k) =>
+            text.includes(k),
+          )
+        )
+          s.push("Long Held");
+        if (["below assessed", "under assessed"].some((k) => text.includes(k)))
+          s.push("Below Assessed");
+        if ((l.cl || "") === "Bear Mountain" || text.includes("bear mountain"))
+          s.push("Bear Mtn");
+        if (l.su) s.push("Suite");
+        return s;
+      }
 
-function App(){
-  const [query,setQuery]=React.useState('');
-  const [selected,setSelected]=React.useState(null);
-  const [showDrop,setShowDrop]=React.useState(false);
+      function App() {
+        const [query, setQuery] = React.useState("");
+        const [selected, setSelected] = React.useState(null);
+        const [showDrop, setShowDrop] = React.useState(false);
 
-  const enriched=React.useMemo(()=>DATA.map(l=>({...l,score:scoreV2(l),offer:offerModel(l),signals:getSignals(l)})).sort((a,b)=>b.score-a.score),[]);
-  const assessed=enriched.filter(l=>l.bca);
-  const filtered=query?enriched.filter(l=>(l.a+' '+l.c).toLowerCase().includes(query.toLowerCase())):[];
-  const totalSavings=assessed.reduce((s,l)=>s+(l.offer?.savings||0),0);
+        const enriched = React.useMemo(
+          () =>
+            DATA.map((l) => ({
+              ...l,
+              score: scoreV2(l),
+              offer: offerModel(l),
+              signals: getSignals(l),
+            })).sort((a, b) => b.score - a.score),
+          [],
+        );
+        const assessed = enriched.filter((l) => l.bca);
+        const filtered = query
+          ? enriched.filter((l) =>
+              (l.a + " " + l.c).toLowerCase().includes(query.toLowerCase()),
+            )
+          : [];
+        const totalSavings = assessed.reduce(
+          (s, l) => s + (l.offer?.savings || 0),
+          0,
+        );
 
-  if(selected){
-    const l=selected;const o=l.offer;const tier=l.score>=45?'HOT':l.score>=33?'WARM':'WATCH';
-    return(<div className="container">
-      <header><div className="logo"><div className="logo-mark">RI</div><div><h1><span>RE:</span>Intel</h1><div className="subtitle">Real Estate Acquisition Intelligence</div></div></div></header>
-      <div style={{padding:'16px 0'}}><button className="back-btn" onClick={()=>setSelected(null)}>&larr; Back to Search</button></div>
-      <div className="analysis">
-        <div className="analysis-header">
-          <div><h3>{l.a}</h3><div style={{color:'var(--muted)',fontSize:13,marginTop:4}}>{l.c} &middot; {l.b}bd/{l.ba}ba &middot; {l.sf} sqft &middot; Built {l.yr}</div></div>
-          <div className="meta">
-            <span className={`tag ${tier.toLowerCase()}`}>Score: {l.score} &middot; {tier}</span>
-            <span className="tag blue">{l.d} DOM</span>
-            {o&&o.inRange&&<span className="tag green">TARGET RANGE</span>}
+        if (selected) {
+          const l = selected;
+          const o = l.offer;
+          const tier = l.score >= 45 ? "HOT" : l.score >= 33 ? "WARM" : "WATCH";
+          return (
+            <div className="container">
+              <header>
+                <div className="logo">
+                  <div className="logo-mark">RI</div>
+                  <div>
+                    <h1>
+                      <span>RE:</span>Intel
+                    </h1>
+                    <div className="subtitle">
+                      Real Estate Acquisition Intelligence
+                    </div>
+                  </div>
+                </div>
+              </header>
+              <div style={{ padding: "16px 0" }}>
+                <button className="back-btn" onClick={() => setSelected(null)}>
+                  &larr; Back to Search
+                </button>
+              </div>
+              <div className="analysis">
+                <div className="analysis-header">
+                  <div>
+                    <h3>{l.a}</h3>
+                    <div
+                      style={{
+                        color: "var(--muted)",
+                        fontSize: 13,
+                        marginTop: 4,
+                      }}
+                    >
+                      {l.c} &middot; {l.b}bd/{l.ba}ba &middot; {l.sf} sqft
+                      &middot; Built {l.yr}
+                    </div>
+                  </div>
+                  <div className="meta">
+                    <span className={`tag ${tier.toLowerCase()}`}>
+                      Score: {l.score} &middot; {tier}
+                    </span>
+                    <span className="tag blue">{l.d} DOM</span>
+                    {o && o.inRange && (
+                      <span className="tag green">TARGET RANGE</span>
+                    )}
+                  </div>
+                </div>
+                <div className="props-row">
+                  <div>
+                    <div className="prop-label">List Price</div>
+                    <div className="prop-val">{fmt(l.p)}</div>
+                  </div>
+                  <div>
+                    <div className="prop-label">BC Assessed (2026)</div>
+                    <div
+                      className="prop-val"
+                      style={{ color: l.bca ? "var(--text)" : "var(--muted)" }}
+                    >
+                      {l.bca ? fmt(l.bca) : "Not Available"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="prop-label">List / Assessed</div>
+                    <div
+                      className="prop-val"
+                      style={{
+                        color: o
+                          ? o.ratio < 1
+                            ? "var(--green)"
+                            : o.ratio > 1.15
+                              ? "var(--red)"
+                              : "var(--text)"
+                          : "var(--muted)",
+                      }}
+                    >
+                      {o ? ratio(o.ratio) : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="prop-label">Annual Taxes</div>
+                    <div className="prop-val">${l.tx || "N/A"}</div>
+                  </div>
+                </div>
+                {o ? (
+                  <>
+                    <div className="cascade">
+                      <h4>4-Step Offer Cascade</h4>
+                      <div className="step">
+                        <div className="step-num s1">1</div>
+                        <div className="step-content">
+                          <div className="step-title">Assessment Anchor</div>
+                          <div className="step-detail">
+                            {o.aTag}. List is {ratio(o.ratio)} of assessed
+                            value.
+                          </div>
+                          <div className="step-val blue">{fmt(o.anchor)}</div>
+                        </div>
+                      </div>
+                      <div className="step">
+                        <div className="step-num s2">2</div>
+                        <div className="step-content">
+                          <div className="step-title">
+                            DOM Desperation Multiplier
+                          </div>
+                          <div className="step-detail">
+                            {l.d} days on market = {o.dTag}. Applied{" "}
+                            {((1 - o.dMult) * 100).toFixed(0)}% discount.
+                          </div>
+                          <div className="step-val orange">{fmt(o.domAdj)}</div>
+                        </div>
+                      </div>
+                      <div className="step">
+                        <div className="step-num s3">3</div>
+                        <div className="step-content">
+                          <div className="step-title">Signal Stack</div>
+                          <div className="step-detail">
+                            {o.sTags.length
+                              ? o.sTags.join(" → ")
+                              : "No additional signal discounts"}
+                          </div>
+                          <div
+                            className="step-val"
+                            style={{ color: "#c084fc" }}
+                          >
+                            {fmt(
+                              Math.round(
+                                (o.domAdj *
+                                  (o.sTags.length
+                                    ? o.sTags.reduce((a) => a * 0.97, 1)
+                                    : 1)) /
+                                  1000,
+                              ) * 1000,
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="step">
+                        <div className="step-num s4">4</div>
+                        <div className="step-content">
+                          <div className="step-title">
+                            Floor / Ceiling Constraint
+                          </div>
+                          <div className="step-detail">
+                            Floor: 78% of list ({fmt(Math.round(l.p * 0.78))}).
+                            Ceiling: 97% of list ({fmt(Math.round(l.p * 0.97))}
+                            ). Rounded to nearest $1K.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="offer-box">
+                      <div className="label">Recommended Offer</div>
+                      <div className="amount">{fmt(o.final)}</div>
+                      <div className="sub">
+                        <strong>{pct(o.pctList)}</strong> of list &middot; Save{" "}
+                        <strong style={{ color: "var(--green)" }}>
+                          {fmt(o.savings)}
+                        </strong>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="no-bca">
+                    BC Assessment data not available for this property. Offer
+                    model requires assessed value to anchor pricing. With
+                    assessment data, the system would run the full 4-step
+                    cascade analysis.
+                  </div>
+                )}
+                {l.signals.length > 0 && (
+                  <div className="signals-box">
+                    {l.signals.map((s, i) => (
+                      <span key={i} className="signal">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="container">
+            <header>
+              <div className="logo">
+                <div className="logo-mark">RI</div>
+                <div>
+                  <h1>
+                    <span>RE:</span>Intel
+                  </h1>
+                  <div className="subtitle">
+                    Real Estate Acquisition Intelligence
+                  </div>
+                </div>
+              </div>
+            </header>
+            <div className="hero">
+              <h2>Data-Driven Acquisition Intelligence</h2>
+              <p>
+                Multi-factor scoring engine combining BC Assessment valuations,
+                days-on-market analysis, NLP-based seller motivation detection,
+                and a 4-step cascading offer model — validated against realtor
+                pricing.
+              </p>
+              <div className="search-wrap">
+                <span className="search-icon">&#x1F50D;</span>
+                <input
+                  placeholder="Search by address — e.g., 1153 Deerview, Jenkins, Archer Gate..."
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setShowDrop(true);
+                  }}
+                  onFocus={() => setShowDrop(true)}
+                />
+                {showDrop && query.length > 1 && filtered.length > 0 && (
+                  <div className="dropdown">
+                    {filtered.slice(0, 10).map((l, i) => (
+                      <div
+                        key={i}
+                        className="dropdown-item"
+                        onClick={() => {
+                          setSelected(l);
+                          setShowDrop(false);
+                          setQuery("");
+                        }}
+                      >
+                        <div>
+                          <div className="addr">{l.a}</div>
+                          <div className="city">
+                            {l.c} &middot; {l.b}bd/{l.ba}ba &middot; {l.d} DOM
+                          </div>
+                        </div>
+                        <div className="price">{fmt(l.p)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="stats-bar">
+              <div className="stat blue">
+                <div className="val">{enriched.length}</div>
+                <div className="label">Properties Analyzed</div>
+              </div>
+              <div className="stat green">
+                <div className="val">{assessed.length}</div>
+                <div className="label">BC Assessments</div>
+              </div>
+              <div className="stat orange">
+                <div className="val">
+                  {assessed.filter((l) => l.offer?.inRange).length}
+                </div>
+                <div className="label">Target Range</div>
+              </div>
+              <div className="stat red">
+                <div className="val">
+                  {fmt(Math.round(totalSavings / assessed.length))}
+                </div>
+                <div className="label">Avg Savings</div>
+              </div>
+            </div>
+            <div className="table-section">
+              <h3>Assessed Properties — Ranked by Offer Savings</h3>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Address</th>
+                      <th>Score</th>
+                      <th>DOM</th>
+                      <th>List Price</th>
+                      <th>Assessed</th>
+                      <th>Ratio</th>
+                      <th>Our Offer</th>
+                      <th>Savings</th>
+                      <th>% List</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assessed
+                      .sort(
+                        (a, b) =>
+                          (b.offer?.savings || 0) - (a.offer?.savings || 0),
+                      )
+                      .map((l, i) => (
+                        <tr key={i} onClick={() => setSelected(l)}>
+                          <td>
+                            <strong>{l.a}</strong>
+                            <span
+                              style={{
+                                color: "var(--muted)",
+                                marginLeft: 8,
+                                fontSize: 11,
+                              }}
+                            >
+                              {l.c}
+                            </span>
+                          </td>
+                          <td
+                            className="mono"
+                            style={{
+                              color:
+                                l.score >= 45
+                                  ? "var(--red)"
+                                  : l.score >= 33
+                                    ? "var(--orange)"
+                                    : "var(--muted)",
+                            }}
+                          >
+                            {l.score}
+                          </td>
+                          <td className="mono">{l.d}</td>
+                          <td className="mono">{fmt(l.p)}</td>
+                          <td className="mono">{fmt(l.bca)}</td>
+                          <td
+                            className="mono"
+                            style={{
+                              color:
+                                l.offer.ratio < 1
+                                  ? "var(--green)"
+                                  : l.offer.ratio > 1.15
+                                    ? "var(--red)"
+                                    : "var(--text)",
+                            }}
+                          >
+                            {ratio(l.offer.ratio)}
+                          </td>
+                          <td
+                            className="mono"
+                            style={{ color: "var(--green)", fontWeight: 700 }}
+                          >
+                            {fmt(l.offer.final)}
+                          </td>
+                          <td className="mono green">{fmt(l.offer.savings)}</td>
+                          <td className="mono">{pct(l.offer.pctList)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="methodology">
+              <h3>Methodology</h3>
+              <div className="method-grid">
+                <div className="method-card">
+                  <h4>1. Multi-Source Data Pipeline</h4>
+                  <p>
+                    Automated extraction from MLS listings enriched with BC
+                    Assessment 2026 property valuations. Cross-references list
+                    prices against government assessed values to identify
+                    pricing dislocations.
+                  </p>
+                </div>
+                <div className="method-card">
+                  <h4>2. Desperation Index (Scoring)</h4>
+                  <p>
+                    15+ weighted signals: DOM (realtor-calibrated brackets),
+                    price reductions, estate/distress keywords, relist
+                    detection, motivated seller language, below-assessed
+                    indicators, development potential, and suite income.
+                  </p>
+                </div>
+                <div className="method-card">
+                  <h4>3. 4-Step Cascading Offer Model</h4>
+                  <p>
+                    Anchors on BC Assessment value, applies DOM-based
+                    desperation multiplier, stacks signal-driven discounts
+                    multiplicatively, then enforces floor (78%) and ceiling
+                    (97%) constraints for credibility.
+                  </p>
+                </div>
+                <div className="method-card">
+                  <h4>4. Realtor-Validated Calibration</h4>
+                  <p>
+                    DOM scoring recalibrated with practising realtor input
+                    (45-60 days = normal market cycle). First offer generated by
+                    this model was confirmed as accurately priced by a real
+                    estate professional.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <footer>
+              RE:Intel — Real Estate Acquisition Intelligence &middot; Southern
+              Vancouver Island &middot; Built by Matt James &middot; 2026
+            </footer>
           </div>
-        </div>
-        <div className="props-row">
-          <div><div className="prop-label">List Price</div><div className="prop-val">{fmt(l.p)}</div></div>
-          <div><div className="prop-label">BC Assessed (2026)</div><div className="prop-val" style={{color:l.bca?'var(--text)':'var(--muted)'}}>{l.bca?fmt(l.bca):'Not Available'}</div></div>
-          <div><div className="prop-label">List / Assessed</div><div className="prop-val" style={{color:o?(o.ratio<1?'var(--green)':o.ratio>1.15?'var(--red)':'var(--text)'):'var(--muted)'}}>{o?ratio(o.ratio):'—'}</div></div>
-          <div><div className="prop-label">Annual Taxes</div><div className="prop-val">${l.tx||'N/A'}</div></div>
-        </div>
-        {o?(<>
-        <div className="cascade">
-          <h4>4-Step Offer Cascade</h4>
-          <div className="step"><div className="step-num s1">1</div><div className="step-content"><div className="step-title">Assessment Anchor</div><div className="step-detail">{o.aTag}. List is {ratio(o.ratio)} of assessed value.</div><div className="step-val blue">{fmt(o.anchor)}</div></div></div>
-          <div className="step"><div className="step-num s2">2</div><div className="step-content"><div className="step-title">DOM Desperation Multiplier</div><div className="step-detail">{l.d} days on market = {o.dTag}. Applied {((1-o.dMult)*100).toFixed(0)}% discount.</div><div className="step-val orange">{fmt(o.domAdj)}</div></div></div>
-          <div className="step"><div className="step-num s3">3</div><div className="step-content"><div className="step-title">Signal Stack</div><div className="step-detail">{o.sTags.length?o.sTags.join(' → '):'No additional signal discounts'}</div><div className="step-val" style={{color:'#c084fc'}}>{fmt(Math.round(o.domAdj*(o.sTags.length?o.sTags.reduce((a)=>a*0.97,1):1)/1000)*1000)}</div></div></div>
-          <div className="step"><div className="step-num s4">4</div><div className="step-content"><div className="step-title">Floor / Ceiling Constraint</div><div className="step-detail">Floor: 78% of list ({fmt(Math.round(l.p*0.78))}). Ceiling: 97% of list ({fmt(Math.round(l.p*0.97))}). Rounded to nearest $1K.</div></div></div>
-        </div>
-        <div className="offer-box">
-          <div className="label">Recommended Offer</div>
-          <div className="amount">{fmt(o.final)}</div>
-          <div className="sub"><strong>{pct(o.pctList)}</strong> of list &middot; Save <strong style={{color:'var(--green)'}}>{fmt(o.savings)}</strong></div>
-        </div>
-        </>):(<div className="no-bca">BC Assessment data not available for this property. Offer model requires assessed value to anchor pricing. With assessment data, the system would run the full 4-step cascade analysis.</div>)}
-        {l.signals.length>0&&<div className="signals-box">{l.signals.map((s,i)=><span key={i} className="signal">{s}</span>)}</div>}
-      </div>
-    </div>);
-  }
-
-  return(<div className="container">
-    <header><div className="logo"><div className="logo-mark">RI</div><div><h1><span>RE:</span>Intel</h1><div className="subtitle">Real Estate Acquisition Intelligence</div></div></div></header>
-    <div className="hero">
-      <h2>Data-Driven Acquisition Intelligence</h2>
-      <p>Multi-factor scoring engine combining BC Assessment valuations, days-on-market analysis, NLP-based seller motivation detection, and a 4-step cascading offer model — validated against realtor pricing.</p>
-      <div className="search-wrap">
-        <span className="search-icon">&#x1F50D;</span>
-        <input placeholder="Search by address — e.g., 1153 Deerview, Jenkins, Archer Gate..." value={query} onChange={e=>{setQuery(e.target.value);setShowDrop(true)}} onFocus={()=>setShowDrop(true)} />
-        {showDrop&&query.length>1&&filtered.length>0&&<div className="dropdown">{filtered.slice(0,10).map((l,i)=><div key={i} className="dropdown-item" onClick={()=>{setSelected(l);setShowDrop(false);setQuery('')}}><div><div className="addr">{l.a}</div><div className="city">{l.c} &middot; {l.b}bd/{l.ba}ba &middot; {l.d} DOM</div></div><div className="price">{fmt(l.p)}</div></div>)}</div>}
-      </div>
-    </div>
-    <div className="stats-bar">
-      <div className="stat blue"><div className="val">{enriched.length}</div><div className="label">Properties Analyzed</div></div>
-      <div className="stat green"><div className="val">{assessed.length}</div><div className="label">BC Assessments</div></div>
-      <div className="stat orange"><div className="val">{assessed.filter(l=>l.offer?.inRange).length}</div><div className="label">Target Range</div></div>
-      <div className="stat red"><div className="val">{fmt(Math.round(totalSavings/assessed.length))}</div><div className="label">Avg Savings</div></div>
-    </div>
-    <div className="table-section">
-      <h3>Assessed Properties — Ranked by Offer Savings</h3>
-      <div className="table-wrap"><table><thead><tr><th>Address</th><th>Score</th><th>DOM</th><th>List Price</th><th>Assessed</th><th>Ratio</th><th>Our Offer</th><th>Savings</th><th>% List</th></tr></thead><tbody>
-      {assessed.sort((a,b)=>(b.offer?.savings||0)-(a.offer?.savings||0)).map((l,i)=><tr key={i} onClick={()=>setSelected(l)}>
-        <td><strong>{l.a}</strong><span style={{color:'var(--muted)',marginLeft:8,fontSize:11}}>{l.c}</span></td>
-        <td className="mono" style={{color:l.score>=45?'var(--red)':l.score>=33?'var(--orange)':'var(--muted)'}}>{l.score}</td>
-        <td className="mono">{l.d}</td>
-        <td className="mono">{fmt(l.p)}</td>
-        <td className="mono">{fmt(l.bca)}</td>
-        <td className="mono" style={{color:l.offer.ratio<1?'var(--green)':l.offer.ratio>1.15?'var(--red)':'var(--text)'}}>{ratio(l.offer.ratio)}</td>
-        <td className="mono" style={{color:'var(--green)',fontWeight:700}}>{fmt(l.offer.final)}</td>
-        <td className="mono green">{fmt(l.offer.savings)}</td>
-        <td className="mono">{pct(l.offer.pctList)}</td>
-      </tr>)}
-      </tbody></table></div>
-    </div>
-    <div className="methodology">
-      <h3>Methodology</h3>
-      <div className="method-grid">
-        <div className="method-card"><h4>1. Multi-Source Data Pipeline</h4><p>Automated extraction from MLS listings enriched with BC Assessment 2026 property valuations. Cross-references list prices against government assessed values to identify pricing dislocations.</p></div>
-        <div className="method-card"><h4>2. Desperation Index (Scoring)</h4><p>15+ weighted signals: DOM (realtor-calibrated brackets), price reductions, estate/distress keywords, relist detection, motivated seller language, below-assessed indicators, development potential, and suite income.</p></div>
-        <div className="method-card"><h4>3. 4-Step Cascading Offer Model</h4><p>Anchors on BC Assessment value, applies DOM-based desperation multiplier, stacks signal-driven discounts multiplicatively, then enforces floor (78%) and ceiling (97%) constraints for credibility.</p></div>
-        <div className="method-card"><h4>4. Realtor-Validated Calibration</h4><p>DOM scoring recalibrated with practising realtor input (45-60 days = normal market cycle). First offer generated by this model was confirmed as accurately priced by a real estate professional.</p></div>
-      </div>
-    </div>
-    <footer>RE:Intel — Real Estate Acquisition Intelligence &middot; Southern Vancouver Island &middot; Built by Matt Francis &middot; 2026</footer>
-  </div>);
-}
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-</script>
-</body>
+        );
+      }
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
 </html>

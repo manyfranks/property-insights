@@ -448,12 +448,12 @@ export default async function PropertyPage({
       )}
 
       {/* I. Next Steps */}
-      <div className="border border-border rounded-xl p-5 mb-6 bg-white">
+      <div className="mb-6">
         <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
-        <div className="flex flex-wrap gap-4">
-          <PartnerCta type="mortgage" propertySlug={slugify(listing.address)} city={listing.city} />
-          <PartnerCta type="agent" propertySlug={slugify(listing.address)} city={listing.city} />
-          <PartnerCta type="inspection" propertySlug={slugify(listing.address)} city={listing.city} />
+        <div className="flex flex-wrap gap-3">
+          <PartnerCta type="compare-rates" propertySlug={slugify(listing.address)} city={listing.city} />
+          <PartnerCta type="pre-approval" propertySlug={slugify(listing.address)} city={listing.city} />
+          <PartnerCta type="insurance" propertySlug={slugify(listing.address)} city={listing.city} />
         </div>
       </div>
 

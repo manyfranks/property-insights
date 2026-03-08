@@ -39,7 +39,7 @@ export default function Footer() {
             <div className="text-xs uppercase tracking-widest text-muted mb-3">About</div>
             <p className="text-muted leading-relaxed">
               Property Insights is a free research tool for Canadian home buyers.
-              Built by Matt Francis.
+              Built by Orio.
             </p>
           </div>
         </div>

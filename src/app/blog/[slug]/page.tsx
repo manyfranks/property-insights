@@ -72,7 +72,7 @@ export default async function BlogPostPage({
           dateModified: post.updatedAt || post.publishedAt,
           author: {
             "@type": "Person",
-            name: "Matt Francis",
+            name: "Matt James",
           },
           publisher: {
             "@type": "Organization",

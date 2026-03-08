@@ -1,44 +1,18 @@
 /**
  * POST /api/partner-connect
  *
- * Record a partner connection request. This is the point of express consent
- * for data sharing with a specific partner type (mortgage broker, agent, etc.).
+ * Track affiliate partner click-throughs. No user data is shared with partners;
+ * users click through to partner sites and provide their own info there.
  *
- * This endpoint:
- * 1. Verifies the user is authenticated
- * 2. Records the partner_click event (for analytics)
- * 3. Returns partner info for the frontend to display
- *
- * In production, this would route leads to actual partner integrations.
- * For now, it captures the intent and logs the lead.
+ * This endpoint records the click event for internal analytics and lead scoring.
  */
 
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { trackEvent } from "@/lib/kv/user-events";
 
-export type PartnerType = "mortgage" | "agent" | "insurance" | "inspection";
-
-const PARTNER_INFO: Record<PartnerType, { label: string; description: string }> = {
-  mortgage: {
-    label: "Mortgage Pre-Approval",
-    description: "We'll connect you with a licensed Canadian mortgage broker who can help with pre-approval and rate comparison.",
-  },
-  agent: {
-    label: "Buyer's Agent",
-    description: "We'll connect you with a licensed real estate agent in your target market.",
-  },
-  insurance: {
-    label: "Home Insurance",
-    description: "Get home insurance quotes from Canadian providers.",
-  },
-  inspection: {
-    label: "Home Inspection",
-    description: "Connect with a certified home inspector in your area.",
-  },
-};
-
-const VALID_TYPES: PartnerType[] = ["mortgage", "agent", "insurance", "inspection"];
+const VALID_TYPES = ["compare-rates", "pre-approval", "insurance"] as const;
+type PartnerType = (typeof VALID_TYPES)[number];
 
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -75,14 +49,5 @@ export async function POST(req: Request) {
     ...(city && { city }),
   });
 
-  // Log lead without PII (no email in logs)
-  console.log(`[partner-connect] type=${partnerType} user=${userId} property=${propertySlug || "none"} city=${city || "none"}`);
-
-  const info = PARTNER_INFO[partnerType as PartnerType];
-
-  return NextResponse.json({
-    ok: true,
-    partnerType,
-    message: info.description,
-  });
+  return NextResponse.json({ ok: true, partnerType });
 }
