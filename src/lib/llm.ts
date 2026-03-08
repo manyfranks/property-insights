@@ -137,8 +137,8 @@ export async function analyzeAndNarrate(context: {
       : "price/sqft unknown";
 
     const response = await openrouter.chat.completions.create({
-      model: "minimax/minimax-m2.5",
-      max_tokens: 400,
+      model: "anthropic/claude-haiku-4.5",
+      max_tokens: 500,
       messages: [
         {
           role: "system",
@@ -210,54 +210,3 @@ ${desc || "(No description available)"}`,
   }
 }
 
-// ---------------------------------------------------------------------------
-// Backward-compatible exports (kept for any other callers)
-// ---------------------------------------------------------------------------
-
-export async function analyzeDescription(description: string): Promise<{ signals: string[]; confidence: number }> {
-  if (!process.env.OPENROUTER_API_KEY || !description.trim()) {
-    return { signals: [], confidence: 0 };
-  }
-
-  try {
-    const response = await openrouter.chat.completions.create({
-      model: "minimax/minimax-m2.5",
-      max_tokens: 200,
-      messages: [
-        {
-          role: "system",
-          content: `You are a real estate acquisition analyst. Analyze the listing description for seller motivation signals. Return ONLY JSON: {"signals": string[], "confidence": number}
-
-Look for signals requiring reading comprehension:
-- Relocation / moving away
-- Health/age/life change
-- Financial pressure
-- Property condition issues
-- Vacant / unoccupied
-- Builder inventory
-- Unusual urgency
-
-Do NOT flag obvious keywords: "estate sale", "price reduced", "motivated seller", "must sell".
-If generic marketing copy with no motivation signals, return {"signals": [], "confidence": 0}.`,
-        },
-        { role: "user", content: description },
-      ],
-    });
-
-    const text = response.choices[0]?.message?.content?.trim() || "";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { signals: [], confidence: 0 };
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    return {
-      signals: Array.isArray(parsed.signals) ? parsed.signals : [],
-      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
-    };
-  } catch {
-    return { signals: [], confidence: 0 };
-  }
-}
-
-export async function generateOfferNarrative(): Promise<string> {
-  return "";
-}

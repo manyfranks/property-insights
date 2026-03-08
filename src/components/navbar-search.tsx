@@ -22,8 +22,6 @@ export default function NavbarSearch() {
   const [places, setPlaces] = useState<PlaceSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
-  const [assessError, setAssessError] = useState("");
   const [selectedAddress, setSelectedAddress] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -35,8 +33,6 @@ export default function NavbarSearch() {
       setResults([]);
       setPlaces([]);
       setSearched(false);
-      setSubmitStatus("idle");
-      setAssessError("");
       setSelectedAddress("");
       return;
     }
@@ -75,38 +71,14 @@ export default function NavbarSearch() {
 
   function handleSelectPlace(place: PlaceSuggestion) {
     setSelectedAddress(place.address);
-    setSubmitStatus("idle");
   }
 
-  async function handleRequestAssessment() {
+  function handleRequestAssessment() {
     const address = selectedAddress || query.trim();
     if (!address) return;
-    setSubmitStatus("sending");
-    try {
-      const res = await fetch("/api/assess", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setAssessError(data.error || "Something went wrong");
-        setSubmitStatus("error");
-        return;
-      }
-      setSubmitStatus("done");
-      // Redirect to the property page after a brief pause
-      if (data.slug) {
-        setTimeout(() => {
-          setQuery("");
-          setOpen(false);
-          router.push(`/property/${data.slug}`);
-        }, 1500);
-      }
-    } catch {
-      setAssessError("Network error. Please try again.");
-      setSubmitStatus("error");
-    }
+    setQuery("");
+    setOpen(false);
+    router.push(`/assess?address=${encodeURIComponent(address)}`);
   }
 
   useEffect(() => {
@@ -143,14 +115,7 @@ export default function NavbarSearch() {
           className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
         />
         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-80 bg-white border border-border rounded-lg shadow-lg p-4 z-50">
-          {submitStatus === "done" ? (
-            <div className="text-center">
-              <p className="text-sm font-medium text-green-700 mb-1">Assessment complete</p>
-              <p className="text-xs text-muted">
-                Redirecting to your property analysis...
-              </p>
-            </div>
-          ) : isSignedIn ? (
+          {isSignedIn ? (
             <div className="text-center">
               <p className="text-sm font-medium text-foreground mb-1">
                 We don&apos;t have this listing yet
@@ -159,15 +124,11 @@ export default function NavbarSearch() {
               <p className="text-xs text-muted mb-3">
                 If it&apos;s currently for sale, we&apos;ll look it up, run a full assessment with offer modeling, and email you the analysis.
               </p>
-              {assessError && submitStatus === "error" && (
-                <p className="text-xs text-red-600 mb-2">{assessError}</p>
-              )}
               <button
                 onClick={handleRequestAssessment}
-                disabled={submitStatus === "sending"}
-                className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 disabled:opacity-40 transition-all"
+                className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all"
               >
-                {submitStatus === "sending" ? "Assessing..." : submitStatus === "error" ? "Retry" : "Assess this property"}
+                Assess this property
               </button>
             </div>
           ) : (
@@ -249,33 +210,18 @@ export default function NavbarSearch() {
         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-80 bg-white border border-border rounded-lg shadow-lg p-4 z-50">
           {isSignedIn ? (
             <div className="text-center">
-              {submitStatus === "done" ? (
-                <>
-                  <p className="text-sm font-medium text-green-700 mb-1">Assessment complete</p>
-                  <p className="text-xs text-muted">
-                    Redirecting to your property analysis...
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-medium text-foreground mb-1">
-                    No matches found
-                  </p>
-                  <p className="text-xs text-muted mb-3">
-                    Try a more specific address, or submit what you have and we&apos;ll try to find and assess it.
-                  </p>
-                  {assessError && submitStatus === "error" && (
-                    <p className="text-xs text-red-600 mb-2">{assessError}</p>
-                  )}
-                  <button
-                    onClick={handleRequestAssessment}
-                    disabled={submitStatus === "sending"}
-                    className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 disabled:opacity-40 transition-all"
-                  >
-                    {submitStatus === "sending" ? "Assessing..." : submitStatus === "error" ? "Retry" : "Request assessment"}
-                  </button>
-                </>
-              )}
+              <p className="text-sm font-medium text-foreground mb-1">
+                No matches found
+              </p>
+              <p className="text-xs text-muted mb-3">
+                Try a more specific address, or submit what you have and we&apos;ll try to find and assess it.
+              </p>
+              <button
+                onClick={handleRequestAssessment}
+                className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all"
+              >
+                Request assessment
+              </button>
             </div>
           ) : (
             <div className="text-center">
