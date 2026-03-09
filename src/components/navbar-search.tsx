@@ -16,10 +16,15 @@ interface PlaceSuggestion {
   placeId: string;
 }
 
-const LISTING_URL_RE = /zoocasa\.com\/[a-z][a-z0-9-]*-[a-z]{2}-real-estate\/[a-z0-9-]+/i;
+const ZOOCASA_URL_RE = /zoocasa\.com\/[a-z][a-z0-9-]*-[a-z]{2}-real-estate\/[a-z0-9-]+/i;
+const OTHER_LISTING_RE = /(?:realtor\.ca|remax\.ca|century21\.ca|royallepage\.ca|redfin\.ca|point2homes\.com|housesigma\.com)\//i;
 
-function isListingUrl(text: string): boolean {
-  return LISTING_URL_RE.test(text);
+function isZoocasaUrl(text: string): boolean {
+  return ZOOCASA_URL_RE.test(text);
+}
+
+function isOtherListingUrl(text: string): boolean {
+  return !isZoocasaUrl(text) && OTHER_LISTING_RE.test(text);
 }
 
 export default function NavbarSearch() {
@@ -35,11 +40,12 @@ export default function NavbarSearch() {
   const { isSignedIn } = useUser();
 
   // Detect URL paste and immediately show assess CTA
-  const detectedUrl = isListingUrl(query) ? query.trim() : null;
+  const detectedUrl = isZoocasaUrl(query) ? query.trim() : null;
+  const otherUrl = isOtherListingUrl(query);
 
   useEffect(() => {
     // Skip autocomplete when a listing URL is pasted
-    if (detectedUrl) {
+    if (detectedUrl || otherUrl) {
       setResults([]);
       setPlaces([]);
       setSearched(false);
@@ -79,7 +85,7 @@ export default function NavbarSearch() {
     }, 250);
 
     return () => clearTimeout(debounceRef.current);
-  }, [query, detectedUrl]);
+  }, [query, detectedUrl, otherUrl]);
 
   function handleSelect(address: string) {
     setQuery("");
@@ -114,33 +120,60 @@ export default function NavbarSearch() {
   const hasPlaces = places.length > 0;
   const noResults = searched && query.length > 1 && !hasLocal && !hasPlaces;
 
-  // Listing URL detected — show assess CTA immediately
+  // Shared input for URL-detected states
+  const urlInput = (
+    <input
+      type="text"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+      onFocus={() => setOpen(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          setOpen(false);
+          (e.target as HTMLInputElement).blur();
+        }
+        if (e.key === "Enter" && detectedUrl) handleRequestAssessment();
+      }}
+      placeholder="Search any address..."
+      className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
+    />
+  );
+
+  // Non-Zoocasa listing URL — guide user to paste the address instead
+  if (open && otherUrl) {
+    return (
+      <div ref={containerRef} className="absolute left-1/2 -translate-x-1/2 hidden sm:block">
+        {urlInput}
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-80 bg-white border border-border rounded-lg shadow-lg p-4 z-50">
+          <div className="text-center">
+            <p className="text-sm font-medium text-foreground mb-1">
+              We can&apos;t read this link directly
+            </p>
+            <p className="text-xs text-muted mb-2">
+              Copy the <span className="font-medium text-foreground">street address</span> from the listing and paste it here instead. We&apos;ll find it and run a full assessment.
+            </p>
+            <p className="text-[10px] text-muted/70">
+              Tip: Zoocasa listing URLs can be pasted directly.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Zoocasa listing URL detected — show assess CTA immediately
   if (open && detectedUrl) {
     return (
       <div ref={containerRef} className="absolute left-1/2 -translate-x-1/2 hidden sm:block">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => setOpen(true)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              setOpen(false);
-              (e.target as HTMLInputElement).blur();
-            }
-            if (e.key === "Enter") handleRequestAssessment();
-          }}
-          placeholder="Search an address..."
-          className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
-        />
+        {urlInput}
         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-80 bg-white border border-border rounded-lg shadow-lg p-4 z-50">
           {isSignedIn ? (
             <div className="text-center">
               <p className="text-sm font-medium text-foreground mb-1">
-                Zoocasa listing detected
+                Listing detected
               </p>
               <p className="text-xs text-muted mb-3">
-                We&apos;ll fetch this listing directly, run a full assessment with offer modeling, and email you the analysis.
+                We&apos;ll fetch this listing, run a full assessment with offer modeling, and email you the analysis.
               </p>
               <button
                 onClick={handleRequestAssessment}
@@ -152,7 +185,7 @@ export default function NavbarSearch() {
           ) : (
             <div className="text-center">
               <p className="text-sm font-medium text-foreground mb-1">
-                Zoocasa listing detected
+                Listing detected
               </p>
               <p className="text-xs text-muted mb-3">
                 Sign in and we&apos;ll fetch this listing, run a full assessment, and email you the results.
@@ -244,15 +277,15 @@ export default function NavbarSearch() {
               handleRequestAssessment();
             }
           }}
-          placeholder="Search address or paste link..."
+          placeholder="Search any address..."
+          title="Type a Canadian address or paste a Zoocasa listing URL"
           className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
         />
         {!query && (
-          <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 opacity-0 group-focus-within:opacity-100 transition-opacity duration-150 z-50">
-            <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2.5 shadow-lg">
-              <p className="font-medium mb-1">Two ways to search:</p>
-              <p className="text-gray-300">1. Type any Canadian address to find it in our database.</p>
-              <p className="text-gray-300 mt-1">2. Paste a Zoocasa listing URL to get an instant assessment.</p>
+          <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 opacity-0 group-focus-within:opacity-100 transition-opacity duration-150 z-50">
+            <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2.5 shadow-lg leading-relaxed">
+              <p className="text-gray-300"><span className="text-white font-medium">Search</span> any Canadian address to look it up.</p>
+              <p className="text-gray-300 mt-1.5"><span className="text-white font-medium">Paste a Zoocasa URL</span> to instantly assess a listing you found online.</p>
             </div>
             <div className="w-2 h-2 bg-gray-900 rotate-45 mx-auto -mt-1" />
           </div>
