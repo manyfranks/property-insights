@@ -228,24 +228,36 @@ export default function NavbarSearch() {
 
   return (
     <div ref={containerRef} className="absolute left-1/2 -translate-x-1/2 hidden sm:block">
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onFocus={() => query.length > 1 && setOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setOpen(false);
-            (e.target as HTMLInputElement).blur();
-          }
-          if (e.key === "Enter" && detectedUrl) {
-            e.preventDefault();
-            handleRequestAssessment();
-          }
-        }}
-        placeholder="Search an address or paste a Zoocasa link..."
-        className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
-      />
+      <div className="relative group">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => query.length > 1 && setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setOpen(false);
+              (e.target as HTMLInputElement).blur();
+            }
+            if (e.key === "Enter" && detectedUrl) {
+              e.preventDefault();
+              handleRequestAssessment();
+            }
+          }}
+          placeholder="Search address or paste link..."
+          className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
+        />
+        {!query && (
+          <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 opacity-0 group-focus-within:opacity-100 transition-opacity duration-150 z-50">
+            <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2.5 shadow-lg">
+              <p className="font-medium mb-1">Two ways to search:</p>
+              <p className="text-gray-300">1. Type any Canadian address to find it in our database.</p>
+              <p className="text-gray-300 mt-1">2. Paste a Zoocasa listing URL to get an instant assessment.</p>
+            </div>
+            <div className="w-2 h-2 bg-gray-900 rotate-45 mx-auto -mt-1" />
+          </div>
+        )}
+      </div>
       {open && (hasLocal || hasPlaces) && (
         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-80 bg-white border border-border rounded-lg shadow-lg overflow-hidden z-50 max-h-80 overflow-y-auto">
           {/* Our listings */}
