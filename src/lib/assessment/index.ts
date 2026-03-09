@@ -2,41 +2,93 @@ import { Assessment } from "../types";
 import { lookupBC, lookupBCSync } from "./bc";
 import { lookupON, lookupONSync } from "./on";
 import { lookupAB, lookupABSync } from "./ab";
+import { getStatCanMedian } from "../data/statcan-chsp";
 
 /**
- * Async lookup — tries cache first, then live scrape/API.
+ * Async lookup — tries province-specific sources, then StatCan area median.
  * Use in API routes where async is fine.
  */
 export async function lookupAssessment(
   address: string,
   province: string,
   city?: string,
-  unit?: string
+  unit?: string,
+  taxes?: string
 ): Promise<Assessment | null> {
+  let result: Assessment | null = null;
+
   switch (province) {
     case "BC":
-      return lookupBC(address, city, unit);
+      result = await lookupBC(address, city, unit);
+      break;
     case "ON":
-      return lookupON(address, unit);
+      result = await lookupON(address, unit, city, taxes);
+      break;
     case "AB":
-      return lookupAB(address, unit);
-    default:
-      return null;
+      result = await lookupAB(address, unit, city);
+      break;
   }
+
+  if (result) return result;
+
+  // Last resort: StatCan area median (city-level, not property-specific)
+  if (city) {
+    const median = getStatCanMedian(city);
+    if (median) {
+      return {
+        totalValue: median.medianAssessment,
+        landValue: 0,
+        buildingValue: 0,
+        assessmentYear: median.year,
+        found: true,
+        source: "area_median",
+      };
+    }
+  }
+
+  return null;
 }
 
 /**
  * Sync cache-only lookup — for preloaded data path (server components, dashboard).
+ * Falls back to StatCan area median if cache misses.
  */
-export function lookupAssessmentSync(address: string, province: string, unit?: string): Assessment | null {
+export function lookupAssessmentSync(
+  address: string,
+  province: string,
+  unit?: string,
+  city?: string,
+  taxes?: string
+): Assessment | null {
+  let result: Assessment | null = null;
+
   switch (province) {
     case "BC":
-      return lookupBCSync(address, unit);
+      result = lookupBCSync(address, unit);
+      break;
     case "ON":
-      return lookupONSync(address, unit);
+      result = lookupONSync(address, unit, city, taxes);
+      break;
     case "AB":
-      return lookupABSync(address, unit);
-    default:
-      return null;
+      result = lookupABSync(address, unit);
+      break;
   }
+
+  if (result) return result;
+
+  if (city) {
+    const median = getStatCanMedian(city);
+    if (median) {
+      return {
+        totalValue: median.medianAssessment,
+        landValue: 0,
+        buildingValue: 0,
+        assessmentYear: median.year,
+        found: true,
+        source: "area_median",
+      };
+    }
+  }
+
+  return null;
 }

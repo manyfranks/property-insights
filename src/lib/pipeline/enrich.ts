@@ -47,11 +47,11 @@ export async function enrichListing(
   let assessment: Assessment | null = null;
   try {
     log("assessment lookup", `${listing.province} ${listing.address}`);
-    assessment = await lookupAssessment(listing.address, listing.province, listing.city, listing.unit);
+    assessment = await lookupAssessment(listing.address, listing.province, listing.city, listing.unit, listing.taxes);
     log("assessment done", assessment?.found ? `${fmt(assessment.totalValue)}` : "not found");
   } catch (err) {
     log("assessment error, trying sync", err instanceof Error ? err.message : String(err));
-    assessment = lookupAssessmentSync(listing.address, listing.province, listing.unit);
+    assessment = lookupAssessmentSync(listing.address, listing.province, listing.unit, listing.city, listing.taxes);
   }
 
   // Score + offer

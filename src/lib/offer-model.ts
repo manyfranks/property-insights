@@ -109,7 +109,9 @@ export function offerModel(listing: Listing, assessment: Assessment): OfferResul
   const signalAdjusted = domAdjusted * stack;
 
   // Step 4: Floor/Ceiling
-  const floor = listPrice * 0.78;
+  // Stale assessments (ON 2016 MPAC) and area medians get a higher floor
+  const isLowConfidence = assessment.assessmentYear === "2016" || assessment.source === "area_median";
+  const floor = listPrice * (isLowConfidence ? 0.85 : 0.78);
   let finalOffer = Math.max(signalAdjusted, floor);
   finalOffer = Math.min(finalOffer, listPrice * 0.97);
   finalOffer = Math.round(finalOffer / 1000) * 1000;

@@ -82,13 +82,18 @@ export function lookupABSync(address: string, unit?: string): Assessment | null 
 }
 
 /**
- * Async lookup — tries cache first, then live SODA API.
+ * Async lookup — tries cache first, then live SODA/ArcGIS API.
  */
-export async function lookupAB(address: string, unit?: string): Promise<Assessment | null> {
+export async function lookupAB(address: string, unit?: string, city?: string): Promise<Assessment | null> {
   const cached = lookupABSync(address, unit);
   if (cached) return cached;
 
-  // Determine city from address quadrant
+  // Lethbridge: no quadrant, uses ArcGIS
+  if (city?.toLowerCase() === "lethbridge") {
+    return lookupLethbridgeArcGIS(address, unit);
+  }
+
+  // Calgary/Edmonton: require NW/NE/SW/SE quadrant
   const quadrant = address.match(/\b(NW|NE|SW|SE)\b/i)?.[1]?.toUpperCase();
   if (!quadrant) return null;
 
@@ -234,4 +239,52 @@ async function queryEdmonton(
     assessmentYear: "2026",
     found: true,
   };
+}
+
+/**
+ * Lethbridge ArcGIS Feature Service — PropertyInfo MapServer
+ * No auth required. Returns CurrGrossAssess field.
+ */
+async function lookupLethbridgeArcGIS(
+  address: string,
+  _unit?: string
+): Promise<Assessment | null> {
+  try {
+    // Strip unit prefix and normalize
+    const bare = address.replace(/^\d+[A-Z]?-/i, "").trim().toUpperCase();
+    // Extract house number + street for LIKE query
+    const parts = bare.match(/^(\d+)\s+(.+)$/);
+    if (!parts) return null;
+
+    const searchAddr = `${parts[1]} ${parts[2]}`;
+    const baseUrl = "https://gis.lethbridge.ca/gispublic/rest/services/PropertyInfo/PropertyInfo/MapServer/0/query";
+    const url = new URL(baseUrl);
+    url.searchParams.set("where", `Address LIKE '%${searchAddr}%'`);
+    url.searchParams.set("outFields", "CurrGrossAssess,Address");
+    url.searchParams.set("resultRecordCount", "1");
+    url.searchParams.set("f", "json");
+
+    const res = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const features = data.features;
+    if (!features?.length) return null;
+
+    const value = features[0].attributes?.CurrGrossAssess;
+    if (!value || value <= 0) return null;
+
+    return {
+      totalValue: Math.round(value),
+      landValue: 0,
+      buildingValue: 0,
+      assessmentYear: "2026",
+      found: true,
+    };
+  } catch {
+    return null;
+  }
 }

@@ -50,6 +50,7 @@ export interface Assessment {
   buildingValue: number;
   assessmentYear: string;
   found: boolean;
+  source?: "government" | "tax_reverse" | "area_median" | "cache";
 }
 
 export interface ListingHistory {
