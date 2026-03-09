@@ -176,49 +176,51 @@ export default function AssessmentProgress({ address }: { address: string }) {
       )}
 
       {/* Steps — hidden when error is shown */}
-      {!errorState && <div className="space-y-5 mb-10">
-        {STEPS.map((step, i) => (
-          <div key={i} className="flex items-start gap-4">
-            {/* Indicator */}
-            <div className="flex-shrink-0 mt-0.5">
-              {stepStatuses[i] === "complete" ? (
-                <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-green-600">
-                    <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-              ) : stepStatuses[i] === "active" ? (
-                <div className="w-7 h-7 rounded-full border-2 border-foreground/30 flex items-center justify-center">
-                  <div className="w-2.5 h-2.5 rounded-full bg-foreground/60 animate-pulse" />
-                </div>
-              ) : (
-                <div className="w-7 h-7 rounded-full border border-border" />
-              )}
-            </div>
+      {!errorState && <div className="flex justify-center mb-10">
+        <div className="space-y-5 inline-block text-left">
+          {STEPS.map((step, i) => (
+            <div key={i} className="flex items-start gap-4">
+              {/* Indicator */}
+              <div className="flex-shrink-0 mt-0.5">
+                {stepStatuses[i] === "complete" ? (
+                  <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-green-600">
+                      <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                ) : stepStatuses[i] === "active" ? (
+                  <div className="w-7 h-7 rounded-full border-2 border-foreground/30 flex items-center justify-center">
+                    <div className="w-2.5 h-2.5 rounded-full bg-foreground/60 animate-pulse" />
+                  </div>
+                ) : (
+                  <div className="w-7 h-7 rounded-full border border-border" />
+                )}
+              </div>
 
-            {/* Text */}
-            <div>
-              <p
-                className={`text-sm font-medium ${
-                  stepStatuses[i] === "pending"
-                    ? "text-muted"
-                    : "text-foreground"
-                }`}
-              >
-                {step.label}
-              </p>
-              <p
-                className={`text-xs ${
-                  stepStatuses[i] === "pending"
-                    ? "text-muted/60"
-                    : "text-muted"
-                }`}
-              >
-                {step.detail}
-              </p>
+              {/* Text */}
+              <div>
+                <p
+                  className={`text-sm font-medium ${
+                    stepStatuses[i] === "pending"
+                      ? "text-muted"
+                      : "text-foreground"
+                  }`}
+                >
+                  {step.label}
+                </p>
+                <p
+                  className={`text-xs ${
+                    stepStatuses[i] === "pending"
+                      ? "text-muted/60"
+                      : "text-muted"
+                  }`}
+                >
+                  {step.detail}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>}
 
       {/* Error states */}
