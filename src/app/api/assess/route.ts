@@ -143,7 +143,7 @@ export async function POST(req: Request) {
 
     try {
       detail = await fetchDetail(street, city, province);
-      log("zoocasa ok", detail.listing.address);
+      log("zoocasa ok", `${detail.listing.address}${detail.listing.unit ? " unit=" + detail.listing.unit : ""}`);
     } catch (err) {
       log("zoocasa error", err instanceof Error ? err.message : String(err));
       if (err instanceof ZoocasaNotFoundError) {

@@ -61,23 +61,31 @@ const EDMONTON_ABBREVS: [RegExp, string][] = [
 /**
  * Sync cache-only lookup.
  */
-export function lookupABSync(address: string): Assessment | null {
-  const cached = AB_ASSESSMENT_CACHE[address];
-  if (!cached) return null;
-  return {
-    totalValue: cached.total,
-    landValue: cached.land,
-    buildingValue: cached.building,
-    assessmentYear: "2025",
-    found: true,
-  };
+export function lookupABSync(address: string, unit?: string): Assessment | null {
+  const bare = address.replace(/^\d+[A-Z]?-/i, "");
+  const cacheKeys = unit
+    ? [address, `${unit}, ${bare}`, `#${unit} ${bare}`, bare]
+    : [address, bare];
+  for (const key of cacheKeys) {
+    const cached = AB_ASSESSMENT_CACHE[key];
+    if (cached) {
+      return {
+        totalValue: cached.total,
+        landValue: cached.land,
+        buildingValue: cached.building,
+        assessmentYear: "2025",
+        found: true,
+      };
+    }
+  }
+  return null;
 }
 
 /**
  * Async lookup — tries cache first, then live SODA API.
  */
-export async function lookupAB(address: string): Promise<Assessment | null> {
-  const cached = lookupABSync(address);
+export async function lookupAB(address: string, unit?: string): Promise<Assessment | null> {
+  const cached = lookupABSync(address, unit);
   if (cached) return cached;
 
   // Determine city from address quadrant
@@ -85,7 +93,7 @@ export async function lookupAB(address: string): Promise<Assessment | null> {
   if (!quadrant) return null;
 
   // Try Calgary first (most of our AB listings), then Edmonton
-  const result = await lookupCalgarySODA(address) ?? await lookupEdmontonSODA(address);
+  const result = await lookupCalgarySODA(address, unit) ?? await lookupEdmontonSODA(address, unit);
   return result;
 }
 
@@ -93,10 +101,11 @@ export async function lookupAB(address: string): Promise<Assessment | null> {
  * Calgary SODA API — dataset 4bsw-nn7w
  * Address format: "3410 1 ST NW" (unit prefix if applicable: "108 150 LEBEL CR NW")
  */
-async function lookupCalgarySODA(address: string): Promise<Assessment | null> {
+async function lookupCalgarySODA(address: string, _unit?: string): Promise<Assessment | null> {
   try {
-    // Normalize: strip # prefix, apply Calgary abbreviations, uppercase
-    let normalized = address.replace(/^#/, "").trim().toUpperCase();
+    // Normalize: strip unit prefix (dash or #), apply Calgary abbreviations, uppercase
+    // "106-150 LEBEL CR NW" → "150 LEBEL CR NW"
+    let normalized = address.replace(/^\d+[A-Z]?-/i, "").replace(/^#/, "").trim().toUpperCase();
     for (const [pat, repl] of CALGARY_ABBREVS) {
       normalized = normalized.replace(pat, repl);
     }
@@ -151,16 +160,17 @@ async function queryCalgary(where: string): Promise<Assessment | null> {
  * Uses separate house_number + street_name fields, optional suite field.
  * Street names use full words: "109 STREET NW" not "109 ST NW"
  */
-async function lookupEdmontonSODA(address: string): Promise<Assessment | null> {
+async function lookupEdmontonSODA(address: string, unit?: string): Promise<Assessment | null> {
   try {
-    // Parse address: "#1801 9939 109 ST NW" -> suite=1801, house=9939, street="109 STREET NW"
-    let cleaned = address.replace(/^#/, "").trim().toUpperCase();
+    // Parse address: "#1801 9939 109 ST NW" or "1801-9939 109 ST NW" -> suite=1801, house=9939, street="109 STREET NW"
+    // Strip dash-prefix unit: "106-9939 109 ST NW" → "9939 109 ST NW"
+    let cleaned = address.replace(/^\d+[A-Z]?-/i, "").replace(/^#/, "").trim().toUpperCase();
 
-    // Extract suite/unit if present (leading number before house number)
-    let suite: string | null = null;
+    // Extract suite/unit: prefer explicit unit param, fall back to address prefix extraction
+    let suite: string | null = unit?.toUpperCase() || null;
     const unitMatch = cleaned.match(/^(\d+[A-Z]?)\s+(\d+\s+.+)$/);
     if (unitMatch) {
-      suite = unitMatch[1];
+      if (!suite) suite = unitMatch[1];
       cleaned = unitMatch[2];
     }
 

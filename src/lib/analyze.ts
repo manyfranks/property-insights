@@ -44,7 +44,7 @@ function preOfferToResult(
  * Used by server components (dashboard, property pages) where preloaded data is sufficient.
  */
 export function analyzeListing(listing: Listing): AnalysisResult {
-  const assessment = listing.preAssessment || lookupAssessmentSync(listing.address, listing.province);
+  const assessment = listing.preAssessment || lookupAssessmentSync(listing.address, listing.province, listing.unit);
   const history = getZoocasaHistory(listing.address, listing.city, listing.province);
   const score = scoreV2(listing);
   const offer = listing.preOffer
@@ -71,7 +71,7 @@ export async function analyzeListingAsync(listing: Listing): Promise<AnalysisRes
 
   // If we have pre-computed data, skip all external calls
   if (hasPre) {
-    const assessment = listing.preAssessment || lookupAssessmentSync(listing.address, listing.province);
+    const assessment = listing.preAssessment || lookupAssessmentSync(listing.address, listing.province, listing.unit);
     const history = getZoocasaHistory(listing.address, listing.city, listing.province);
     const score = listing.preScore != null && listing.preTier
       ? { total: listing.preScore, tier: listing.preTier, breakdown: scoreV2(listing).breakdown }
@@ -94,7 +94,7 @@ export async function analyzeListingAsync(listing: Listing): Promise<AnalysisRes
   }
 
   // No pre-computed data — run assessment lookup + compute offer
-  const assessment = await lookupAssessment(listing.address, listing.province);
+  const assessment = await lookupAssessment(listing.address, listing.province, listing.city, listing.unit);
   const history = getZoocasaHistory(listing.address, listing.city, listing.province);
   const score = scoreV2(listing);
   const offer = assessment ? offerModel(listing, assessment) : offerModelLanguage(listing);

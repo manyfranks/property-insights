@@ -377,7 +377,8 @@ function mapSearchListing(
 function mapDetailListing(
   r: ZoocasaDetailResult,
   city: string,
-  province: string
+  province: string,
+  parsedUnit?: string
 ): Listing {
   const desc = r.localeData?.en?.description || "";
   const descLower = desc.toLowerCase();
@@ -390,9 +391,24 @@ function mapDetailListing(
       ? `https://www.zoocasa.com/${citySlug(city)}-${provSlug(province)}-real-estate/${slug}`
       : "";
 
-  const address = r.streetNumber && r.streetName
+  const bareAddress = r.streetNumber && r.streetName
     ? `${r.streetNumber} ${r.streetName}`
     : "";
+
+  // Extract unit number: prefer caller-provided, then try slug prefix.
+  // Zoocasa slug for condos: "900-1628-store-st" where 900 is the unit.
+  // If streetNumber is "1628" and slug starts with a number that isn't "1628",
+  // that leading number is the unit.
+  let unit = parsedUnit;
+  if (!unit && slug && r.streetNumber) {
+    const slugLeading = slug.match(/^(\d+[a-z]?)-/i);
+    if (slugLeading && slugLeading[1] !== r.streetNumber) {
+      unit = slugLeading[1];
+    }
+  }
+
+  // Prepend unit to address for display: "106-1987 Kaltasin Rd"
+  const address = unit && bareAddress ? `${unit}-${bareAddress}` : bareAddress;
 
   // Year built from approxAge (e.g., "2021" or "51-99")
   let yearBuilt = "";
@@ -419,6 +435,7 @@ function mapDetailListing(
 
   return {
     address,
+    ...(unit ? { unit } : {}),
     city: r.city || city,
     province: r.province || province,
     dom: computeDom(r.addedAt, r.history),
@@ -533,6 +550,10 @@ export async function fetchDetail(
   province: string,
   slug?: string
 ): Promise<DetailResult> {
+  // Extract unit from input address before Zoocasa strips it.
+  // Google Places: "6110 Seabroom Rd #4" → unit "4"
+  const inputUnit = address.match(/[\s,]+(?:#|unit\s*|suite\s*|apt\s*)(\d+[A-Z]?)\s*$/i)?.[1];
+
   const base = `https://www.zoocasa.com/${citySlug(city)}-${provSlug(province)}-real-estate`;
   const detailSlug = slug || addressSlug(address);
 
@@ -569,7 +590,7 @@ export async function fetchDetail(
   raw.city = raw.city || city;
   raw.province = raw.province || province;
 
-  const listing = mapDetailListing(raw, city, province);
+  const listing = mapDetailListing(raw, city, province, inputUnit);
   const history = parseHistory(raw);
 
   return { listing, history, raw };

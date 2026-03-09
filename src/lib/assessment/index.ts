@@ -10,15 +10,16 @@ import { lookupAB, lookupABSync } from "./ab";
 export async function lookupAssessment(
   address: string,
   province: string,
-  city?: string
+  city?: string,
+  unit?: string
 ): Promise<Assessment | null> {
   switch (province) {
     case "BC":
-      return lookupBC(address, city);
+      return lookupBC(address, city, unit);
     case "ON":
-      return lookupON(address);
+      return lookupON(address, unit);
     case "AB":
-      return lookupAB(address);
+      return lookupAB(address, unit);
     default:
       return null;
   }
@@ -27,14 +28,14 @@ export async function lookupAssessment(
 /**
  * Sync cache-only lookup — for preloaded data path (server components, dashboard).
  */
-export function lookupAssessmentSync(address: string, province: string): Assessment | null {
+export function lookupAssessmentSync(address: string, province: string, unit?: string): Assessment | null {
   switch (province) {
     case "BC":
-      return lookupBCSync(address);
+      return lookupBCSync(address, unit);
     case "ON":
-      return lookupONSync(address);
+      return lookupONSync(address, unit);
     case "AB":
-      return lookupABSync(address);
+      return lookupABSync(address, unit);
     default:
       return null;
   }

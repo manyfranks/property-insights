@@ -15,6 +15,7 @@ export interface PrecomputedOffer {
 
 export interface Listing {
   address: string;
+  unit?: string;
   city: string;
   province: string;
   dom: number;

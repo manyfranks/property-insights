@@ -39,6 +39,20 @@ function searchVariants(address: string, city?: string): string[] {
     if (abbr !== base) variants.push(abbr);
   }
 
+  // "106-1987 Kaltasin Rd" -> "1987 Kaltasin Rd" (dash-separated unit prefix)
+  const dashUnit = address.match(/^\d+[A-Z]?-(\d+\s+.+)$/i);
+  if (dashUnit) {
+    const base = dashUnit[1];
+    variants.push(base);
+    let abbr = base;
+    for (const [pat, repl] of ABBREVS) abbr = abbr.replace(pat, repl);
+    if (abbr !== base) variants.push(abbr);
+    if (city) {
+      variants.push(base + " " + city);
+      if (abbr !== base) variants.push(abbr + " " + city);
+    }
+  }
+
   // "4-203 4201 Tyndall Ave" -> "4201 Tyndall Ave"
   const complexMatch = address.match(/^\d+-\d+\s+(\d+.+)$/);
   if (complexMatch) variants.push(complexMatch[1]);
@@ -60,7 +74,8 @@ interface ApiResult {
  */
 async function findPropertyId(
   address: string,
-  city?: string
+  city?: string,
+  unit?: string
 ): Promise<{ id: string; label: string } | null> {
   const variants = searchVariants(address, city);
 
@@ -78,7 +93,8 @@ async function findPropertyId(
 
       // Multi-unit: try to find specific unit
       if (data[0].label.includes("select to see all units")) {
-        const unitNum = address.match(/^(?:TH)?(\d+[A-Z]?)\s/i)?.[1];
+        // Prefer explicit unit param, fall back to address prefix extraction
+        const unitNum = unit || address.match(/^(?:TH)?(\d+[A-Z]?)\s/i)?.[1];
 
         // Try sub-unit endpoint if gid available
         if (data[0].gid) {
@@ -209,24 +225,32 @@ const SCRAPE_TIMEOUT_MS = 15_000;
  */
 export async function lookupBC(
   address: string,
-  city?: string
+  city?: string,
+  unit?: string
 ): Promise<Assessment | null> {
-  // 1. Cache
-  const cached = BC_ASSESSMENT_CACHE[address];
-  if (cached) {
-    return {
-      totalValue: cached.total,
-      landValue: cached.land,
-      buildingValue: cached.building,
-      assessmentYear: "2026",
-      found: true,
-    };
+  // 1. Cache — try address as-is, unit-prefixed variants, and bare (unit stripped)
+  // Address may arrive as "106-1987 Kaltasin Rd" (unit baked in) or "1987 Kaltasin Rd" (bare)
+  const bare = address.replace(/^\d+[A-Z]?-/i, "");
+  const cacheKeys = unit
+    ? [address, `${unit} ${bare}`, bare, `${unit}-${bare}`]
+    : [address, bare];
+  for (const key of cacheKeys) {
+    const cached = BC_ASSESSMENT_CACHE[key];
+    if (cached) {
+      return {
+        totalValue: cached.total,
+        landValue: cached.land,
+        buildingValue: cached.building,
+        assessmentYear: "2026",
+        found: true,
+      };
+    }
   }
 
   // 2. REST API search → property ID
   let property: { id: string; label: string } | null = null;
   try {
-    property = await findPropertyId(address, city);
+    property = await findPropertyId(address, city, unit);
   } catch {
     return null;
   }
@@ -256,22 +280,29 @@ export async function lookupBC(
  */
 export async function lookupBCWithScrape(
   address: string,
-  city?: string
+  city?: string,
+  unit?: string
 ): Promise<Assessment | null> {
   // Cache
-  const cached = BC_ASSESSMENT_CACHE[address];
-  if (cached) {
-    return {
-      totalValue: cached.total,
-      landValue: cached.land,
-      buildingValue: cached.building,
-      assessmentYear: "2026",
-      found: true,
-    };
+  const bare = address.replace(/^\d+[A-Z]?-/i, "");
+  const cacheKeys = unit
+    ? [address, `${unit} ${bare}`, bare, `${unit}-${bare}`]
+    : [address, bare];
+  for (const key of cacheKeys) {
+    const cached = BC_ASSESSMENT_CACHE[key];
+    if (cached) {
+      return {
+        totalValue: cached.total,
+        landValue: cached.land,
+        buildingValue: cached.building,
+        assessmentYear: "2026",
+        found: true,
+      };
+    }
   }
 
   // REST API search → property ID
-  const property = await findPropertyId(address, city);
+  const property = await findPropertyId(address, city, unit);
   if (!property) return null;
 
   // Puppeteer scrape
@@ -290,14 +321,22 @@ export async function lookupBCWithScrape(
 /**
  * Synchronous cache-only lookup (used in preloaded data path).
  */
-export function lookupBCSync(address: string): Assessment | null {
-  const cached = BC_ASSESSMENT_CACHE[address];
-  if (!cached) return null;
-  return {
-    totalValue: cached.total,
-    landValue: cached.land,
-    buildingValue: cached.building,
-    assessmentYear: "2026",
-    found: true,
-  };
+export function lookupBCSync(address: string, unit?: string): Assessment | null {
+  const bare = address.replace(/^\d+[A-Z]?-/i, "");
+  const cacheKeys = unit
+    ? [address, `${unit} ${bare}`, bare, `${unit}-${bare}`]
+    : [address, bare];
+  for (const key of cacheKeys) {
+    const cached = BC_ASSESSMENT_CACHE[key];
+    if (cached) {
+      return {
+        totalValue: cached.total,
+        landValue: cached.land,
+        buildingValue: cached.building,
+        assessmentYear: "2026",
+        found: true,
+      };
+    }
+  }
+  return null;
 }
