@@ -282,12 +282,12 @@ export default function NavbarSearch() {
           className="w-64 px-3 py-1.5 text-sm rounded-lg border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
         />
         {!query && (
-          <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 opacity-0 group-focus-within:opacity-100 transition-opacity duration-150 z-50">
+          <div className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 opacity-0 group-focus-within:opacity-100 transition-opacity duration-150 z-50">
+            <div className="w-2 h-2 bg-gray-900 rotate-45 mx-auto -mb-1" />
             <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2.5 shadow-lg leading-relaxed">
               <p className="text-gray-300"><span className="text-white font-medium">Search</span> any Canadian address to look it up.</p>
               <p className="text-gray-300 mt-1.5"><span className="text-white font-medium">Paste a Zoocasa URL</span> to instantly assess a listing you found online.</p>
             </div>
-            <div className="w-2 h-2 bg-gray-900 rotate-45 mx-auto -mt-1" />
           </div>
         )}
       </div>
