@@ -9,7 +9,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { trackEvent } from "@/lib/kv/user-events";
+import { trackEvent } from "@/lib/db/user-events";
 
 const VALID_TYPES = ["compare-rates", "pre-approval", "insurance"] as const;
 type PartnerType = (typeof VALID_TYPES)[number];

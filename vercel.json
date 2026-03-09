@@ -12,18 +12,11 @@
     "src/app/api/assess/route.ts": {
       "maxDuration": 60
     },
-    "src/app/api/pipeline/freshness/route.ts": {
-      "maxDuration": 60
-    },
     "src/app/api/pipeline/refresh/route.ts": {
       "maxDuration": 300
     }
   },
   "crons": [
-    {
-      "path": "/api/pipeline/freshness",
-      "schedule": "0 6 * * 1"
-    },
     {
       "path": "/api/pipeline/refresh",
       "schedule": "0 14 * * *"

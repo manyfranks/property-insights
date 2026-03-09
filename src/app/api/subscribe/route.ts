@@ -9,6 +9,7 @@
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { trackEvent } from "@/lib/db/user-events";
 
 const MAX_CITIES = 20;
 const CITY_RE = /^[a-zA-Z\s\-'.]+$/; // letters, spaces, hyphens, apostrophes, periods
@@ -55,6 +56,11 @@ export async function POST(req: Request) {
       subscribedAt: new Date().toISOString(),
     },
   });
+
+  // Track city subscription events
+  for (const city of validCities) {
+    trackEvent(userId, "city_subscribe", { city }).catch(() => {});
+  }
 
   return NextResponse.json({ ok: true, cities: validCities });
 }

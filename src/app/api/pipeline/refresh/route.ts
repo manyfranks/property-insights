@@ -1,17 +1,18 @@
 /**
  * /api/pipeline/refresh
  *
- * Semi-daily cron job that:
+ * Daily cron job that:
  * 1. Refreshes listings from Zoocasa for each city
- * 2. Fetches details for new listings
- * 3. Pre-computes scores, offers, and narratives
- * 4. Writes enriched data to KV
+ * 2. Checks existing listings for freshness (dead = sold/delisted)
+ * 3. Backfills dead listing slots with new candidates
+ * 4. Fetches details and enriches new listings
+ * 5. Writes enriched data to KV
  *
- * Vercel Cron: 7am + 4pm PT (0 14,23 * * *)
+ * Vercel Cron: daily 2pm UTC (0 14 * * *)
  */
 
 import { NextResponse } from "next/server";
-import { searchListings, fetchDetail } from "@/lib/zoocasa";
+import { searchListings, fetchDetail, checkFreshness } from "@/lib/zoocasa";
 import { getAllListings, writeAllListings, purgeStaleSlugKeys } from "@/lib/kv/listings";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { slugify } from "@/lib/utils";
@@ -145,6 +146,34 @@ export async function GET(request: Request) {
           kept.push({ ...existing, dom: candidate.dom });
         } else {
           needsDetail.push(candidate);
+        }
+      }
+
+      // Freshness check: verify kept listings are still live on Zoocasa
+      if (kept.length > 0) {
+        const freshnessStart = Date.now();
+        const freshnessQueue = [...kept];
+        const deadAddresses = new Set<string>();
+
+        async function freshnessWorker() {
+          while (freshnessQueue.length > 0) {
+            const item = freshnessQueue.shift();
+            if (!item) break;
+            const slug = item.url?.replace("https://www.zoocasa.com", "").split("/").pop() || "";
+            const status = await checkFreshness(item.address, item.city, item.province, slug || undefined);
+            if (status === "dead") deadAddresses.add(item.address);
+          }
+        }
+
+        const workers = Array.from({ length: Math.min(6, kept.length) }, () => freshnessWorker());
+        await Promise.all(workers);
+
+        if (deadAddresses.size > 0) {
+          const before = kept.length;
+          const alive = kept.filter((l) => !deadAddresses.has(l.address));
+          kept.length = 0;
+          kept.push(...alive);
+          log.push(`${cfg.city}: pruned ${before - kept.length} dead listings in ${Date.now() - freshnessStart}ms`);
         }
       }
 

@@ -95,7 +95,7 @@ export default function DataUsagePage() {
             </li>
           </ul>
           <p className="mt-3">
-            We retain up to 200 events per user. Older events are automatically trimmed.
+            We retain up to 500 events per user. Older events are automatically trimmed.
           </p>
         </section>
 
@@ -116,27 +116,24 @@ export default function DataUsagePage() {
               We do not use targeted advertising, retargeting, or third-party ad networks.
             </li>
             <li>
-              We do not sell or share data with partners behind the scenes. Every partner
-              connection requires you to click a button, read what will be shared, and confirm.
+              We do not share your personal information with affiliate partners. Clicking an
+              affiliate link takes you to a third-party site where you interact directly with them.
             </li>
           </ul>
         </section>
 
         <section>
-          <h2 className="text-base font-medium text-foreground mb-2">How Partner Connections Work</h2>
+          <h2 className="text-base font-medium text-foreground mb-2">Affiliate Links and Partner Referrals</h2>
           <p>
-            Property Insights may connect you with licensed mortgage brokers, real estate agents,
-            home inspectors, and insurance providers. Here is exactly how this works:
+            Property pages include links to third-party services such as mortgage comparison tools,
+            pre-approval providers, and home insurance platforms. When you click these links, you
+            leave Property Insights and interact directly with the third-party service.
           </p>
-          <ol className="list-decimal list-inside space-y-1.5 mt-3">
-            <li>You click a &quot;Connect&quot; button on a property page.</li>
-            <li>We show you exactly what information will be shared (your email and the property details).</li>
-            <li>You confirm by clicking &quot;Yes, connect me.&quot;</li>
-            <li>Only then do we share your information with the relevant professional.</li>
-          </ol>
           <p className="mt-3">
-            We may receive referral fees from these professionals. This does not affect your
-            property analysis or offer recommendations, which are generated independently.
+            We may receive referral fees or commissions when you use a service through these links.
+            This does not affect your property analysis, scoring, or offer recommendations, which
+            are generated independently by our algorithms. We only partner with services we believe
+            are relevant to Canadian home buyers.
           </p>
         </section>
 
@@ -157,9 +154,9 @@ export default function DataUsagePage() {
         <section>
           <h2 className="text-base font-medium text-foreground mb-2">Data Storage and Security</h2>
           <p>
-            Property and assessment data is stored in encrypted cloud databases (Upstash Redis on
-            Vercel infrastructure). Access is restricted to application-level operations. We do not
-            maintain local or unencrypted copies of user data.
+            Property, assessment, and user data is stored in encrypted cloud databases with access
+            restricted to application-level operations. We do not maintain local or unencrypted
+            copies of user data.
           </p>
         </section>
 

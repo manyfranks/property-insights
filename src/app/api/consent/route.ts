@@ -11,6 +11,7 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { CONSENT_VERSION, ConsentState } from "@/lib/consent";
+import { setPartnerConsent } from "@/lib/db/user-events";
 
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -50,6 +51,9 @@ export async function POST(req: Request) {
       consent,
     },
   });
+
+  // Sync partner consent to Postgres profile
+  setPartnerConsent(userId, body.partnerSharing).catch(() => {});
 
   return NextResponse.json({ ok: true, consent });
 }

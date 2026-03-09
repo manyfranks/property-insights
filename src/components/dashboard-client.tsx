@@ -1,8 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import TierBadge from "./tier-badge";
+
+/** Fire-and-forget search event to track city interest */
+function trackSearch(city: string) {
+  fetch("/api/track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "search", data: { city } }),
+  }).catch(() => {});
+}
 
 interface DashboardRow {
   address: string;
@@ -58,6 +67,12 @@ export default function DashboardClient({ rows, stats, initialCity }: {
   const [page, setPage] = useState(0);
   const [cityFilter, setCityFilter] = useState<string | null>(initialCity ?? null);
 
+  const selectCity = useCallback((city: string | null) => {
+    setCityFilter(city);
+    setPage(0);
+    if (city) trackSearch(city);
+  }, []);
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -100,7 +115,7 @@ export default function DashboardClient({ rows, stats, initialCity }: {
     return (
       <div>
         <button
-          onClick={() => { setCityFilter(null); setPage(0); }}
+          onClick={() => selectCity(null)}
           className="text-sm text-muted hover:text-foreground transition-colors mb-6"
         >
           &larr; All listings
@@ -210,7 +225,7 @@ export default function DashboardClient({ rows, stats, initialCity }: {
                   </td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={() => { setCityFilter(r.city); setPage(0); }}
+                      onClick={() => selectCity(r.city)}
                       className="text-muted hover:text-foreground hover:underline transition-colors"
                     >
                       {r.city}

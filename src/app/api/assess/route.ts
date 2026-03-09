@@ -14,7 +14,7 @@ import { NextResponse } from "next/server";
 import { fetchDetail, fetchDetailByUrl, parseZoocasaUrl, ZoocasaNotFoundError } from "@/lib/zoocasa";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { upsertListing } from "@/lib/kv/listings";
-import { trackEvent } from "@/lib/kv/user-events";
+import { trackEvent } from "@/lib/db/user-events";
 import { sendAssessmentEmail } from "@/lib/email";
 import { slugify } from "@/lib/utils";
 

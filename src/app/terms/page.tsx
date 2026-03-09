@@ -81,23 +81,21 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="text-base font-medium text-foreground mb-2">Partner Referrals and Affiliate Relationships</h2>
+          <h2 className="text-base font-medium text-foreground mb-2">Affiliate Links and Third-Party Services</h2>
           <p>
-            Property Insights may offer to connect you with third-party professionals including
-            mortgage brokers, real estate agents, home inspectors, and insurance providers. These
-            connections are made only at your express request (by clicking a connection button and
-            confirming).
+            Property pages include outbound links to third-party services such as mortgage comparison
+            tools, pre-approval providers, and home insurance platforms. When you click these links,
+            you leave Property Insights and interact directly with the third-party service.
           </p>
           <p className="mt-3">
-            We may receive referral fees or commissions from partners when you use their services
-            after being connected through Property Insights. This does not affect the analysis,
-            scoring, or offer recommendations you see on the platform, which are generated
+            We may receive referral fees or commissions from these services. This does not affect the
+            analysis, scoring, or offer recommendations you see on the platform, which are generated
             independently by our algorithms.
           </p>
           <p className="mt-3">
-            We are not responsible for the services, advice, or actions of third-party professionals.
-            Any engagement with a referred professional is a separate relationship governed by their
-            own terms and licensing requirements.
+            We are not responsible for the services, advice, or actions of third-party providers.
+            Any engagement with a linked service is a separate relationship governed by their own
+            terms and conditions.
           </p>
         </section>
 

@@ -2,12 +2,12 @@
  * POST /api/track
  *
  * Record a user behavior event. Requires authentication and analytics consent.
- * Events are stored in KV per-user for lead scoring and service improvement.
+ * Events are stored in Postgres per-user for lead scoring and service improvement.
  */
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { trackEvent, EventType } from "@/lib/kv/user-events";
+import { trackEvent, EventType } from "@/lib/db/user-events";
 import { hasAnalyticsConsent } from "@/lib/consent";
 
 const VALID_TYPES: EventType[] = [

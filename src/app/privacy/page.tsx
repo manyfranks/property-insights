@@ -77,8 +77,8 @@ export default function PrivacyPage() {
             <li>To understand how the site is used and identify areas for improvement.</li>
             <li>To respond to your inquiries or support requests.</li>
             <li>
-              With your express consent, to connect you with mortgage brokers, real estate agents,
-              home inspectors, and insurance providers who can assist with your purchase.
+              With your consent, to generate aggregated insights that help us improve recommendations
+              and understand market activity in the cities we cover.
             </li>
           </ul>
           <p className="mt-3">
@@ -111,22 +111,18 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2 className="text-base font-medium text-foreground mb-2">Partner Connections</h2>
+          <h2 className="text-base font-medium text-foreground mb-2">Affiliate Links</h2>
           <p>
-            When you click a &quot;Connect with a mortgage broker,&quot; &quot;Talk to an agent,&quot;
-            or similar button on a property page, you are giving express consent for us to share your
-            email address and the relevant property details with a licensed professional. We disclose
-            exactly what will be shared before you confirm.
+            Property pages include outbound links to third-party services such as mortgage comparison
+            tools, pre-approval providers, and home insurance platforms. When you click these links,
+            you leave Property Insights and interact directly with the third-party service on their
+            own site under their own privacy policy.
           </p>
           <p className="mt-3">
-            This is the only circumstance in which we share your personal information with third
-            parties for commercial purposes. We never share your data with partners without your
-            explicit, per-action consent.
-          </p>
-          <p className="mt-3">
-            Partners we may connect you with include licensed mortgage brokers, real estate agents,
-            home inspectors, and home insurance providers operating in the provinces we cover
-            (BC, Alberta, Ontario).
+            We do not share your personal information (email, search history, or behavioral data)
+            with affiliate partners. We may receive referral fees when you use a service through
+            these links. This does not affect the analysis or recommendations you see on Property
+            Insights.
           </p>
         </section>
 
@@ -143,24 +139,24 @@ export default function PrivacyPage() {
 
         <section>
           <h2 className="text-base font-medium text-foreground mb-2">Third-Party Services</h2>
-          <p className="mb-3">We use the following services to operate Property Insights:</p>
+          <p className="mb-3">We use the following categories of services to operate Property Insights:</p>
           <ul className="list-disc list-inside space-y-1.5">
             <li>
-              <span className="text-foreground font-medium">Vercel</span> for hosting and analytics.
-              Vercel&apos;s analytics are privacy-focused and do not use cookies or track users
-              across sites.
+              <span className="text-foreground font-medium">Hosting and analytics</span> provided by
+              a privacy-focused platform that does not use cookies or track users across sites.
             </li>
             <li>
-              <span className="text-foreground font-medium">Clerk</span> for authentication. Your
-              email and login credentials are managed by Clerk under their privacy policy.
+              <span className="text-foreground font-medium">Authentication</span> managed by a
+              third-party identity provider. Your email and login credentials are handled under
+              their privacy policy.
             </li>
             <li>
-              <span className="text-foreground font-medium">Resend</span> for transactional emails
-              (assessment results delivered to your inbox).
+              <span className="text-foreground font-medium">Transactional email</span> for delivering
+              assessment results to your inbox.
             </li>
             <li>
-              <span className="text-foreground font-medium">Upstash</span> for data storage. Listing
-              and assessment data is stored in Upstash Redis.
+              <span className="text-foreground font-medium">Cloud databases</span> for storing
+              listing data, assessment data, and user behavioral data in encrypted storage.
             </li>
           </ul>
           <p className="mt-3">
