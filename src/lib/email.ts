@@ -77,7 +77,7 @@ function buildAssessmentHtml(data: AssessmentEmailData): string {
     <div style="text-align:center;margin-bottom:32px">
       <table role="presentation" style="margin:0 auto"><tr>
         <td style="vertical-align:middle;padding-right:10px">
-          <div style="width:30px;height:30px;border:1.5px solid #171717;border-radius:50%;text-align:center;line-height:30px"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMxNzE3MTciIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0zIDEwLjVMMTIgM2w5IDcuNVYyMWExIDEgMCAwIDEtMSAxSDRhMSAxIDAgMCAxLTEtMVYxMC41eiIvPjxwYXRoIGQ9Ik05IDIxVjEyaDZ2OSIvPjwvc3ZnPg==" width="14" height="14" alt="Property Insights" style="vertical-align:middle" /></div>
+          <img src="${BASE_URL}/logo.png" width="30" height="30" alt="Property Insights" style="display:block;border:0" />
         </td>
         <td style="vertical-align:middle">
           <span style="font-size:16px;font-weight:600;color:#111;letter-spacing:-0.3px">Property Insights</span>
