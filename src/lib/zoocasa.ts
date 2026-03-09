@@ -138,15 +138,33 @@ const SLUG_ABBREVS: [RegExp, string][] = [
 ];
 
 function addressSlug(address: string): string {
-  let slug = address.toLowerCase();
+  let street = address;
+
+  // Extract trailing unit number and move it to the front to match Zoocasa's
+  // slug convention.  Google Places returns "1628 Store St #900" but Zoocasa
+  // expects "900-1628-store-st".
+  let unit: string | null = null;
+  const trailingUnit = street.match(/[\s,]+(?:#|unit\s*|suite\s*|apt\s*)(\d+[A-Z]?)\s*$/i);
+  if (trailingUnit) {
+    unit = trailingUnit[1];
+    street = street.slice(0, trailingUnit.index!).trim();
+  }
+
+  let slug = street.toLowerCase();
   for (const [pat, repl] of SLUG_ABBREVS) {
     slug = slug.replace(pat, repl);
   }
-  return slug
+  slug = slug
     .replace(/[#,\.]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+
+  if (unit) {
+    slug = `${unit.toLowerCase()}-${slug}`;
+  }
+
+  return slug;
 }
 
 export function buildSearchUrl(
