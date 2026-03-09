@@ -92,7 +92,11 @@ export async function enrichListing(
     preOffer: offer ? offerToPrecomputed(offer) : undefined,
     preAssessment: assessment?.found ? assessment : undefined,
     assessmentNote: assessment?.found
-      ? `${assessment.assessmentYear}: ${fmt(assessment.totalValue)}`
+      ? `${assessment.assessmentYear}: ${fmt(assessment.totalValue)}${
+          assessment.source === "tax_reverse" ? " (est. from taxes)"
+          : assessment.source === "area_median" ? " (area median)"
+          : ""
+        }`
       : undefined,
   };
 }

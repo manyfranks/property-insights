@@ -24,6 +24,7 @@ export function lookupONSync(address: string, unit?: string, city?: string, taxe
         buildingValue: cached.building,
         assessmentYear: "2016",
         found: true,
+        source: "cache",
       };
     }
   }
@@ -43,6 +44,7 @@ export function lookupONSync(address: string, unit?: string, city?: string, taxe
             buildingValue: 0,
             assessmentYear: "2016",
             found: true,
+            source: "tax_reverse",
           };
         }
       }

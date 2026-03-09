@@ -243,6 +243,7 @@ export async function lookupBC(
         buildingValue: cached.building,
         assessmentYear: "2026",
         found: true,
+        source: "cache" as const,
       };
     }
   }
@@ -269,6 +270,7 @@ export async function lookupBC(
       buildingValue: result.building,
       assessmentYear: "2026",
       found: true,
+      source: "government" as const,
     };
   } catch {
     return null;
@@ -297,6 +299,7 @@ export async function lookupBCWithScrape(
         buildingValue: cached.building,
         assessmentYear: "2026",
         found: true,
+        source: "cache" as const,
       };
     }
   }
@@ -315,6 +318,7 @@ export async function lookupBCWithScrape(
     buildingValue: values.building,
     assessmentYear: "2026",
     found: true,
+    source: "government" as const,
   };
 }
 
@@ -335,6 +339,7 @@ export function lookupBCSync(address: string, unit?: string): Assessment | null 
         buildingValue: cached.building,
         assessmentYear: "2026",
         found: true,
+        source: "cache" as const,
       };
     }
   }

@@ -343,23 +343,44 @@ export default async function PropertyPage({
                 <span className="text-muted">Total Value</span>
                 <span className="font-mono font-medium">{fmt(assessment.totalValue)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Land</span>
-                <span className="font-mono">{fmt(assessment.landValue)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Building</span>
-                <span className="font-mono">{fmt(assessment.buildingValue)}</span>
-              </div>
+              {assessment.landValue > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted">Land</span>
+                  <span className="font-mono">{fmt(assessment.landValue)}</span>
+                </div>
+              )}
+              {assessment.buildingValue > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted">Building</span>
+                  <span className="font-mono">{fmt(assessment.buildingValue)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted">Year</span>
                 <span>{assessment.assessmentYear}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Source</span>
+                <span className="text-xs">
+                  {assessment.source === "government" && "Government"}
+                  {assessment.source === "cache" && "Government (cached)"}
+                  {assessment.source === "tax_reverse" && "Estimated from taxes"}
+                  {assessment.source === "area_median" && "Area median"}
+                  {!assessment.source && "Government"}
+                </span>
               </div>
               {offer && (
                 <div className="flex justify-between pt-1 border-t border-border">
                   <span className="text-muted">List/Assessed</span>
                   <span className="font-mono font-medium">{offer.listToAssessedRatio.toFixed(2)}x</span>
                 </div>
+              )}
+              {(assessment.source === "tax_reverse" || assessment.source === "area_median") && (
+                <p className="text-xs text-muted/70 pt-1">
+                  {assessment.source === "tax_reverse"
+                    ? "Estimated from listed property taxes and municipal tax rates. Not a government-verified assessment."
+                    : "Based on StatCan city-level median, not property-specific. Treat as approximate."}
+                </p>
               )}
             </div>
           ) : (

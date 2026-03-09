@@ -40,12 +40,19 @@ export function deterministicNarrative(context: {
   let assessContext = "";
   if (assessment && assessment.found && offer?.anchorType === "assessment") {
     const ratio = listing.price / assessment.totalValue;
+    const sourceQualifier = assessment.source === "tax_reverse"
+      ? "estimated" : assessment.source === "area_median" ? "area median" : "assessed";
     if (ratio >= 1.15) {
-      assessContext = ` Listed ${((ratio - 1) * 100).toFixed(0)}% above the ${assessment.assessmentYear} assessed value of ${fmt(assessment.totalValue)}.`;
+      assessContext = ` Listed ${((ratio - 1) * 100).toFixed(0)}% above the ${assessment.assessmentYear} ${sourceQualifier} value of ${fmt(assessment.totalValue)}.`;
     } else if (ratio >= 1.05) {
-      assessContext = ` Listed ${((ratio - 1) * 100).toFixed(0)}% above the ${assessment.assessmentYear} assessment — the gap doesn't create leverage.`;
+      assessContext = ` Listed ${((ratio - 1) * 100).toFixed(0)}% above the ${assessment.assessmentYear} ${sourceQualifier} value — the gap doesn't create leverage.`;
     } else if (ratio < 0.96) {
-      assessContext = ` Listed below the ${assessment.assessmentYear} assessed value of ${fmt(assessment.totalValue)} — unusual, but no language signals to suggest urgency.`;
+      assessContext = ` Listed below the ${assessment.assessmentYear} ${sourceQualifier} value of ${fmt(assessment.totalValue)} — unusual, but no language signals to suggest urgency.`;
+    }
+    if (assessment.source === "tax_reverse") {
+      assessContext += " (Assessment estimated from property taxes — treat as approximate.)";
+    } else if (assessment.source === "area_median") {
+      assessContext += " (City-level median, not property-specific.)";
     }
   }
 
@@ -99,12 +106,24 @@ export async function analyzeAndNarrate(context: {
     if (assessment && assessment.found) {
       const ratio = listing.price / assessment.totalValue;
       const hasLandSplit = assessment.landValue > 0 && assessment.buildingValue > 0;
-      assessmentBlock = `Assessment (${assessment.assessmentYear}): ${fmt(assessment.totalValue)}`;
+      const sourceLabel = assessment.source === "tax_reverse"
+        ? "Estimated from taxes"
+        : assessment.source === "area_median"
+          ? "City-level area median (StatCan)"
+          : "Government";
+      assessmentBlock = `Assessment (${assessment.assessmentYear}, ${sourceLabel}): ${fmt(assessment.totalValue)}`;
       if (hasLandSplit) {
         const landPct = ((assessment.landValue / assessment.totalValue) * 100).toFixed(0);
         assessmentBlock += ` (land ${fmt(assessment.landValue)} [${landPct}%], building ${fmt(assessment.buildingValue)})`;
       }
       assessmentBlock += `\nList-to-assessed ratio: ${ratio.toFixed(3)}x`;
+      if (assessment.source === "tax_reverse") {
+        assessmentBlock += `\nNOTE: This assessment is reverse-engineered from listed property taxes using municipal rates. It is an estimate, NOT a verified government figure. Treat with lower confidence.`;
+      } else if (assessment.source === "area_median") {
+        assessmentBlock += `\nNOTE: This is a city-level median from StatCan, NOT property-specific. It tells you roughly what properties in this city assess at, but says nothing about this specific property. Treat as approximate.`;
+      } else if (assessment.assessmentYear === "2016") {
+        assessmentBlock += `\nNOTE: Ontario MPAC assessments are frozen at 2016 Current Value Assessment. Market values have diverged significantly since then.`;
+      }
       if (hasLandSplit) {
         assessmentBlock += `\nLand share: ${((assessment.landValue / assessment.totalValue) * 100).toFixed(0)}% — ${assessment.landValue > assessment.buildingValue ? "land-heavy valuation, structure has limited value" : "building carries meaningful value"}`;
       }

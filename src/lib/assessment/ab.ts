@@ -75,6 +75,7 @@ export function lookupABSync(address: string, unit?: string): Assessment | null 
         buildingValue: cached.building,
         assessmentYear: "2025",
         found: true,
+        source: "cache" as const,
       };
     }
   }
@@ -157,6 +158,7 @@ async function queryCalgary(where: string): Promise<Assessment | null> {
     buildingValue: 0,
     assessmentYear: data[0].roll_year || "2026",
     found: true,
+    source: "government" as const,
   };
 }
 
@@ -238,6 +240,7 @@ async function queryEdmonton(
     buildingValue: 0,
     assessmentYear: "2026",
     found: true,
+    source: "government" as const,
   };
 }
 
@@ -283,6 +286,7 @@ async function lookupLethbridgeArcGIS(
       buildingValue: 0,
       assessmentYear: "2026",
       found: true,
+      source: "government" as const,
     };
   } catch {
     return null;
