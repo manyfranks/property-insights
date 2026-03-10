@@ -12,7 +12,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { searchListings, fetchDetail, checkFreshness } from "@/lib/zoocasa";
+import { searchListings, fetchDetail, checkFreshness, fetchSoldListings, ZoocasaSoldRaw } from "@/lib/zoocasa";
 import { getAllListings, writeAllListings, purgeStaleSlugKeys } from "@/lib/kv/listings";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { slugify } from "@/lib/utils";
@@ -232,6 +232,20 @@ export async function GET(request: Request) {
     }
 
     // -----------------------------------------------------------------------
+    // Step 1.5: Fetch sold pools per city (for comparables)
+    // -----------------------------------------------------------------------
+    const soldPools = new Map<string, ZoocasaSoldRaw[]>();
+    for (const cfg of CITIES) {
+      try {
+        const pool = await fetchSoldListings(cfg.city, cfg.province);
+        soldPools.set(`${cfg.city.toLowerCase()}|${cfg.province.toLowerCase()}`, pool);
+        log.push(`Sold pool ${cfg.city}: ${pool.length} listings`);
+      } catch {
+        log.push(`Sold pool ${cfg.city}: fetch failed, skipping comparables`);
+      }
+    }
+
+    // -----------------------------------------------------------------------
     // Step 2: Enrich new listings (no pre-computed data)
     // -----------------------------------------------------------------------
     const enrichStart = Date.now();
@@ -246,15 +260,18 @@ export async function GET(request: Request) {
         // Give unenriched listings a deterministic narrative
         for (let j = i; j < allListings.length; j++) {
           if (!allListings[j].preNarrative) {
-            allListings[j] = await enrichListing(allListings[j], { skipLlm: true });
+            const pool = soldPools.get(`${allListings[j].city.toLowerCase()}|${allListings[j].province.toLowerCase()}`);
+            allListings[j] = await enrichListing(allListings[j], { skipLlm: true, soldPool: pool });
             enriched++;
           }
         }
         break;
       }
 
+      const pool = soldPools.get(`${allListings[i].city.toLowerCase()}|${allListings[i].province.toLowerCase()}`);
+
       try {
-        allListings[i] = await enrichListing(allListings[i]);
+        allListings[i] = await enrichListing(allListings[i], { soldPool: pool });
         enriched++;
         // Rate limit LLM calls
         if (allListings[i].preTier !== "WATCH") {
@@ -263,7 +280,7 @@ export async function GET(request: Request) {
       } catch (err) {
         log.push(`Enrich failed for ${allListings[i].address}: ${err}`);
         // Fall back to deterministic
-        allListings[i] = await enrichListing(allListings[i], { skipLlm: true });
+        allListings[i] = await enrichListing(allListings[i], { skipLlm: true, soldPool: pool });
         enriched++;
       }
     }

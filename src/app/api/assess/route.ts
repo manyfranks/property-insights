@@ -161,10 +161,21 @@ export async function POST(req: Request) {
 
   const listing = detail.listing;
 
-  // Enrich with scoring, offer model, and LLM narrative
+  // Fetch sold pool for comparables
+  let soldPool: import("@/lib/zoocasa").ZoocasaSoldRaw[] = [];
+  try {
+    log("sold pool fetch");
+    const { fetchSoldListings } = await import("@/lib/zoocasa");
+    soldPool = await fetchSoldListings(listing.city, listing.province);
+    log("sold pool done", `${soldPool.length} listings`);
+  } catch (err) {
+    log("sold pool failed", err instanceof Error ? err.message : String(err));
+  }
+
+  // Enrich with scoring, offer model, comparables, and LLM narrative
   // Always use LLM for on-demand user requests (even WATCH tier)
   log("enrich start");
-  const enriched = await enrichListing(listing, { forceLlm: true });
+  const enriched = await enrichListing(listing, { forceLlm: true, soldPool });
   log("enrich done", `tier=${enriched.preTier} score=${enriched.preScore} offer=${enriched.preOffer?.final_offer}`);
 
   // Save to KV

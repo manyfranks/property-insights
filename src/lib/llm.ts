@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { Listing, Assessment, OfferResult } from "./types";
+import { Listing, Assessment, OfferResult, ComparableResult } from "./types";
 import { fmt } from "./utils";
 
 const openrouter = new OpenAI({
@@ -26,8 +26,9 @@ export function deterministicNarrative(context: {
   assessment: Assessment | null;
   offer: OfferResult | null;
   signals: string[];
+  comparables?: ComparableResult;
 }): string {
-  const { listing, assessment, offer, signals } = context;
+  const { listing, assessment, offer, signals, comparables } = context;
   const addr = listing.address;
 
   // Assess description quality
@@ -65,11 +66,69 @@ export function deterministicNarrative(context: {
   if (sqft > 0 && sqft < 1200 && beds >= 3) limitations.push("tight at " + sqft + " sqft for " + beds + " bedrooms");
   const limitText = limitations.length > 0 ? " " + limitations.join("; ") + "." : "";
 
-  if (signals.length === 0) {
-    return `${addr} — ${descQuality} The seller is in no rush.${assessContext}${limitText} WATCH only; check back if the description changes to include price reduction language or DOM exceeds 90.`;
+  // Comparable context
+  let compContext = "";
+  if (comparables && comparables.confidence !== "none" && comparables.medianSoldToList) {
+    const pct = (comparables.medianSoldToList * 100).toFixed(1);
+    compContext = ` ${comparables.matchedCount} similar properties sold recently at a median ${pct}% of list.`;
+    if (comparables.impliedValue) {
+      compContext += ` Comparable-implied value: ${fmt(comparables.impliedValue)}.`;
+    }
+    if (comparables.dataGaps.length > 0) {
+      compContext += ` (${comparables.dataGaps[0]}.)`;
+    }
   }
 
-  return `${addr} — minor signals (${signals.join(", ")}) but insufficient for a strong offer position.${assessContext}${limitText} Monitor for price reductions or increased market time.`;
+  if (signals.length === 0) {
+    return `${addr} — ${descQuality} The seller is in no rush.${assessContext}${compContext}${limitText} WATCH only; check back if the description changes to include price reduction language or DOM exceeds 90.`;
+  }
+
+  return `${addr} — minor signals (${signals.join(", ")}) but insufficient for a strong offer position.${assessContext}${compContext}${limitText} Monitor for price reductions or increased market time.`;
+}
+
+// ---------------------------------------------------------------------------
+// Comparables block builder (for LLM prompt)
+// ---------------------------------------------------------------------------
+
+function buildComparablesBlock(comparables?: ComparableResult): string {
+  if (!comparables || comparables.confidence === "none") {
+    return "Comparable sales: No usable comparables found for this listing.";
+  }
+
+  const lines: string[] = [];
+  lines.push(`Comparable sales (${comparables.confidence} confidence):`);
+  lines.push(`  ${comparables.matchedCount} similar properties sold within 60 days`);
+
+  if (comparables.medianSoldToList) {
+    lines.push(`  Median sold-to-list ratio: ${(comparables.medianSoldToList * 100).toFixed(1)}%`);
+  }
+  if (comparables.medianPricePerSqft) {
+    lines.push(`  Median $/sqft sold: $${comparables.medianPricePerSqft}`);
+  }
+  if (comparables.impliedValue) {
+    lines.push(`  Comparable-implied value: ${fmt(comparables.impliedValue)}`);
+  }
+  if (comparables.compValidation) {
+    const labels = {
+      confirmed: "Comps align with our offer range",
+      aggressive: "Our offer is below comp-implied range",
+      conservative: "Comps suggest room for deeper discount",
+    };
+    lines.push(`  Validation: ${labels[comparables.compValidation]}`);
+  }
+  if (comparables.dataGaps.length > 0) {
+    lines.push(`  Data gaps: ${comparables.dataGaps.join(", ")}`);
+  }
+
+  // Top comps
+  for (const c of comparables.comparables.slice(0, 3)) {
+    const sqftStr = c.sqft ? `${c.sqft}sqft` : "?sqft";
+    lines.push(`  - ${c.address}: ${c.bedrooms}bd/${sqftStr}, sold ${(c.soldToListRatio * 100).toFixed(1)}% of list (${fmt(c.soldPrice)}), ${c.distanceKm}km away${c.eraBucket ? `, ${c.eraBucket}` : ""}`);
+  }
+
+  lines.push("NOTE: Reference comparable sales to support or contextualize the offer. Communicate confidence level honestly — do not overstate thin comp evidence.");
+
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -88,12 +147,13 @@ export async function analyzeAndNarrate(context: {
   assessment: Assessment | null;
   offer: OfferResult | null;
   signals: string[];
+  comparables?: ComparableResult;
 }): Promise<LLMAnalysis> {
   if (!process.env.OPENROUTER_API_KEY) {
     return { signals: [], confidence: 0, narrative: "" };
   }
 
-  const { listing, assessment, offer, signals } = context;
+  const { listing, assessment, offer, signals, comparables } = context;
   const desc = listing.description || "";
 
   if (!desc.trim() && !offer) {
@@ -205,6 +265,7 @@ Profile: ${profile}
 Price per sqft: ${priceSqft}
 ${assessmentBlock}
 ${offerBlock}
+${buildComparablesBlock(comparables)}
 Detected signals: ${signals.length > 0 ? signals.join(", ") : "none"}
 
 Description:

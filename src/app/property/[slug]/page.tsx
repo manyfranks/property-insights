@@ -388,6 +388,90 @@ export default async function PropertyPage({
           )}
         </div>
 
+        {/* Comparables */}
+        {listing.preComparables && listing.preComparables.confidence !== "none" && (
+          <div className="border border-border rounded-xl p-4 bg-white">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs uppercase tracking-widest text-muted">Comparables</div>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                listing.preComparables.confidence === "high"
+                  ? "bg-emerald-100 text-emerald-700"
+                  : listing.preComparables.confidence === "medium"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-zinc-100 text-zinc-500"
+              }`}>
+                {listing.preComparables.confidence === "high"
+                  ? "Anchored by comps"
+                  : listing.preComparables.confidence === "medium"
+                    ? "Supported by similar sales"
+                    : "Limited data"}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+              {listing.preComparables.medianSoldToList && (
+                <div>
+                  <div className="text-muted text-xs">Median sold/list</div>
+                  <div className="font-mono font-medium">{(listing.preComparables.medianSoldToList * 100).toFixed(1)}%</div>
+                </div>
+              )}
+              {listing.preComparables.medianPricePerSqft && (
+                <div>
+                  <div className="text-muted text-xs">Median $/sqft</div>
+                  <div className="font-mono font-medium">${listing.preComparables.medianPricePerSqft}</div>
+                </div>
+              )}
+              {listing.preComparables.impliedValue && (
+                <div>
+                  <div className="text-muted text-xs">Implied value</div>
+                  <div className="font-mono font-medium">{fmt(listing.preComparables.impliedValue)}</div>
+                </div>
+              )}
+              {listing.preComparables.impliedValue && (
+                <div>
+                  <div className="text-muted text-xs">vs list</div>
+                  <div className="font-mono font-medium">{((listing.preComparables.impliedValue / listing.price - 1) * 100).toFixed(1)}%</div>
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              {listing.preComparables.comparables.map((c, i) => (
+                <div key={i} className="border border-border/50 rounded-lg p-2.5 text-xs">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="font-medium">{c.address}</span>
+                    <span className="text-muted ml-2 whitespace-nowrap">{c.distanceKm}km</span>
+                  </div>
+                  <div className="flex justify-between text-muted">
+                    <span>{c.bedrooms}bd{c.sqft ? ` · ${c.sqft}sqft` : ""}{c.eraBucket ? ` · ${c.eraBucket}` : ""}</span>
+                    <span className="font-mono">{(c.soldToListRatio * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-muted">List {fmt(c.listPrice)}</span>
+                    <span className="font-mono font-medium">Sold {fmt(c.soldPrice)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {listing.preComparables.compValidation && (
+              <div className={`text-xs mt-2 px-2 py-1 rounded ${
+                listing.preComparables.compValidation === "confirmed"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : listing.preComparables.compValidation === "conservative"
+                    ? "bg-blue-50 text-blue-700"
+                    : "bg-amber-50 text-amber-700"
+              }`}>
+                {listing.preComparables.compValidation === "confirmed" && "Comps align with offer range"}
+                {listing.preComparables.compValidation === "conservative" && "Comps suggest room for deeper discount"}
+                {listing.preComparables.compValidation === "aggressive" && "Offer is below comp-implied range"}
+              </div>
+            )}
+            {listing.preComparables.dataGaps.length > 0 && (
+              <p className="text-xs text-muted/60 mt-2">
+                {listing.preComparables.dataGaps.join(" · ")}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Market Activity */}
         <div className="border border-border rounded-xl p-4 bg-white">
           <div className="text-xs uppercase tracking-widest text-muted mb-3">Market Activity</div>
