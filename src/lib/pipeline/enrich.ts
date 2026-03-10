@@ -39,21 +39,27 @@ export function offerToPrecomputed(offer: OfferResult): PrecomputedOffer {
  */
 export async function enrichListing(
   listing: Listing,
-  options?: { skipLlm?: boolean; forceLlm?: boolean; soldPool?: ZoocasaSoldRaw[] }
+  options?: { skipLlm?: boolean; forceLlm?: boolean; soldPool?: ZoocasaSoldRaw[]; syncAssessmentOnly?: boolean }
 ): Promise<Listing> {
   const t0 = Date.now();
   const log = (step: string, extra?: string) =>
     console.log(`  [enrich] ${step} (${Date.now() - t0}ms)${extra ? " — " + extra : ""}`);
 
-  // Assessment: try async (live lookup), fall back to sync (cache only)
+  // Assessment: sync-only (cache + tax reverse, instant) or async (live scrape for BC)
   let assessment: Assessment | null = null;
-  try {
-    log("assessment lookup", `${listing.province} ${listing.address}`);
-    assessment = await lookupAssessment(listing.address, listing.province, listing.city, listing.unit, listing.taxes);
-    log("assessment done", assessment?.found ? `${fmt(assessment.totalValue)}` : "not found");
-  } catch (err) {
-    log("assessment error, trying sync", err instanceof Error ? err.message : String(err));
+  if (options?.syncAssessmentOnly) {
+    log("assessment sync", `${listing.province} ${listing.address}`);
     assessment = lookupAssessmentSync(listing.address, listing.province, listing.unit, listing.city, listing.taxes);
+    log("assessment done", assessment?.found ? `${fmt(assessment.totalValue)}` : "not found");
+  } else {
+    try {
+      log("assessment lookup", `${listing.province} ${listing.address}`);
+      assessment = await lookupAssessment(listing.address, listing.province, listing.city, listing.unit, listing.taxes);
+      log("assessment done", assessment?.found ? `${fmt(assessment.totalValue)}` : "not found");
+    } catch (err) {
+      log("assessment error, trying sync", err instanceof Error ? err.message : String(err));
+      assessment = lookupAssessmentSync(listing.address, listing.province, listing.unit, listing.city, listing.taxes);
+    }
   }
 
   // Score + offer

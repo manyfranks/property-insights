@@ -355,7 +355,7 @@ export async function GET(request: Request) {
           const jNeedsEnrich = !jListing.preNarrative || (jListing.source === "user" && isStale(jListing));
           if (jNeedsEnrich) {
             const pool = soldPools.get(`${jListing.city.toLowerCase()}|${jListing.province.toLowerCase()}`);
-            allListings[j] = await enrichListing(stripPrecomputed(jListing), { skipLlm: true, soldPool: pool });
+            allListings[j] = await enrichListing(stripPrecomputed(jListing), { skipLlm: true, soldPool: pool, syncAssessmentOnly: true });
             allListings[j].source = jListing.source || "cron";
             allListings[j].enrichedAt = new Date().toISOString();
             enrichedCount++;
@@ -371,6 +371,7 @@ export async function GET(request: Request) {
       try {
         allListings[i] = await enrichListing(listingToEnrich, {
           soldPool: pool,
+          syncAssessmentOnly: true,
           ...(useForceLlm ? { forceLlm: true } : {}),
         });
         allListings[i].source = listing.source || "cron";
@@ -382,7 +383,7 @@ export async function GET(request: Request) {
         }
       } catch (err) {
         log.push(`Enrich failed for ${listing.address}: ${err}`);
-        allListings[i] = await enrichListing(listingToEnrich, { skipLlm: true, soldPool: pool });
+        allListings[i] = await enrichListing(listingToEnrich, { skipLlm: true, soldPool: pool, syncAssessmentOnly: true });
         allListings[i].source = listing.source || "cron";
         allListings[i].enrichedAt = new Date().toISOString();
         enrichedCount++;
