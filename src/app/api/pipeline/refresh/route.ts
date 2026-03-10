@@ -2,13 +2,12 @@
  * /api/pipeline/refresh
  *
  * Daily cron job that:
- * 1. Refreshes listings from Zoocasa for each configured city
- * 2. Checks existing listings for freshness (dead = sold/delisted)
- * 3. Backfills dead listing slots with new candidates
- * 4. Carries forward user-requested listings (source: "user") with freshness check
- * 5. Fetches details and enriches new listings
- * 6. Re-enriches stale user listings (>7 days old)
- * 7. Writes enriched data to KV
+ * 1. Searches all cities in parallel
+ * 2. Matches existing KV listings, batches freshness checks globally
+ * 3. Backfills dead slots with new candidates
+ * 4. Carries forward user-requested listings (source: "user")
+ * 5. Enriches new + re-enriches stale user listings
+ * 6. Writes enriched data to KV
  *
  * Vercel Cron: daily 2pm UTC (0 14 * * *)
  */
@@ -50,7 +49,6 @@ const PRE_FIELDS: (keyof Listing)[] = [
   "preAssessment", "preComparables",
 ];
 
-// User listings older than this get re-enriched with fresh data
 const STALE_DAYS = 7;
 
 function stripPrecomputed(listing: Listing): Listing {
@@ -66,7 +64,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function isStale(listing: Listing): boolean {
-  if (!listing.enrichedAt) return true; // No timestamp = legacy, re-enrich
+  if (!listing.enrichedAt) return true;
   const age = Date.now() - new Date(listing.enrichedAt).getTime();
   return age > STALE_DAYS * 24 * 60 * 60 * 1000;
 }
@@ -82,6 +80,7 @@ export async function GET(request: Request) {
   }
 
   const startTime = Date.now();
+  const elapsed = () => Date.now() - startTime;
   const log: string[] = [];
   const summary: { city: string; province: string; existing: number; new: number; total: number }[] = [];
 
@@ -94,61 +93,60 @@ export async function GET(request: Request) {
       if (l.mlsNumber) existingByMls.set(l.mlsNumber, l);
       existingByAddress.set(l.address.toLowerCase(), l);
     }
-    log.push(`Loaded ${existingListings.length} existing listings`);
+    log.push(`Loaded ${existingListings.length} existing listings (${elapsed()}ms)`);
 
     // -----------------------------------------------------------------------
-    // Step 1: Search + detail fetch per city
+    // Phase 1: Search ALL cities in parallel
     // -----------------------------------------------------------------------
-    const allListings: Listing[] = [];
-    // Track all addresses claimed by CITIES loop (to avoid double-counting user listings)
-    const citiesClaimedAddresses = new Set<string>();
-
-    for (const cfg of CITIES) {
-      const cityStart = Date.now();
-
-      // Search: default + oldest-first
-      let candidates: Listing[] = [];
-      try {
+    type CitySearchResult = { cfg: CityConfig; candidates: Listing[] };
+    const searchResults = await Promise.allSettled(
+      CITIES.map(async (cfg): Promise<CitySearchResult> => {
         const [defaultResults, oldestResults] = await Promise.all([
           searchListings(cfg.city, cfg.province, {
-            type: "house",
-            beds: 3,
-            minPrice: cfg.minPrice,
-            maxPrice: cfg.maxPrice,
+            type: "house", beds: 3, minPrice: cfg.minPrice, maxPrice: cfg.maxPrice,
           }),
           searchListings(cfg.city, cfg.province, {
-            type: "house",
-            beds: 3,
-            minPrice: cfg.minPrice,
-            maxPrice: cfg.maxPrice,
-            sortBy: "days-desc",
+            type: "house", beds: 3, minPrice: cfg.minPrice, maxPrice: cfg.maxPrice, sortBy: "days-desc",
           }),
         ]);
-
         const seen = new Set<string>();
+        const candidates: Listing[] = [];
         for (const l of [...defaultResults, ...oldestResults]) {
           const key = l.mlsNumber || l.address;
-          if (!seen.has(key)) {
-            seen.add(key);
-            candidates.push(l);
-          }
+          if (!seen.has(key)) { seen.add(key); candidates.push(l); }
         }
-      } catch (err) {
-        log.push(`${cfg.city}: search failed — ${err}`);
-        summary.push({ city: cfg.city, province: cfg.province, existing: 0, new: 0, total: 0 });
+        return { cfg, candidates };
+      })
+    );
+
+    log.push(`Phase 1 search done (${elapsed()}ms)`);
+
+    // -----------------------------------------------------------------------
+    // Phase 2: Match existing, collect freshness queue
+    // -----------------------------------------------------------------------
+    // Per-city buckets for kept and needsDetail
+    interface CityBucket {
+      cfg: CityConfig;
+      kept: Listing[];
+      needsDetail: Listing[];
+    }
+    const cityBuckets: CityBucket[] = [];
+    // Global freshness queue: all kept listings across all cities
+    const freshnessQueue: { listing: Listing; cityIdx: number }[] = [];
+
+    for (const result of searchResults) {
+      if (result.status === "rejected") {
+        log.push(`Search failed: ${result.reason}`);
         continue;
       }
-
+      const { cfg, candidates } = result.value;
       if (candidates.length === 0) {
         log.push(`${cfg.city}: no candidates`);
         summary.push({ city: cfg.city, province: cfg.province, existing: 0, new: 0, total: 0 });
         continue;
       }
 
-      // Sort by DOM desc, take top candidates
       candidates.sort((a, b) => b.dom - a.dom);
-
-      // Separate: existing (already in KV with enrichment) vs new (need detail fetch)
       const kept: Listing[] = [];
       const needsDetail: Listing[] = [];
 
@@ -158,67 +156,87 @@ export async function GET(request: Request) {
         const existing = existingMls || existingAddr;
 
         if (existing && existing.preNarrative) {
-          // Update DOM (it changes daily) but keep pre-computed data
           kept.push({ ...existing, dom: candidate.dom, source: "cron" });
         } else {
           needsDetail.push(candidate);
         }
       }
 
-      // Freshness check: verify kept listings are still live on Zoocasa
-      if (kept.length > 0) {
-        const freshnessStart = Date.now();
-        const freshnessQueue = [...kept];
-        const deadAddresses = new Set<string>();
+      const cityIdx = cityBuckets.length;
+      cityBuckets.push({ cfg, kept, needsDetail });
 
-        async function freshnessWorker() {
-          while (freshnessQueue.length > 0) {
-            const item = freshnessQueue.shift();
-            if (!item) break;
-            const slug = item.url?.replace("https://www.zoocasa.com", "").split("/").pop() || "";
-            const status = await checkFreshness(item.address, item.city, item.province, slug || undefined);
-            if (status === "dead") deadAddresses.add(item.address);
-          }
-        }
+      // Add all kept listings to global freshness queue
+      for (const l of kept) {
+        freshnessQueue.push({ listing: l, cityIdx });
+      }
+    }
 
-        const workers = Array.from({ length: Math.min(6, kept.length) }, () => freshnessWorker());
-        await Promise.all(workers);
+    log.push(`Phase 2 match done: ${freshnessQueue.length} kept need freshness, ${cityBuckets.reduce((s, b) => s + b.needsDetail.length, 0)} need detail (${elapsed()}ms)`);
 
-        if (deadAddresses.size > 0) {
-          const before = kept.length;
-          const alive = kept.filter((l) => !deadAddresses.has(l.address));
-          kept.length = 0;
-          kept.push(...alive);
-          log.push(`${cfg.city}: pruned ${before - kept.length} dead listings in ${Date.now() - freshnessStart}ms`);
+    // -----------------------------------------------------------------------
+    // Phase 3: Batch freshness check ALL kept listings (20 parallel workers)
+    // -----------------------------------------------------------------------
+    const deadAddresses = new Set<string>();
+    if (freshnessQueue.length > 0) {
+      const queue = [...freshnessQueue];
+      async function freshnessWorker() {
+        while (queue.length > 0) {
+          const item = queue.shift();
+          if (!item) break;
+          const l = item.listing;
+          const slug = l.url?.replace("https://www.zoocasa.com", "").split("/").pop() || "";
+          const status = await checkFreshness(l.address, l.city, l.province, slug || undefined);
+          if (status === "dead") deadAddresses.add(l.address);
         }
       }
+      const workerCount = Math.min(20, freshnessQueue.length);
+      await Promise.all(Array.from({ length: workerCount }, () => freshnessWorker()));
 
-      // How many new ones do we need to fill the target?
-      const needed = Math.max(0, cfg.target - kept.length);
-      const toFetch = needsDetail.slice(0, Math.min(needed + 5, 30)); // fetch a few extra in case some fail
-
-      // Fetch details for new listings
-      const detailed: Listing[] = [];
-      for (const candidate of toFetch) {
-        if (kept.length + detailed.length >= cfg.target) break;
-
-        try {
-          const urlPath = candidate.url?.replace("https://www.zoocasa.com", "") || "";
-          const slug = urlPath.split("/").pop() || "";
-          if (!slug) continue;
-
-          const detail = await fetchDetail(candidate.address, cfg.city, cfg.province, slug);
-          const listing = stripPrecomputed(detail.listing);
-
-          if (!listing.url && candidate.url) listing.url = candidate.url;
-          if (!listing.mlsNumber && candidate.mlsNumber) listing.mlsNumber = candidate.mlsNumber;
-          if (!listing.address && candidate.address) listing.address = candidate.address;
-
-          detailed.push(listing);
-          await sleep(1500);
-        } catch {
-          // Skip failed detail fetches
+      if (deadAddresses.size > 0) {
+        for (const bucket of cityBuckets) {
+          bucket.kept = bucket.kept.filter((l) => !deadAddresses.has(l.address));
         }
+      }
+    }
+
+    log.push(`Phase 3 freshness done: ${deadAddresses.size} dead pruned (${elapsed()}ms)`);
+
+    // -----------------------------------------------------------------------
+    // Phase 4: Detail fetches + assembly per city
+    // -----------------------------------------------------------------------
+    const allListings: Listing[] = [];
+    const citiesClaimedAddresses = new Set<string>();
+
+    for (const bucket of cityBuckets) {
+      const { cfg, kept, needsDetail } = bucket;
+
+      // How many new ones to fill target?
+      const needed = Math.max(0, cfg.target - kept.length);
+      const toFetch = needsDetail.slice(0, Math.min(needed + 5, 30));
+
+      const detailed: Listing[] = [];
+
+      // Skip detail fetches if time is very tight
+      if (elapsed() < 180_000) {
+        for (const candidate of toFetch) {
+          if (kept.length + detailed.length >= cfg.target) break;
+          try {
+            const urlPath = candidate.url?.replace("https://www.zoocasa.com", "") || "";
+            const slug = urlPath.split("/").pop() || "";
+            if (!slug) continue;
+            const detail = await fetchDetail(candidate.address, cfg.city, cfg.province, slug);
+            const listing = stripPrecomputed(detail.listing);
+            if (!listing.url && candidate.url) listing.url = candidate.url;
+            if (!listing.mlsNumber && candidate.mlsNumber) listing.mlsNumber = candidate.mlsNumber;
+            if (!listing.address && candidate.address) listing.address = candidate.address;
+            detailed.push(listing);
+            await sleep(500);
+          } catch {
+            // Skip failed detail fetches
+          }
+        }
+      } else {
+        log.push(`${cfg.city}: skipping detail fetches — time budget (${elapsed()}ms)`);
       }
 
       // Filter: prefer 1500+ sqft, relax if needed
@@ -230,12 +248,10 @@ export async function GET(request: Request) {
         filtered = detailed;
       }
 
-      // Combine kept + new, sort by DOM, take target
       const combined = [...kept, ...filtered];
       combined.sort((a, b) => b.dom - a.dom);
       const picked = combined.slice(0, cfg.target);
 
-      // Track claimed addresses
       for (const p of picked) {
         citiesClaimedAddresses.add(p.address.toLowerCase());
       }
@@ -243,59 +259,52 @@ export async function GET(request: Request) {
       allListings.push(...picked);
       const newCount = picked.filter(p => !p.preNarrative).length;
       summary.push({
-        city: cfg.city,
-        province: cfg.province,
-        existing: picked.length - newCount,
-        new: newCount,
-        total: picked.length,
+        city: cfg.city, province: cfg.province,
+        existing: picked.length - newCount, new: newCount, total: picked.length,
       });
-      log.push(`${cfg.city}: ${picked.length} listings (${newCount} new) in ${Date.now() - cityStart}ms`);
+      log.push(`${cfg.city}: ${picked.length} (${newCount} new)`);
     }
 
+    log.push(`Phase 4 detail done: ${allListings.length} CITIES listings (${elapsed()}ms)`);
+
     // -----------------------------------------------------------------------
-    // Step 1.5: Carry forward user-sourced listings
+    // Phase 5: Carry forward user-sourced listings
     // -----------------------------------------------------------------------
     const userListings = existingListings.filter(
       (l) => l.source === "user" && !citiesClaimedAddresses.has(l.address.toLowerCase())
     );
 
     if (userListings.length > 0) {
-      const userStart = Date.now();
-      const freshnessQueue = [...userListings];
-      const deadAddresses = new Set<string>();
+      // Freshness check user listings
+      const userQueue = [...userListings];
+      const userDead = new Set<string>();
 
       async function userFreshnessWorker() {
-        while (freshnessQueue.length > 0) {
-          const item = freshnessQueue.shift();
+        while (userQueue.length > 0) {
+          const item = userQueue.shift();
           if (!item) break;
           const slug = item.url?.replace("https://www.zoocasa.com", "").split("/").pop() || "";
           const status = await checkFreshness(item.address, item.city, item.province, slug || undefined);
-          if (status === "dead") deadAddresses.add(item.address);
+          if (status === "dead") userDead.add(item.address);
         }
       }
 
       const workers = Array.from({ length: Math.min(6, userListings.length) }, () => userFreshnessWorker());
       await Promise.all(workers);
 
-      const alive = userListings.filter((l) => !deadAddresses.has(l.address));
+      const alive = userListings.filter((l) => !userDead.has(l.address));
       allListings.push(...alive);
-
-      log.push(
-        `User listings: ${userListings.length} found, ${deadAddresses.size} dead, ${alive.length} carried forward in ${Date.now() - userStart}ms`
-      );
+      log.push(`User listings: ${userListings.length} found, ${userDead.size} dead, ${alive.length} carried forward (${elapsed()}ms)`);
     } else {
       log.push("User listings: none to carry forward");
     }
 
     // -----------------------------------------------------------------------
-    // Step 1.6: Fetch sold pools per city (for comparables) — parallel
+    // Phase 6: Fetch sold pools (parallel, skip if tight)
     // -----------------------------------------------------------------------
     const soldPools = new Map<string, ZoocasaSoldRaw[]>();
-    const elapsed = Date.now() - startTime;
-    log.push(`Steps 1-1.5 done in ${elapsed}ms`);
 
-    if (elapsed < 200_000) {
-      // Collect unique city|province keys from all listings (CITIES + user)
+    if (elapsed() < 200_000) {
       const allCityKeys = new Set<string>();
       for (const cfg of CITIES) {
         allCityKeys.add(`${cfg.city.toLowerCase()}|${cfg.province.toLowerCase()}`);
@@ -306,7 +315,6 @@ export async function GET(request: Request) {
         }
       }
 
-      // Fetch all sold pools in parallel
       const poolEntries = await Promise.allSettled(
         [...allCityKeys].map(async (key) => {
           const [city, province] = key.split("|");
@@ -318,18 +326,15 @@ export async function GET(request: Request) {
       for (const entry of poolEntries) {
         if (entry.status === "fulfilled") {
           soldPools.set(entry.value.key, entry.value.pool);
-          log.push(`Sold pool ${entry.value.city}: ${entry.value.pool.length} listings`);
-        } else {
-          log.push(`Sold pool fetch failed: ${entry.reason}`);
         }
       }
-      log.push(`Sold pools fetched in ${Date.now() - startTime - elapsed}ms`);
+      log.push(`Sold pools: ${soldPools.size} fetched (${elapsed()}ms)`);
     } else {
-      log.push(`Skipping sold pools — time budget tight (${elapsed}ms elapsed)`);
+      log.push(`Sold pools: skipped — time budget (${elapsed()}ms)`);
     }
 
     // -----------------------------------------------------------------------
-    // Step 2: Enrich new + re-enrich stale listings
+    // Phase 7: Enrich new + re-enrich stale user listings
     // -----------------------------------------------------------------------
     const enrichStart = Date.now();
     let enrichedCount = 0;
@@ -342,10 +347,9 @@ export async function GET(request: Request) {
 
       if (!needsEnrich) continue;
 
-      // Check time budget: leave 40s for batched KV write + purge
-      if (Date.now() - startTime > 240_000) {
-        log.push(`Time budget reached, skipping enrichment for remaining listings`);
-        // Give unenriched listings a deterministic narrative
+      // Check time budget: leave 40s for KV write + purge
+      if (elapsed() > 240_000) {
+        log.push(`Time budget reached at ${elapsed()}ms, deterministic fallback for remaining`);
         for (let j = i; j < allListings.length; j++) {
           const jListing = allListings[j];
           const jNeedsEnrich = !jListing.preNarrative || (jListing.source === "user" && isStale(jListing));
@@ -362,7 +366,6 @@ export async function GET(request: Request) {
 
       const pool = soldPools.get(`${listing.city.toLowerCase()}|${listing.province.toLowerCase()}`);
       const listingToEnrich = isUserStale ? stripPrecomputed(listing) : listing;
-      // User listings always get LLM (they were originally created with forceLlm)
       const useForceLlm = listing.source === "user";
 
       try {
@@ -374,13 +377,11 @@ export async function GET(request: Request) {
         allListings[i].enrichedAt = new Date().toISOString();
         enrichedCount++;
         if (isUserStale) reEnrichedCount++;
-        // Rate limit LLM calls
         if (allListings[i].preTier !== "WATCH" || useForceLlm) {
           await sleep(1500);
         }
       } catch (err) {
         log.push(`Enrich failed for ${listing.address}: ${err}`);
-        // Fall back to deterministic
         allListings[i] = await enrichListing(listingToEnrich, { skipLlm: true, soldPool: pool });
         allListings[i].source = listing.source || "cron";
         allListings[i].enrichedAt = new Date().toISOString();
@@ -388,25 +389,24 @@ export async function GET(request: Request) {
       }
     }
 
-    // Tag source/enrichedAt on legacy listings that predate these fields
+    // Tag legacy listings
     const now = new Date().toISOString();
     for (let i = 0; i < allListings.length; i++) {
       if (!allListings[i].enrichedAt) allListings[i].enrichedAt = now;
       if (!allListings[i].source) allListings[i].source = "cron";
     }
 
-    log.push(`Enriched ${enrichedCount} listings (${reEnrichedCount} user re-enriched) in ${Date.now() - enrichStart}ms`);
+    log.push(`Enriched ${enrichedCount} (${reEnrichedCount} user re-enriched) in ${Date.now() - enrichStart}ms (${elapsed()}ms total)`);
 
     // -----------------------------------------------------------------------
-    // Step 3: Write to KV
+    // Phase 8: Write to KV
     // -----------------------------------------------------------------------
     const writeStart = Date.now();
     const validSlugs = new Set(allListings.map((l) => slugify(l.address)));
     const purged = await purgeStaleSlugKeys(validSlugs);
     const result = await writeAllListings(allListings);
-    log.push(`KV write: ${result.written} listings, ${result.slugs} slugs, ${purged} stale purged in ${Date.now() - writeStart}ms`);
+    log.push(`KV write: ${result.written} listings, ${result.slugs} slugs, ${purged} purged in ${Date.now() - writeStart}ms (${elapsed()}ms total)`);
 
-    const totalTime = Date.now() - startTime;
     const totalListings = allListings.length;
     const byProvince = new Map<string, number>();
     const bySource = { cron: 0, user: 0 };
@@ -419,7 +419,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       totalListings,
-      totalTimeMs: totalTime,
+      totalTimeMs: elapsed(),
       byProvince: Object.fromEntries(byProvince),
       bySource,
       cities: summary,
@@ -431,7 +431,7 @@ export async function GET(request: Request) {
         success: false,
         error: String(err),
         log,
-        totalTimeMs: Date.now() - startTime,
+        totalTimeMs: elapsed(),
       },
       { status: 500 }
     );
