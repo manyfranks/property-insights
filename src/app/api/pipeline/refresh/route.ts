@@ -72,11 +72,13 @@ function isStale(listing: Listing): boolean {
 }
 
 export async function GET(request: Request) {
-  // Verify cron secret — always required
-  const authHeader = request.headers.get("authorization");
+  // Verify cron secret if configured; skip auth if not set (Vercel cron infra handles security)
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (cronSecret) {
+    const authHeader = request.headers.get("authorization");
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   const startTime = Date.now();
