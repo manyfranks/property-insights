@@ -2,11 +2,13 @@
  * /api/pipeline/refresh
  *
  * Daily cron job that:
- * 1. Refreshes listings from Zoocasa for each city
+ * 1. Refreshes listings from Zoocasa for each configured city
  * 2. Checks existing listings for freshness (dead = sold/delisted)
  * 3. Backfills dead listing slots with new candidates
- * 4. Fetches details and enriches new listings
- * 5. Writes enriched data to KV
+ * 4. Carries forward user-requested listings (source: "user") with freshness check
+ * 5. Fetches details and enriches new listings
+ * 6. Re-enriches stale user listings (>7 days old)
+ * 7. Writes enriched data to KV
  *
  * Vercel Cron: daily 2pm UTC (0 14 * * *)
  */
@@ -45,18 +47,28 @@ const CITIES: CityConfig[] = [
 // Fields to strip before re-enrichment
 const PRE_FIELDS: (keyof Listing)[] = [
   "preScore", "preTier", "preSignals", "preNarrative", "preOffer", "assessmentNote",
+  "preAssessment", "preComparables",
 ];
+
+// User listings older than this get re-enriched with fresh data
+const STALE_DAYS = 7;
 
 function stripPrecomputed(listing: Listing): Listing {
   const clean = { ...listing };
   for (const f of PRE_FIELDS) {
-    delete (clean as Record<string, unknown>)[f];
+    delete (clean as unknown as Record<string, unknown>)[f];
   }
   return clean;
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function isStale(listing: Listing): boolean {
+  if (!listing.enrichedAt) return true; // No timestamp = legacy, re-enrich
+  const age = Date.now() - new Date(listing.enrichedAt).getTime();
+  return age > STALE_DAYS * 24 * 60 * 60 * 1000;
 }
 
 export async function GET(request: Request) {
@@ -86,6 +98,8 @@ export async function GET(request: Request) {
     // Step 1: Search + detail fetch per city
     // -----------------------------------------------------------------------
     const allListings: Listing[] = [];
+    // Track all addresses claimed by CITIES loop (to avoid double-counting user listings)
+    const citiesClaimedAddresses = new Set<string>();
 
     for (const cfg of CITIES) {
       const cityStart = Date.now();
@@ -143,7 +157,7 @@ export async function GET(request: Request) {
 
         if (existing && existing.preNarrative) {
           // Update DOM (it changes daily) but keep pre-computed data
-          kept.push({ ...existing, dom: candidate.dom });
+          kept.push({ ...existing, dom: candidate.dom, source: "cron" });
         } else {
           needsDetail.push(candidate);
         }
@@ -219,6 +233,11 @@ export async function GET(request: Request) {
       combined.sort((a, b) => b.dom - a.dom);
       const picked = combined.slice(0, cfg.target);
 
+      // Track claimed addresses
+      for (const p of picked) {
+        citiesClaimedAddresses.add(p.address.toLowerCase());
+      }
+
       allListings.push(...picked);
       const newCount = picked.filter(p => !p.preNarrative).length;
       summary.push({
@@ -232,60 +251,135 @@ export async function GET(request: Request) {
     }
 
     // -----------------------------------------------------------------------
-    // Step 1.5: Fetch sold pools per city (for comparables)
+    // Step 1.5: Carry forward user-sourced listings
+    // -----------------------------------------------------------------------
+    const userListings = existingListings.filter(
+      (l) => l.source === "user" && !citiesClaimedAddresses.has(l.address.toLowerCase())
+    );
+
+    if (userListings.length > 0) {
+      const userStart = Date.now();
+      const freshnessQueue = [...userListings];
+      const deadAddresses = new Set<string>();
+
+      async function userFreshnessWorker() {
+        while (freshnessQueue.length > 0) {
+          const item = freshnessQueue.shift();
+          if (!item) break;
+          const slug = item.url?.replace("https://www.zoocasa.com", "").split("/").pop() || "";
+          const status = await checkFreshness(item.address, item.city, item.province, slug || undefined);
+          if (status === "dead") deadAddresses.add(item.address);
+        }
+      }
+
+      const workers = Array.from({ length: Math.min(6, userListings.length) }, () => userFreshnessWorker());
+      await Promise.all(workers);
+
+      const alive = userListings.filter((l) => !deadAddresses.has(l.address));
+      allListings.push(...alive);
+
+      log.push(
+        `User listings: ${userListings.length} found, ${deadAddresses.size} dead, ${alive.length} carried forward in ${Date.now() - userStart}ms`
+      );
+    } else {
+      log.push("User listings: none to carry forward");
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 1.6: Fetch sold pools per city (for comparables)
     // -----------------------------------------------------------------------
     const soldPools = new Map<string, ZoocasaSoldRaw[]>();
+
+    // Collect unique city|province keys from all listings (CITIES + user)
+    const allCityKeys = new Set<string>();
     for (const cfg of CITIES) {
+      allCityKeys.add(`${cfg.city.toLowerCase()}|${cfg.province.toLowerCase()}`);
+    }
+    for (const l of allListings) {
+      if (l.source === "user") {
+        allCityKeys.add(`${l.city.toLowerCase()}|${l.province.toLowerCase()}`);
+      }
+    }
+
+    for (const key of allCityKeys) {
+      const [city, province] = key.split("|");
       try {
-        const pool = await fetchSoldListings(cfg.city, cfg.province);
-        soldPools.set(`${cfg.city.toLowerCase()}|${cfg.province.toLowerCase()}`, pool);
-        log.push(`Sold pool ${cfg.city}: ${pool.length} listings`);
+        const pool = await fetchSoldListings(city, province);
+        soldPools.set(key, pool);
+        log.push(`Sold pool ${city}: ${pool.length} listings`);
       } catch {
-        log.push(`Sold pool ${cfg.city}: fetch failed, skipping comparables`);
+        log.push(`Sold pool ${city}: fetch failed, skipping comparables`);
       }
     }
 
     // -----------------------------------------------------------------------
-    // Step 2: Enrich new listings (no pre-computed data)
+    // Step 2: Enrich new + re-enrich stale listings
     // -----------------------------------------------------------------------
     const enrichStart = Date.now();
-    let enriched = 0;
+    let enrichedCount = 0;
+    let reEnrichedCount = 0;
 
     for (let i = 0; i < allListings.length; i++) {
-      if (allListings[i].preNarrative) continue; // Already enriched
+      const listing = allListings[i];
+      const isUserStale = listing.source === "user" && isStale(listing);
+      const needsEnrich = !listing.preNarrative || isUserStale;
+
+      if (!needsEnrich) continue;
 
       // Check time budget: leave 30s for KV write
       if (Date.now() - startTime > 250_000) {
-        log.push(`Time budget reached, skipping enrichment for remaining ${allListings.length - i} listings`);
+        log.push(`Time budget reached, skipping enrichment for remaining listings`);
         // Give unenriched listings a deterministic narrative
         for (let j = i; j < allListings.length; j++) {
-          if (!allListings[j].preNarrative) {
-            const pool = soldPools.get(`${allListings[j].city.toLowerCase()}|${allListings[j].province.toLowerCase()}`);
-            allListings[j] = await enrichListing(allListings[j], { skipLlm: true, soldPool: pool });
-            enriched++;
+          const jListing = allListings[j];
+          const jNeedsEnrich = !jListing.preNarrative || (jListing.source === "user" && isStale(jListing));
+          if (jNeedsEnrich) {
+            const pool = soldPools.get(`${jListing.city.toLowerCase()}|${jListing.province.toLowerCase()}`);
+            allListings[j] = await enrichListing(stripPrecomputed(jListing), { skipLlm: true, soldPool: pool });
+            allListings[j].source = jListing.source || "cron";
+            allListings[j].enrichedAt = new Date().toISOString();
+            enrichedCount++;
           }
         }
         break;
       }
 
-      const pool = soldPools.get(`${allListings[i].city.toLowerCase()}|${allListings[i].province.toLowerCase()}`);
+      const pool = soldPools.get(`${listing.city.toLowerCase()}|${listing.province.toLowerCase()}`);
+      const listingToEnrich = isUserStale ? stripPrecomputed(listing) : listing;
+      // User listings always get LLM (they were originally created with forceLlm)
+      const useForceLlm = listing.source === "user";
 
       try {
-        allListings[i] = await enrichListing(allListings[i], { soldPool: pool });
-        enriched++;
+        allListings[i] = await enrichListing(listingToEnrich, {
+          soldPool: pool,
+          ...(useForceLlm ? { forceLlm: true } : {}),
+        });
+        allListings[i].source = listing.source || "cron";
+        allListings[i].enrichedAt = new Date().toISOString();
+        enrichedCount++;
+        if (isUserStale) reEnrichedCount++;
         // Rate limit LLM calls
-        if (allListings[i].preTier !== "WATCH") {
+        if (allListings[i].preTier !== "WATCH" || useForceLlm) {
           await sleep(1500);
         }
       } catch (err) {
-        log.push(`Enrich failed for ${allListings[i].address}: ${err}`);
+        log.push(`Enrich failed for ${listing.address}: ${err}`);
         // Fall back to deterministic
-        allListings[i] = await enrichListing(allListings[i], { skipLlm: true, soldPool: pool });
-        enriched++;
+        allListings[i] = await enrichListing(listingToEnrich, { skipLlm: true, soldPool: pool });
+        allListings[i].source = listing.source || "cron";
+        allListings[i].enrichedAt = new Date().toISOString();
+        enrichedCount++;
       }
     }
 
-    log.push(`Enriched ${enriched} listings in ${Date.now() - enrichStart}ms`);
+    // Tag source/enrichedAt on legacy listings that predate these fields
+    const now = new Date().toISOString();
+    for (let i = 0; i < allListings.length; i++) {
+      if (!allListings[i].enrichedAt) allListings[i].enrichedAt = now;
+      if (!allListings[i].source) allListings[i].source = "cron";
+    }
+
+    log.push(`Enriched ${enrichedCount} listings (${reEnrichedCount} user re-enriched) in ${Date.now() - enrichStart}ms`);
 
     // -----------------------------------------------------------------------
     // Step 3: Write to KV
@@ -299,8 +393,11 @@ export async function GET(request: Request) {
     const totalTime = Date.now() - startTime;
     const totalListings = allListings.length;
     const byProvince = new Map<string, number>();
+    const bySource = { cron: 0, user: 0 };
     for (const l of allListings) {
       byProvince.set(l.province, (byProvince.get(l.province) || 0) + 1);
+      if (l.source === "user") bySource.user++;
+      else bySource.cron++;
     }
 
     return NextResponse.json({
@@ -308,6 +405,7 @@ export async function GET(request: Request) {
       totalListings,
       totalTimeMs: totalTime,
       byProvince: Object.fromEntries(byProvince),
+      bySource,
       cities: summary,
       log,
     });

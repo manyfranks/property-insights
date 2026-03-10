@@ -43,6 +43,9 @@ export interface Listing {
   preAssessment?: Assessment;
   assessmentNote?: string;
   preComparables?: ComparableResult;
+  // Lifecycle metadata
+  source?: "cron" | "user";
+  enrichedAt?: string;
 }
 
 export interface Assessment {

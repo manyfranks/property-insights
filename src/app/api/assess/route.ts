@@ -178,6 +178,10 @@ export async function POST(req: Request) {
   const enriched = await enrichListing(listing, { forceLlm: true, soldPool });
   log("enrich done", `tier=${enriched.preTier} score=${enriched.preScore} offer=${enriched.preOffer?.final_offer}`);
 
+  // Tag source and enrichment time
+  enriched.source = "user";
+  enriched.enrichedAt = new Date().toISOString();
+
   // Save to KV
   log("kv write");
   await upsertListing(enriched);
