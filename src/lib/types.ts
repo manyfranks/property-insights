@@ -42,6 +42,7 @@ export interface Listing {
   preOffer?: PrecomputedOffer;
   preAssessment?: Assessment;
   assessmentNote?: string;
+  preComparables?: ComparableResult;
 }
 
 export interface Assessment {
@@ -100,6 +101,59 @@ export interface OfferResult {
   percentOfList: number;
   savings: number;
   inTargetRange: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Sold comparables
+// ---------------------------------------------------------------------------
+
+export interface ComparableSale {
+  // === ALWAYS AVAILABLE (search-level) ===
+  address: string;
+  city: string;
+  province: string;
+  soldPrice: number;
+  listPrice: number;
+  soldAt: string;
+  soldToListRatio: number;
+  bedrooms: number;
+  bathrooms: number;
+  propertyType: string; // normalized: "SFH" | "Condo" | "Townhouse" | "Other"
+  position: { lng: number; lat: number };
+  distanceKm: number;
+  postalCode: string;
+  mls: string;
+
+  // === SOMETIMES AVAILABLE (search-level, market-dependent) ===
+  sqft: number | null;
+  neighbourhood: string | null;
+  unit: string | null;
+  maintenanceFee: number | null;
+
+  // === DETAIL-ENRICHED (only if detail fetch triggered) ===
+  enriched: boolean;
+  yearBuilt: string | null;
+  lotSize: string | null;
+  taxes: number | null;
+  eraBucket: string | null; // "New build" | "Established" | "Mid-century" | "Pre-war" | null
+  descriptionExcerpt: string | null;
+
+  // === SCORING ===
+  similarityScore: number;
+  matchTier: "strong" | "moderate" | "weak";
+}
+
+export interface ComparableResult {
+  comparables: ComparableSale[];
+  confidence: "high" | "medium" | "low" | "none";
+  poolSize: number;
+  matchedCount: number;
+  medianSoldToList: number | null;
+  medianPricePerSqft: number | null;
+  impliedValue: number | null;
+  dataGaps: string[];
+  marketNote: string;
+  compValidation?: "confirmed" | "aggressive" | "conservative";
 }
 
 export interface AnalysisResult {

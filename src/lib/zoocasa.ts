@@ -636,6 +636,113 @@ export async function fetchDetailByUrl(url: string): Promise<DetailResult> {
 }
 
 // ---------------------------------------------------------------------------
+// Public API: Sold listings (for comparables)
+// ---------------------------------------------------------------------------
+
+/** Raw sold listing from Zoocasa search-level __NEXT_DATA__ */
+export interface ZoocasaSoldRaw {
+  address: string;
+  sold_price: number;
+  price: number;
+  sold_at: string;
+  bedrooms: number;
+  bathrooms: number;
+  square_footage?: { gt?: number; gte?: number; lt?: number; lte?: number };
+  property_type: string;
+  position: string; // "POINT(lng lat)"
+  postal_code: string;
+  mls: string;
+  neighbourhood?: string;
+  unit?: string;
+  maintenance?: number;
+  sub_division?: string;
+  province?: string;
+  street_name?: string;
+  street_number?: string;
+  slug?: string;
+  address_url_absolute_path?: string;
+  listing_url_absolute_path?: string;
+}
+
+/**
+ * Fetch recently sold listings for a city.
+ * Returns raw search-level data (27 most recent).
+ * URL: /{city}-{province}-real-estate/sold
+ */
+export async function fetchSoldListings(
+  city: string,
+  province: string
+): Promise<ZoocasaSoldRaw[]> {
+  const url = `https://www.zoocasa.com/${citySlug(city)}-${provSlug(province)}-real-estate/sold`;
+
+  const html = await fetchPage(url);
+  const data = extractNextData(html);
+  if (!data) return [];
+
+  const props = data.props as Record<string, unknown> | undefined;
+  const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+  const innerProps = pageProps?.props as Record<string, unknown> | undefined;
+  const listings = (innerProps?.listings || []) as ZoocasaSoldRaw[];
+
+  // Only return listings with sold data
+  return listings.filter((l) => l.sold_price > 0 && l.sold_at);
+}
+
+/**
+ * Fetch detail page for a sold listing to get enriched fields.
+ * Returns yearBuilt, lotSize, taxes, description excerpt, or null on failure.
+ */
+export async function fetchSoldDetail(
+  slug: string,
+  city: string,
+  province: string
+): Promise<{
+  yearBuilt: string | null;
+  lotSize: string | null;
+  taxes: number | null;
+  description: string | null;
+} | null> {
+  try {
+    const base = `https://www.zoocasa.com/${citySlug(city)}-${provSlug(province)}-real-estate`;
+    const html = await fetchPage(`${base}/${slug}`, 10000);
+    const data = extractNextData(html);
+    if (!data) return null;
+
+    const props = data.props as Record<string, unknown> | undefined;
+    const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+    const innerProps = pageProps?.props as Record<string, unknown> | undefined;
+    const activeListing = innerProps?.activeListing as Record<string, unknown> | undefined;
+    const raw = (activeListing?.listing || {}) as ZoocasaDetailResult;
+
+    let yearBuilt: string | null = null;
+    if (raw.misc?.approxAge) {
+      const age = raw.misc.approxAge;
+      if (/^\d{4}$/.test(age)) {
+        yearBuilt = age;
+      } else {
+        const rangeMatch = age.match(/^(\d+)-(\d+)$/);
+        if (rangeMatch) {
+          const midAge = (parseInt(rangeMatch[1]) + parseInt(rangeMatch[2])) / 2;
+          yearBuilt = String(Math.round(new Date().getFullYear() - midAge));
+        } else if (/^\d+$/.test(age)) {
+          yearBuilt = String(new Date().getFullYear() - parseInt(age));
+        }
+      }
+    }
+
+    const acreage = raw.misc?.acreage;
+    const lotSize = acreage ? String(acreage) : null;
+    const taxes = raw.taxes ? Math.round(raw.taxes) : null;
+    const desc = raw.localeData?.en?.description || null;
+    const description = desc ? desc.slice(0, 200) : null;
+
+    return { yearBuilt, lotSize, taxes, description };
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API: Freshness check (is a listing still active?)
 // ---------------------------------------------------------------------------
 
