@@ -80,6 +80,24 @@ async function kvDel(key: string): Promise<boolean> {
   return res.ok;
 }
 
+/**
+ * Batch multiple SET commands in a single HTTP request via Upstash pipeline.
+ * Dramatically faster than sequential kvSet calls for bulk operations.
+ */
+async function kvPipeline(commands: [string, ...string[]][]): Promise<boolean> {
+  const url = kvUrl();
+  if (!url) return false;
+
+  // Upstash pipeline: POST array of commands
+  const res = await fetch(`${url}/pipeline`, {
+    method: "POST",
+    headers: kvHeaders(),
+    body: JSON.stringify(commands),
+  });
+
+  return res.ok;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -146,6 +164,7 @@ export async function getListingsByCity(city: string): Promise<Listing[]> {
 
 /**
  * Write all listings to KV. Also creates per-slug index entries.
+ * Uses Upstash pipeline to batch slug writes (250+ individual SETs → single HTTP request).
  */
 export async function writeAllListings(listings: Listing[]): Promise<{ written: number; slugs: number }> {
   if (!kvAvailable()) {
@@ -155,12 +174,18 @@ export async function writeAllListings(listings: Listing[]): Promise<{ written: 
   // Write the full array
   await kvSet("listings:all", listings);
 
-  // Write individual slug lookups
+  // Batch slug writes via pipeline (chunks of 50 to avoid oversized payloads)
+  const CHUNK_SIZE = 50;
   let slugs = 0;
-  for (const l of listings) {
-    const slug = slugify(l.address);
-    await kvSet(`listings:by-slug:${slug}`, l);
-    slugs++;
+  for (let i = 0; i < listings.length; i += CHUNK_SIZE) {
+    const chunk = listings.slice(i, i + CHUNK_SIZE);
+    const commands: [string, ...string[]][] = chunk.map((l) => [
+      "SET",
+      `listings:by-slug:${slugify(l.address)}`,
+      JSON.stringify(l),
+    ]);
+    await kvPipeline(commands);
+    slugs += chunk.length;
   }
 
   // Write metadata

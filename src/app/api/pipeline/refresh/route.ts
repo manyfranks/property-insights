@@ -288,30 +288,44 @@ export async function GET(request: Request) {
     }
 
     // -----------------------------------------------------------------------
-    // Step 1.6: Fetch sold pools per city (for comparables)
+    // Step 1.6: Fetch sold pools per city (for comparables) — parallel
     // -----------------------------------------------------------------------
     const soldPools = new Map<string, ZoocasaSoldRaw[]>();
+    const elapsed = Date.now() - startTime;
+    log.push(`Steps 1-1.5 done in ${elapsed}ms`);
 
-    // Collect unique city|province keys from all listings (CITIES + user)
-    const allCityKeys = new Set<string>();
-    for (const cfg of CITIES) {
-      allCityKeys.add(`${cfg.city.toLowerCase()}|${cfg.province.toLowerCase()}`);
-    }
-    for (const l of allListings) {
-      if (l.source === "user") {
-        allCityKeys.add(`${l.city.toLowerCase()}|${l.province.toLowerCase()}`);
+    if (elapsed < 200_000) {
+      // Collect unique city|province keys from all listings (CITIES + user)
+      const allCityKeys = new Set<string>();
+      for (const cfg of CITIES) {
+        allCityKeys.add(`${cfg.city.toLowerCase()}|${cfg.province.toLowerCase()}`);
       }
-    }
+      for (const l of allListings) {
+        if (l.source === "user") {
+          allCityKeys.add(`${l.city.toLowerCase()}|${l.province.toLowerCase()}`);
+        }
+      }
 
-    for (const key of allCityKeys) {
-      const [city, province] = key.split("|");
-      try {
-        const pool = await fetchSoldListings(city, province);
-        soldPools.set(key, pool);
-        log.push(`Sold pool ${city}: ${pool.length} listings`);
-      } catch {
-        log.push(`Sold pool ${city}: fetch failed, skipping comparables`);
+      // Fetch all sold pools in parallel
+      const poolEntries = await Promise.allSettled(
+        [...allCityKeys].map(async (key) => {
+          const [city, province] = key.split("|");
+          const pool = await fetchSoldListings(city, province);
+          return { key, city, pool };
+        })
+      );
+
+      for (const entry of poolEntries) {
+        if (entry.status === "fulfilled") {
+          soldPools.set(entry.value.key, entry.value.pool);
+          log.push(`Sold pool ${entry.value.city}: ${entry.value.pool.length} listings`);
+        } else {
+          log.push(`Sold pool fetch failed: ${entry.reason}`);
+        }
       }
+      log.push(`Sold pools fetched in ${Date.now() - startTime - elapsed}ms`);
+    } else {
+      log.push(`Skipping sold pools — time budget tight (${elapsed}ms elapsed)`);
     }
 
     // -----------------------------------------------------------------------
@@ -328,8 +342,8 @@ export async function GET(request: Request) {
 
       if (!needsEnrich) continue;
 
-      // Check time budget: leave 30s for KV write
-      if (Date.now() - startTime > 250_000) {
+      // Check time budget: leave 40s for batched KV write + purge
+      if (Date.now() - startTime > 240_000) {
         log.push(`Time budget reached, skipping enrichment for remaining listings`);
         // Give unenriched listings a deterministic narrative
         for (let j = i; j < allListings.length; j++) {
