@@ -371,7 +371,6 @@ export async function GET(request: Request) {
       try {
         allListings[i] = await enrichListing(listingToEnrich, {
           soldPool: pool,
-          syncAssessmentOnly: true,
           ...(useForceLlm ? { forceLlm: true } : {}),
         });
         allListings[i].source = listing.source || "cron";
@@ -383,7 +382,7 @@ export async function GET(request: Request) {
         }
       } catch (err) {
         log.push(`Enrich failed for ${listing.address}: ${err}`);
-        allListings[i] = await enrichListing(listingToEnrich, { skipLlm: true, soldPool: pool, syncAssessmentOnly: true });
+        allListings[i] = await enrichListing(listingToEnrich, { skipLlm: true, soldPool: pool });
         allListings[i].source = listing.source || "cron";
         allListings[i].enrichedAt = new Date().toISOString();
         enrichedCount++;
