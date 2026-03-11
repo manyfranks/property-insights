@@ -18,7 +18,7 @@ export default function BlogIndex() {
       </p>
 
       <div className="space-y-6">
-        {BLOG_POSTS.map((post) => (
+        {[...BLOG_POSTS].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)).map((post) => (
           <Link
             key={post.slug}
             href={`/blog/${post.slug}`}
