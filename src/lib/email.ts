@@ -39,6 +39,7 @@ function formatNarrative(narrative: string): string {
 function buildAssessmentHtml(data: AssessmentEmailData): string {
   const { listing, tier, score, narrative, finalOffer, savings, percentOfList } = data;
   const propertyUrl = `${BASE_URL}/property/${slugify(listing.address)}`;
+  const squareOneUrl = process.env.NEXT_PUBLIC_SQUAREONE_URL || "";
 
   const offerSection = finalOffer
     ? `
@@ -121,11 +122,20 @@ function buildAssessmentHtml(data: AssessmentEmailData): string {
       </table>
     </div>
 
-    <div style="text-align:center;margin-bottom:32px">
+    <div style="text-align:center;margin-bottom:24px">
       <a href="${propertyUrl}" style="display:inline-block;padding:10px 24px;background:#111;color:white;text-decoration:none;border-radius:999px;font-size:14px;font-weight:500">
         View full analysis
       </a>
     </div>
+
+    ${squareOneUrl ? `
+    <div style="background:white;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:24px;text-align:center">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#6b7280;margin-bottom:6px">Next Step</div>
+      <a href="${squareOneUrl}" target="_blank" rel="noopener noreferrer" style="font-size:14px;font-weight:500;color:#111;text-decoration:none">
+        Get a home insurance quote
+      </a>
+      <p style="margin:4px 0 0;font-size:12px;color:#6b7280">$20 credit applied automatically &middot; Square One</p>
+    </div>` : ""}
 
     <div style="text-align:center;font-size:12px;color:#9ca3af">
       <p style="margin:0">Property Insights &middot; propertyinsights.xyz</p>

@@ -39,7 +39,7 @@ const PARTNER_CONFIG: Record<PartnerType, PartnerConfig> = {
   insurance: {
     label: "Get a home insurance quote",
     partner: "Square One",
-    description: "Customizable home insurance coverage",
+    description: "Customizable coverage — $20 credit applied automatically",
     href: process.env.NEXT_PUBLIC_SQUAREONE_URL || "",
     fallback: "https://www.squareone.ca",
   },
