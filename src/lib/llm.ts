@@ -2,10 +2,16 @@ import OpenAI from "openai";
 import { Listing, Assessment, OfferResult, ComparableResult } from "./types";
 import { fmt } from "./utils";
 
-const openrouter = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENROUTER_API_KEY || "",
-});
+let _openrouter: OpenAI | null = null;
+function openrouter(): OpenAI {
+  if (!_openrouter) {
+    _openrouter = new OpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY || "",
+    });
+  }
+  return _openrouter;
+}
 
 export interface LLMAnalysis {
   signals: string[];
@@ -215,16 +221,21 @@ export async function analyzeAndNarrate(context: {
       ? `$${Math.round(listing.price / parseInt(listing.sqft))}/sqft`
       : "price/sqft unknown";
 
-    const response = await openrouter.chat.completions.create({
+    // DOM context for narrative
+    const dom = listing.dom ?? 0;
+
+    const response = await openrouter().chat.completions.create({
       model: "anthropic/claude-haiku-4.5",
       max_tokens: 800,
       messages: [
         {
           role: "system",
-          content: `You are a real estate acquisition analyst writing property assessments for an investor. You produce two outputs:
+          content: `You are a buyer's acquisition analyst. You work for the buyer. Your job is to arm them with data-backed conviction so they can make the sharpest possible offer on a property.
+
+You produce two outputs:
 
 1. SIGNALS: Additional motivation signals detected through reading comprehension.
-2. NARRATIVE: A 4-6 sentence analytical assessment of the property as a negotiation opportunity.
+2. NARRATIVE: A 2-3 paragraph analytical brief on this property as a trade opportunity.
 
 SIGNAL DETECTION:
 Detect signals that require reading between the lines — things our keyword system misses:
@@ -237,22 +248,29 @@ Detect signals that require reading between the lines — things our keyword sys
 
 Do NOT flag keywords already detected: "estate sale", "price reduced", "motivated seller", "must sell", "bring offers". Only flag what requires reading comprehension.
 
-NARRATIVE — ANALYTICAL FRAMEWORK:
-Write 2-3 SHORT paragraphs separated by blank lines (\\n\\n). Each paragraph should be 2-3 sentences max. Cover these dimensions (skip any that lack data):
+NARRATIVE — THE BUYER'S BRIEF:
+Write 2-3 SHORT paragraphs separated by blank lines (\\n\\n). Each paragraph should be 2-3 sentences max.
 
-PARAGRAPH 1 — LEVERAGE: What creates negotiation power here? The assessment gap and what the numbers actually mean (not just reciting them). If land/building split is available, explain what the buyer is really paying for. If no assessment, say so and note the higher uncertainty.
+PARAGRAPH 1 — THE NUMBERS: What do the assessment, DOM, signals, and comps tell us about negotiable space? Don't recite data — interpret it. If listed 15% above assessment, that's negotiable room the listing agent already knows exists. If comps closed at 92% of list, that's the market speaking. Explain what the buyer is actually paying for — if land/building split is available, break down whether the value is in the dirt or the structure.
 
-PARAGRAPH 2 — PROPERTY READ: Functional limitations that shrink the buyer pool (1 bath for 3+ beds, small sqft, dated construction, no suite potential). Description quality — generic agent copy means the seller is comfortable waiting. Any motivation signals detected.
+PARAGRAPH 2 — THE READ: What does the property and listing tell us about the seller's position? Read the situation: Is this a developer managing inventory? An estate executor clearing an obligation? A seller who's been sitting 150 days without reducing price — and what does that tell us about their expectations vs. reality? Functional limitations that shrink the buyer pool (and therefore the seller's negotiating leverage) matter here: 1 bath for 4 beds, small sqft, dated construction. Generic agent copy vs. urgency language tells you how motivated the other side is.
 
-PARAGRAPH 3 — VERDICT: Is this a good trade or a weak one? If savings are only 2-3% with no leverage signals, say it's weak. If the assessment gap creates real anchor leverage, explain why. One clear sentence on whether to pursue or pass.
+PARAGRAPH 3 — THE POSITION: Is this a good trade? State it clearly. Cite the specific data that justifies our offer: the assessment anchor, the DOM bracket, the signal stack, the comp evidence. The buyer should walk away knowing exactly why the number is what it is and what to expect from the other side (a counter, a rejection, acceptance). Frame the offer as a defensible market position, not a gamble.
 
-CRITICAL RULES:
-- NEVER use time-sensitive freshness language: "just listed", "fresh to market", "newly listed", "brand new listing", "0 DOM", "only X days on market" for listings under 60 days
-- DOM below 60 tells you NOTHING about seller motivation — do not reference it as meaningful
-- DOM at 60+ IS relevant as a pressure indicator — reference the bracket tag, not the raw number
-- When data is missing (no sqft, no assessment, no year), acknowledge the gap and what it means for analysis confidence — don't fabricate
-- Be direct and analytical. No sales language. No exclamation marks. Write like the Fulton analysis.
-- Separate paragraphs with a blank line (\\n\\n). Do NOT write a single wall of text.
+WHO YOU WORK FOR:
+You work for the buyer. The deal is won on the buy side. Every dollar below list is equity on day one. Your narrative should give the buyer confidence and clarity, backed by evidence.
+
+NEVER DO THESE:
+- NEVER use the words "insulting", "lowball", "offensive", "too aggressive", or "risks appearing." These are seller-protection words and have no place in acquisition analysis. An offer backed by assessment data, market duration, and comparable sales is not aggressive — it is the current market position supported by evidence.
+- NEVER evaluate an offer through the lens of the seller's emotional reaction. We don't care if the seller is offended. We care if the numbers are defensible.
+- NEVER treat the listing price as ground truth. The listing price is the seller's opening position — set by their agent to create negotiation room. Our model produces the current market offer based on what the data says right now.
+- NEVER use time-sensitive freshness language: "just listed", "fresh to market", "newly listed", "0 DOM", "only X days" for listings under 60 days.
+- DOM below 60 tells you NOTHING about motivation — do not reference it.
+- DOM at 60+ IS a pressure indicator — reference the bracket tag and what it means for the seller's position.
+- NEVER hedge with "this might not work" or "the seller may not accept." Of course the seller might counter — that's how negotiation works. Present the position with conviction.
+- When data is missing, acknowledge the gap and what it means for confidence — don't fabricate.
+- No sales language. No exclamation marks. No emotion. Write with influence, clarity, and conviction.
+- Separate paragraphs with a blank line (\\n\\n). Do NOT write a wall of text.
 
 Return ONLY valid JSON:
 {"signals": ["signal1"], "confidence": 0.0, "narrative": "Paragraph one.\\n\\nParagraph two.\\n\\nParagraph three."}`,
@@ -263,6 +281,7 @@ Return ONLY valid JSON:
 List price: ${fmt(listing.price)}
 Profile: ${profile}
 Price per sqft: ${priceSqft}
+Days on market: ${dom}
 ${assessmentBlock}
 ${offerBlock}
 ${buildComparablesBlock(comparables)}
