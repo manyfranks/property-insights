@@ -56,13 +56,16 @@ async function kvSet(key: string, value: unknown, exSeconds?: number): Promise<b
   const url = kvUrl();
   if (!url) return false;
 
-  const args = ["set", key, JSON.stringify(value)];
+  const serialized = JSON.stringify(value);
+
+  // Use POST for large payloads (GET URL path has length limits)
+  const args: string[] = ["SET", key, serialized];
   if (exSeconds) args.push("EX", String(exSeconds));
 
-  const path = args.map((a) => encodeURIComponent(a)).join("/");
-  const res = await fetch(`${url}/${path}`, {
-    method: "GET",
+  const res = await fetch(`${url}`, {
+    method: "POST",
     headers: kvHeaders(),
+    body: JSON.stringify(args),
   });
 
   return res.ok;
