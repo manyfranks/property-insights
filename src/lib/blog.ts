@@ -41,6 +41,16 @@ export const BLOG_POSTS: BlogPost[] = [
     readingTime: "9 min read",
     tags: ["pricing", "negotiation", "data analysis"],
   },
+  {
+    slug: "how-much-below-asking-price-to-offer-canada",
+    title:
+      "How Much Below Asking Price Should You Offer on a House in Canada?",
+    description:
+      "A data-driven framework for determining your offer price on a Canadian home. Learn how assessments, days on market, seller signals, and 2026 market conditions tell you how much room you have to negotiate.",
+    publishedAt: "2026-03-11",
+    readingTime: "11 min read",
+    tags: ["negotiation", "offers", "buyer's market", "2026"],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
