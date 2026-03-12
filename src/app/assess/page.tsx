@@ -15,5 +15,5 @@ export default async function AssessPage({
     );
   }
 
-  return <AssessmentProgress address={address} />;
+  return <AssessmentProgress key={address} address={address} />;
 }
