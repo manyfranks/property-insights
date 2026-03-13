@@ -107,11 +107,40 @@ export default function DashboardClient({ rows, stats, initialCity }: {
     return arr;
   }, [filtered, sortKey, sortDir]);
 
+  const cities = useMemo(() => {
+    const unique = [...new Set(rows.map((r) => r.city))];
+    return unique.sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const paged = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
+  type SortOption = { label: string; key: SortKey; dir: SortDir };
+  const SORT_OPTIONS: SortOption[] = [
+    { label: "Savings: high first", key: "savings", dir: "desc" },
+    { label: "Price: low first", key: "price", dir: "asc" },
+    { label: "Price: high first", key: "price", dir: "desc" },
+    { label: "DOM: high first", key: "dom", dir: "desc" },
+    { label: "Tier: hot first", key: "tier", dir: "asc" },
+    { label: "Offer: low first", key: "offer", dir: "asc" },
+  ];
+
+  // City-specific stats (computed only when drill-down is active)
+  const cityStats = useMemo(() => {
+    if (!cityFilter) return null;
+    const withSavings = filtered.filter((r) => r.savings && r.savings > 0);
+    const avgSavings = withSavings.length > 0
+      ? Math.round(withSavings.reduce((sum, r) => sum + (r.savings ?? 0), 0) / withSavings.length)
+      : 0;
+    const inRange = filtered.filter((r) => r.offer && r.savings && r.savings > 0).length;
+    const avgDom = filtered.length > 0
+      ? Math.round(filtered.reduce((sum, r) => sum + r.dom, 0) / filtered.length)
+      : 0;
+    return { listings: filtered.length, avgSavings, inRange, avgDom };
+  }, [cityFilter, filtered]);
+
   // City drill-down view (discover-style cards)
-  if (cityFilter) {
+  if (cityFilter && cityStats) {
     return (
       <div>
         <button
@@ -126,6 +155,21 @@ export default function DashboardClient({ rows, stats, initialCity }: {
           {filtered.length} properties ranked by motivation score
         </p>
 
+        {/* City-specific stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          {[
+            { label: "Listings", value: cityStats.listings },
+            { label: "Avg Savings", value: fmt(cityStats.avgSavings) },
+            { label: "In Range", value: cityStats.inRange },
+            { label: "Avg DOM", value: cityStats.avgDom },
+          ].map((s) => (
+            <div key={s.label} className="border border-border rounded-xl p-3 sm:p-4">
+              <div className="text-xs text-muted mb-1">{s.label}</div>
+              <div className="font-mono text-lg sm:text-xl font-semibold">{s.value}</div>
+            </div>
+          ))}
+        </div>
+
         <div className="space-y-3">
           {filtered
             .sort((a, b) => b.score - a.score)
@@ -138,7 +182,7 @@ export default function DashboardClient({ rows, stats, initialCity }: {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-foreground truncate">{r.address}</div>
                   <div className="text-xs text-muted mt-0.5">
-                    {r.city} &middot; {r.beds} bed &middot; {r.dom} DOM
+                    {r.beds} bed &middot; {r.dom} DOM
                   </div>
                   {r.signals.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
@@ -183,8 +227,96 @@ export default function DashboardClient({ rows, stats, initialCity }: {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="border border-border rounded-xl overflow-hidden">
+      {/* Mobile filter/sort bar */}
+      <div className="sm:hidden mb-4 space-y-3">
+        {/* City pills */}
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-6 px-6 scrollbar-none">
+          <button
+            onClick={() => selectCity(null)}
+            className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
+              !cityFilter
+                ? "bg-foreground text-white"
+                : "border border-border text-muted hover:text-foreground"
+            }`}
+          >
+            All
+          </button>
+          {cities.map((city) => (
+            <button
+              key={city}
+              onClick={() => selectCity(city)}
+              className="shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium border border-border text-muted hover:text-foreground transition-all"
+            >
+              {city}
+            </button>
+          ))}
+        </div>
+
+        {/* Sort select */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted">{sorted.length} properties</span>
+          <select
+            value={`${sortKey}:${sortDir}`}
+            onChange={(e) => {
+              const [k, d] = e.target.value.split(":") as [SortKey, SortDir];
+              setSortKey(k);
+              setSortDir(d);
+              setPage(0);
+            }}
+            className="text-xs border border-border rounded-lg px-2.5 py-1.5 bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={`${opt.key}:${opt.dir}`} value={`${opt.key}:${opt.dir}`}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="space-y-2 sm:hidden">
+        {paged.map((r, i) => (
+          <Link
+            key={`m-${r.slug}-${i}`}
+            href={`/property/${r.slug}`}
+            className="block border border-border rounded-xl p-3 hover:shadow-md hover:-translate-y-0.5 transition-all bg-white"
+          >
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <div className="font-medium text-sm text-foreground leading-snug min-w-0 truncate">{r.address}</div>
+              <TierBadge tier={r.tier} />
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted mb-2">
+              <button
+                onClick={(e) => { e.preventDefault(); selectCity(r.city); }}
+                className="hover:text-foreground hover:underline transition-colors"
+              >
+                {r.city}
+              </button>
+              <span>{r.beds} bed</span>
+              <span>{r.dom} DOM</span>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <div>
+                <span className="text-muted">List </span>
+                <span className="font-mono font-medium text-foreground">{fmt(r.price)}</span>
+              </div>
+              {r.offer && (
+                <div>
+                  <span className="text-muted">Offer </span>
+                  <span className="font-mono font-medium text-foreground">{fmt(r.offer)}</span>
+                </div>
+              )}
+              {r.savings && r.savings > 0 && (
+                <div className="font-mono text-green-600 ml-auto">{fmt(r.savings)} below</div>
+              )}
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* Desktop table */}
+      <div className="border border-border rounded-xl overflow-hidden hidden sm:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -198,13 +330,13 @@ export default function DashboardClient({ rows, stats, initialCity }: {
                 <th className={`text-right ${thClass}`} onClick={() => toggleSort("price")}>
                   List<SortIcon active={sortKey === "price"} dir={sortDir} />
                 </th>
-                <th className={`text-right hidden sm:table-cell ${thClass}`} onClick={() => toggleSort("assessed")}>
+                <th className={`text-right ${thClass}`} onClick={() => toggleSort("assessed")}>
                   Assessed<SortIcon active={sortKey === "assessed"} dir={sortDir} />
                 </th>
                 <th className={`text-right ${thClass}`} onClick={() => toggleSort("offer")}>
                   Offer<SortIcon active={sortKey === "offer"} dir={sortDir} />
                 </th>
-                <th className={`text-right hidden sm:table-cell ${thClass}`} onClick={() => toggleSort("savings")}>
+                <th className={`text-right ${thClass}`} onClick={() => toggleSort("savings")}>
                   Savings<SortIcon active={sortKey === "savings"} dir={sortDir} />
                 </th>
                 <th className={`text-center ${thClass}`} onClick={() => toggleSort("dom")}>
@@ -232,9 +364,9 @@ export default function DashboardClient({ rows, stats, initialCity }: {
                     </button>
                   </td>
                   <td className="px-4 py-3 text-right font-mono">{fmt(r.price)}</td>
-                  <td className="px-4 py-3 text-right font-mono hidden sm:table-cell">{r.assessed ? fmt(r.assessed) : "-"}</td>
+                  <td className="px-4 py-3 text-right font-mono">{r.assessed ? fmt(r.assessed) : "-"}</td>
                   <td className="px-4 py-3 text-right font-mono font-medium">{r.offer ? fmt(r.offer) : "-"}</td>
-                  <td className="px-4 py-3 text-right font-mono text-green-600 hidden sm:table-cell">{r.savings ? fmt(r.savings) : "-"}</td>
+                  <td className="px-4 py-3 text-right font-mono text-green-600">{r.savings ? fmt(r.savings) : "-"}</td>
                   <td className="px-4 py-3 text-center font-mono">{r.dom}</td>
                   <td className="px-4 py-3 text-center"><TierBadge tier={r.tier} /></td>
                 </tr>
