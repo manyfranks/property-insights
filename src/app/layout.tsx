@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ClerkProvider, Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { Analytics } from "@vercel/analytics/next";
 import NavbarSearch from "@/components/navbar-search";
+import MobileSearch from "@/components/mobile-search";
 import MobileNav from "@/components/mobile-nav";
 import { OrganizationJsonLd } from "@/components/json-ld";
 import Footer from "@/components/footer";
@@ -93,6 +94,7 @@ export default function RootLayout({
                 <span className="hidden sm:inline">Property Insights</span>
               </Link>
               <NavbarSearch />
+              <MobileSearch />
               <MobileNav />
               <nav className="hidden sm:flex items-center gap-6 text-sm text-muted">
                 <Link href="/how-it-works" className="hover:text-foreground transition-colors">

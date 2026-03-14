@@ -35,7 +35,7 @@ export default async function Home() {
         </div>
 
         <p className="text-xs text-muted mt-12">
-          Search any address from the navbar, or request an assessment for any Canadian property.
+          Search any address, or request an assessment for any Canadian property.
         </p>
       </div>
     </main>
