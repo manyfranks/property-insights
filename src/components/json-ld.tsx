@@ -60,6 +60,30 @@ export function BreadcrumbJsonLd({
   );
 }
 
+/** FAQPage schema — used on how-it-works, blog posts, etc. */
+export function FaqJsonLd({
+  questions,
+}: {
+  questions: { question: string; answer: string }[];
+}) {
+  return (
+    <JsonLd
+      data={{
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: questions.map((q) => ({
+          "@type": "Question",
+          name: q.question,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: q.answer,
+          },
+        })),
+      }}
+    />
+  );
+}
+
 /** RealEstateListing schema for property pages */
 export function PropertyJsonLd({
   url,

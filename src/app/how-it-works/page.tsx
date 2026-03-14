@@ -1,5 +1,29 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { FaqJsonLd } from "@/components/json-ld";
+
+const FAQ_ITEMS = [
+  {
+    question: "How does Property Insights calculate the recommended offer price?",
+    answer: "We anchor to government-assessed property values, then adjust for days on market, listing language signals (estate sales, price drops, urgency language), and market position. The result is a data-backed offer range — not a guess.",
+  },
+  {
+    question: "What is the motivation score?",
+    answer: "A 0–100 index that measures seller pressure by combining days on market, price history, and AI analysis of the listing description. Higher scores suggest more room to negotiate.",
+  },
+  {
+    question: "Can I assess a property that isn't in your listings?",
+    answer: "Yes. Paste a Zoocasa listing URL into the search bar or type any Canadian street address. Sign up for a free account and we'll run a full assessment — including offer modeling — and email you the report.",
+  },
+  {
+    question: "Which provinces are supported?",
+    answer: "We currently cover British Columbia, Alberta, and Ontario. Assessment data comes from BC Assessment, Calgary and Edmonton SODA APIs, and Ontario MPAC records.",
+  },
+  {
+    question: "How often is the data updated?",
+    answer: "Listings refresh daily. Sold or delisted properties are automatically detected and removed each week.",
+  },
+];
 
 export const metadata: Metadata = {
   title: "How It Works — Assessment-Backed Offer Intelligence",
@@ -210,6 +234,7 @@ export default function HowItWorksPage() {
         </Link>
       </div>
 
+      <FaqJsonLd questions={FAQ_ITEMS} />
     </main>
   );
 }

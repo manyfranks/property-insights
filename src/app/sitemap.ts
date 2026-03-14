@@ -61,10 +61,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
-  // City pages (deduplicated)
+  // City landing pages
   const cities = [...new Set(listings.map((l) => l.city))];
   const cityPages: MetadataRoute.Sitemap = cities.map((city) => ({
-    url: `${BASE_URL}/dashboard?city=${encodeURIComponent(city.toLowerCase().replace(/\s+/g, "-"))}`,
+    url: `${BASE_URL}/discover/${city.toLowerCase().replace(/\s+/g, "-")}`,
     lastModified: new Date(),
     changeFrequency: "daily" as const,
     priority: 0.8,
