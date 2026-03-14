@@ -6,6 +6,7 @@ import { buildCityMetadata, getCityBySlug } from "@/lib/data/city-metadata";
 import { analyzeListing } from "@/lib/analyze";
 import { slugify, fmt } from "@/lib/utils";
 import { BASE_URL, SITE_NAME } from "@/lib/seo";
+import { getRelatedPosts } from "@/lib/blog";
 import { BreadcrumbJsonLd } from "@/components/json-ld";
 import TierBadge from "@/components/tier-badge";
 
@@ -167,6 +168,31 @@ export default async function DiscoverCityPage({
           );
         })}
       </div>
+
+      {/* Related reading */}
+      {(() => {
+        const posts = getRelatedPosts(meta.province);
+        if (posts.length === 0) return null;
+        return (
+          <div className="mt-10">
+            <div className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
+              Related reading
+            </div>
+            <div className="space-y-2">
+              {posts.map((p) => (
+                <Link
+                  key={p.slug}
+                  href={`/blog/${p.slug}`}
+                  className="block text-sm text-foreground hover:underline underline-offset-2 transition-colors"
+                >
+                  {p.title}
+                  <span className="text-xs text-muted ml-2">{p.readingTime}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* CTA */}
       <div className="border border-border rounded-xl p-6 mt-10 text-center">

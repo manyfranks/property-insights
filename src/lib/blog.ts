@@ -56,3 +56,45 @@ export const BLOG_POSTS: BlogPost[] = [
 export function getBlogPost(slug: string): BlogPost | undefined {
   return BLOG_POSTS.find((p) => p.slug === slug);
 }
+
+/** Return 2-3 blog posts relevant to a province (for city page cross-links) */
+export function getRelatedPosts(province: string): BlogPost[] {
+  const provinceTag = province === "BC" ? "BC" : province === "AB" ? "Alberta" : "Ontario";
+  const provinceMatches = BLOG_POSTS.filter((p) =>
+    p.tags.some((t) => t.toLowerCase() === provinceTag.toLowerCase())
+  );
+  // Always include universally relevant posts
+  const universalSlugs = [
+    "how-to-make-an-offer-on-a-house-in-canada",
+    "how-much-below-asking-price-to-offer-canada",
+  ];
+  const universal = BLOG_POSTS.filter((p) => universalSlugs.includes(p.slug));
+  // Merge, deduplicate, cap at 3
+  const seen = new Set<string>();
+  const result: BlogPost[] = [];
+  for (const p of [...provinceMatches, ...universal]) {
+    if (!seen.has(p.slug) && result.length < 3) {
+      seen.add(p.slug);
+      result.push(p);
+    }
+  }
+  return result;
+}
+
+/** Return city links relevant to a blog post (for blog→city cross-links) */
+export function getRelatedCities(post: BlogPost): { name: string; slug: string }[] {
+  const tags = post.tags.map((t) => t.toLowerCase());
+  const cities: { name: string; slug: string }[] = [];
+  if (tags.includes("bc")) cities.push({ name: "Victoria", slug: "victoria" }, { name: "Vancouver", slug: "vancouver" });
+  if (tags.includes("alberta")) cities.push({ name: "Calgary", slug: "calgary" }, { name: "Edmonton", slug: "edmonton" });
+  if (tags.includes("ontario")) cities.push({ name: "Toronto", slug: "toronto" }, { name: "Ottawa", slug: "ottawa" });
+  // Default: one from each province if no tag match
+  if (cities.length === 0) {
+    cities.push(
+      { name: "Victoria", slug: "victoria" },
+      { name: "Calgary", slug: "calgary" },
+      { name: "Toronto", slug: "toronto" },
+    );
+  }
+  return cities.slice(0, 3);
+}
