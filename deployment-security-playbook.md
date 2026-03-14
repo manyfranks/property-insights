@@ -59,17 +59,19 @@ For more control (Pro tier, $20/month):
 
 You get 5 custom firewall rules on the free tier. Use them wisely:
 
-**Rule 1: Block AI crawlers by user agent**
+**Rule 1: Block AI training crawlers by user agent**
 ```
 (http.user_agent contains "GPTBot") or
 (http.user_agent contains "ClaudeBot") or
 (http.user_agent contains "anthropic-ai") or
 (http.user_agent contains "CCBot") or
-(http.user_agent contains "PerplexityBot") or
 (http.user_agent contains "Bytespider") or
-(http.user_agent contains "cohere-ai")
+(http.user_agent contains "cohere-ai") or
+(http.user_agent contains "Amazonbot")
 → Action: Block
 ```
+
+**Important:** Only block *training* crawlers — those that ingest your content into model weights with no attribution. Do NOT block citation/search crawlers like PerplexityBot (links back to source), Applebot (Siri/Apple Intelligence), or FacebookBot (link previews). And never block Googlebot or Bingbot — they drive both organic search AND AI answer citations (Google AI Overviews, Microsoft Copilot). See Layer 5 for the full distinction.
 
 Why not just `robots.txt`? Because `robots.txt` is advisory — polite crawlers respect it, but scrapers ignore it. Cloudflare blocks them before they reach your origin.
 
@@ -302,56 +304,119 @@ This single optimization can reduce LLM costs by 70–80% depending on your scor
 
 ---
 
-## Layer 5: Blocking AI Crawlers
+## Layer 5: AI Crawler Strategy — Training vs. Citation
 
-AI companies crawl the web to train models. Their crawlers are aggressive and trigger server-side rendering on every page, which can:
-- Spike your Vercel function invocations
-- Trigger data fetches (KV reads, API calls) on every crawled page
-- Blow through upstream rate limits (Zoocasa, assessment APIs)
+Not all AI crawlers are the same. Blocking them all feels safe but costs you visibility. The distinction that matters: **training crawlers** ingest your content into model weights (no attribution, no traffic back), while **citation/search crawlers** index your content so it can be referenced in AI-generated answers with links back to your site.
+
+### The Two Types
+
+**Training crawlers (block these):**
+
+These scrape your site to build training datasets. Your content becomes part of the model's weights — you get no attribution, no link, no referral traffic. Each crawl triggers expensive server-side rendering for zero return.
+
+| Crawler | Operator | What it does |
+|---|---|---|
+| GPTBot | OpenAI | Training data for GPT models |
+| ChatGPT-User | OpenAI | ChatGPT browsing mode (uses Bing index, not this crawler, for search) |
+| ClaudeBot / anthropic-ai | Anthropic | Training data for Claude models |
+| CCBot | Common Crawl | Open training datasets used by many AI labs |
+| Google-Extended | Google | DeepMind/Gemini training (separate from Googlebot search indexing) |
+| Bytespider | ByteDance/TikTok | Training data |
+| cohere-ai | Cohere | Training data |
+| Amazonbot | Amazon | Alexa/training data |
+
+**Citation/search crawlers (allow these):**
+
+These index your content so it can appear in AI-generated answers — with links back to your site. They function like search engines. Blocking them reduces your visibility in the fastest-growing discovery channels.
+
+| Crawler | Operator | What it does | Why allow |
+|---|---|---|---|
+| **Googlebot** | Google | Search index + AI Overviews + Gemini answers | Your SEO work gets you cited here. Never block. |
+| **Bingbot** | Microsoft | Search index + Copilot answers | Drives Bing search AND Microsoft Copilot citations. Never block. |
+| **PerplexityBot** | Perplexity | Search index for Perplexity answers | Links back to source in every answer. Functions as a search engine. |
+| **Applebot** | Apple | Siri, Spotlight, Apple Intelligence | Growing channel. Low volume, links back. |
+| **FacebookBot** | Meta | Link previews in Messenger, WhatsApp, Instagram | Not AI search, but essential for social sharing. |
+
+### The Key Insight
+
+You don't need training crawlers to index your site in order to be referenced by LLMs in conversation:
+
+- **Google AI Overviews / Gemini** uses **Googlebot** (already allowed) + Google's search index. Your SEO work is what gets you cited.
+- **Microsoft Copilot** uses **Bingbot** (already allowed) + Bing's search index.
+- **ChatGPT with browsing** uses Bing's search index for real-time lookups, not GPTBot.
+- **Perplexity** uses its own crawler (PerplexityBot) and cites sources with direct links.
+
+GPTBot crawling your site goes into OpenAI's training data — it's not what makes ChatGPT reference you in conversations. That's Bing search integration. Blocking GPTBot costs you nothing in terms of ChatGPT visibility.
 
 ### Defense in Depth (Three Layers)
 
+Apply blocking to **training crawlers only**. Allow citation crawlers through with the same access as regular search engines.
+
 **Layer A: robots.txt (advisory)**
 ```
-# Block AI training crawlers
+# Block AI training crawlers (no attribution, no traffic back)
 User-agent: GPTBot
+User-agent: ChatGPT-User
 User-agent: ClaudeBot
+User-agent: Claude-Web
+User-agent: anthropic-ai
+User-agent: CCBot
 User-agent: Google-Extended
 User-agent: Bytespider
-User-agent: PerplexityBot
-User-agent: CCBot
 User-agent: cohere-ai
-User-agent: anthropic-ai
 User-agent: Amazonbot
 Disallow: /
+
+# Allow AI citation/search crawlers (link back to source)
+User-agent: PerplexityBot
+User-agent: Applebot-Extended
+User-agent: FacebookBot
+Allow: /
+Disallow: /api/
+Disallow: /assess
+
+# Default: allow search engines (Googlebot, Bingbot, etc.)
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /assess
 ```
 
-Polite crawlers respect this. Aggressive ones don't.
+Polite crawlers respect this. Aggressive ones don't — that's why you need the next two layers.
 
 **Layer B: Cloudflare WAF rule (enforcement)**
 
-See Layer 1, Rule 1. Blocks at the edge before any server-side code runs.
+See Layer 1, Rule 1. Blocks training crawlers at the edge before any server-side code runs. Only include training crawler user agents — do NOT include PerplexityBot, Applebot, or FacebookBot.
 
 **Layer C: Server-side user agent check (last resort)**
 
 ```typescript
-const UA_BLOCKLIST = /GPTBot|ClaudeBot|anthropic|CCBot|PerplexityBot|Bytespider/i;
+// Training crawlers only — never block citation/search crawlers here
+const TRAINING_CRAWLERS = /GPTBot|ChatGPT-User|ClaudeBot|anthropic-ai|CCBot|Google-Extended|Bytespider|cohere-ai|Amazonbot/i;
 
 export function middleware(req: NextRequest) {
   const ua = req.headers.get("user-agent") || "";
-  if (UA_BLOCKLIST.test(ua)) {
+  if (TRAINING_CRAWLERS.test(ua)) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 }
 ```
 
-### Why All Three
+### Why All Three Layers
 
-- robots.txt alone is toothless against bad actors
+- robots.txt alone is toothless against bad actors who ignore it
 - Cloudflare alone can be bypassed by crawlers that spoof user agents
 - Server-side checks alone mean the request already hit your origin (you already paid for the function invocation)
 
-Together, they catch 99%+ of AI crawler traffic.
+Together, they catch 99%+ of training crawler traffic while keeping your site visible in AI-powered search.
+
+### When to Revisit
+
+The AI crawler landscape changes fast. New crawlers emerge regularly, and some training crawlers may add citation features. Review quarterly:
+- Check Cloudflare analytics for new user agents hitting your site
+- Check if any blocked crawlers have launched search/citation products
+- Check if any allowed crawlers have started training-only scraping
+- Update all three layers (robots.txt, Cloudflare WAF, server-side) together
 
 ---
 

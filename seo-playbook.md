@@ -14,7 +14,7 @@ This playbook is ordered by dependency — each layer builds on the one before i
 
 **Implementation:**
 
-- **robots.txt** — Allow all crawlers except AI scrapers (GPTBot, ClaudeBot, Google-Extended, Bytespider, PerplexityBot). Block internal routes (`/api/`, `/assess`, `/admin`). Point to sitemap.
+- **robots.txt** — Allow all crawlers except AI *training* crawlers (GPTBot, ClaudeBot, CCBot, Bytespider, cohere-ai). Allow AI *citation/search* crawlers (PerplexityBot, Applebot, FacebookBot) — these link back to your site in AI-generated answers. Never block Googlebot or Bingbot — they drive both organic search AND AI answer citations (Google AI Overviews, Copilot). Block internal routes (`/api/`, `/assess`, `/admin`). Point to sitemap. See the Deployment Security Playbook for the full training vs. citation crawler framework.
 - **sitemap.xml** — Auto-generated from routes + data. Never manually maintain a sitemap. In Next.js, use `app/sitemap.ts`. In Vite/React, use a build-time script that reads route config and generates XML.
   - Set `priority`: homepage 1.0, core pages 0.9, content pages 0.8, legal pages 0.3.
   - Set `changeFrequency`: data-driven pages "daily", content pages "weekly", legal "yearly".
