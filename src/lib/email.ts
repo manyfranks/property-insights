@@ -12,7 +12,7 @@ import { fmt, pct, slugify } from "./utils";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const FROM = "Property Insights <insights@mail.propertyinsights.xyz>";
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://propertyinsights.xyz";
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://www.propertyinsights.xyz";
 
 interface AssessmentEmailData {
   listing: Listing;
