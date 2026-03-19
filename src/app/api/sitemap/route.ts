@@ -4,6 +4,16 @@ import { BLOG_POSTS } from "@/lib/blog";
 import { slugify } from "@/lib/utils";
 import { BASE_URL } from "@/lib/seo";
 
+function getAllTagSlugs(): string[] {
+  const slugs = new Set<string>();
+  for (const post of BLOG_POSTS) {
+    for (const tag of post.tags) {
+      slugs.add(slugify(tag));
+    }
+  }
+  return Array.from(slugs);
+}
+
 export const dynamic = "force-dynamic";
 
 function entry(url: string, lastmod: string, changefreq: string, priority: number): string {
@@ -32,6 +42,11 @@ export async function GET() {
         "monthly",
         0.8,
       )
+    ),
+
+    // Blog tag pages
+    ...getAllTagSlugs().map((tag) =>
+      entry(`${BASE_URL}/blog/tags/${tag}`, now, "weekly", 0.6)
     ),
 
     // City landing pages

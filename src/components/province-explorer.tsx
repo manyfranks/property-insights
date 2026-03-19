@@ -78,7 +78,7 @@ export default function ProvinceExplorer({ cities, provinces }: ProvinceExplorer
           {filtered.map((city) => (
             <Link
               key={city.slug}
-              href={`/dashboard?city=${encodeURIComponent(city.name)}`}
+              href={`/discover/${city.slug}`}
               className="group border border-border rounded-xl p-4 hover:shadow-md hover:-translate-y-0.5 transition-all bg-white"
             >
               <div className="flex items-center justify-between">

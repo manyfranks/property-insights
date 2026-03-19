@@ -1,0 +1,12 @@
+{
+  "name": "Property Insights",
+  "short_name": "PI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#171717",
+  "icons": [
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any" },
+    { "src": "/apple-icon.png", "type": "image/png", "sizes": "180x180" }
+  ]
+}
