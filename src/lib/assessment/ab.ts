@@ -94,13 +94,20 @@ export async function lookupAB(address: string, unit?: string, city?: string): P
     return lookupLethbridgeArcGIS(address, unit);
   }
 
-  // Calgary/Edmonton: require NW/NE/SW/SE quadrant
-  const quadrant = address.match(/\b(NW|NE|SW|SE)\b/i)?.[1]?.toUpperCase();
-  if (!quadrant) return null;
+  // Route by city when known — avoids unnecessary cross-city API calls.
+  // Calgary's prefix match (starts_with) works without a quadrant.
+  // Edmonton needs exact street_name match; quadrant fallback is built in.
+  const lowerCity = city?.toLowerCase();
 
-  // Try Calgary first (most of our AB listings), then Edmonton
-  const result = await lookupCalgarySODA(address, unit) ?? await lookupEdmontonSODA(address, unit);
-  return result;
+  if (lowerCity === "calgary") {
+    return lookupCalgarySODA(address, unit);
+  }
+  if (lowerCity === "edmonton") {
+    return lookupEdmontonSODA(address, unit);
+  }
+
+  // Unknown AB city: try Calgary first (most AB listings), then Edmonton
+  return await lookupCalgarySODA(address, unit) ?? await lookupEdmontonSODA(address, unit);
 }
 
 /**
@@ -201,6 +208,18 @@ async function lookupEdmontonSODA(address: string, unit?: string): Promise<Asses
     if (suite) {
       const noSuite = await queryEdmonton(houseNumber, streetName, null);
       if (noSuite) return noSuite;
+    }
+
+    // Quadrant fallback: Zoocasa often omits NW/NE/SW/SE from addresses.
+    // Edmonton stores quadrant as part of street_name, so try all four.
+    if (!/\b(NW|NE|SW|SE)\b/i.test(streetName)) {
+      for (const q of ["NW", "NE", "SW", "SE"]) {
+        const qResult = await queryEdmonton(houseNumber, `${streetName} ${q}`, suite);
+        if (qResult) return qResult;
+        if (!suite) continue;
+        const qNoSuite = await queryEdmonton(houseNumber, `${streetName} ${q}`, null);
+        if (qNoSuite) return qNoSuite;
+      }
     }
 
     return null;

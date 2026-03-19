@@ -224,10 +224,7 @@ export async function analyzeAndNarrate(context: {
     // DOM context for narrative
     const dom = listing.dom ?? 0;
 
-    const response = await openrouter().chat.completions.create({
-      model: "anthropic/claude-haiku-4.5",
-      max_tokens: 800,
-      messages: [
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         {
           role: "system",
           content: `You are a buyer's acquisition analyst. You work for the buyer. Your job is to arm them with data-backed conviction so they can make the sharpest possible offer on a property.
@@ -290,34 +287,54 @@ Detected signals: ${signals.length > 0 ? signals.join(", ") : "none"}
 Description:
 ${desc || "(No description available)"}`,
         },
-      ],
-    });
+      ];
 
-    const text = response.choices[0]?.message?.content?.trim() || "";
-    const finishReason = response.choices[0]?.finish_reason;
-    if (finishReason === "length") {
-      console.warn(`  [llm] WARNING: response truncated (hit max_tokens). Raw length: ${text.length}`);
-    }
+    // Single-attempt LLM call with JSON parsing
+    const callLlm = async (): Promise<LLMAnalysis> => {
+      const response = await openrouter().chat.completions.create({
+        model: "anthropic/claude-haiku-4.5",
+        max_tokens: 1024,
+        messages,
+      });
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.warn(`  [llm] No JSON found in response. Raw: ${text.slice(0, 200)}`);
-      return { signals: [], confidence: 0, narrative: "" };
-    }
+      const text = response.choices[0]?.message?.content?.trim() || "";
+      const finishReason = response.choices[0]?.finish_reason;
+      if (finishReason === "length") {
+        console.warn(`  [llm] WARNING: response truncated (hit max_tokens). Raw length: ${text.length}`);
+      }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonMatch[0]);
-    } catch (parseErr) {
-      console.warn(`  [llm] JSON parse failed. finish_reason=${finishReason}. Raw: ${jsonMatch[0].slice(0, 300)}`);
-      return { signals: [], confidence: 0, narrative: "" };
-    }
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error(`No JSON in response (finish_reason=${finishReason}): ${text.slice(0, 200)}`);
+      }
 
-    return {
-      signals: Array.isArray(parsed.signals) ? parsed.signals : [],
-      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
-      narrative: typeof parsed.narrative === "string" ? parsed.narrative : "",
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch {
+        throw new Error(`JSON parse failed (finish_reason=${finishReason}): ${jsonMatch[0].slice(0, 300)}`);
+      }
+
+      return {
+        signals: Array.isArray(parsed.signals) ? parsed.signals : [],
+        confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
+        narrative: typeof parsed.narrative === "string" ? parsed.narrative : "",
+      };
     };
+
+    // Attempt with one retry on failure
+    try {
+      return await callLlm();
+    } catch (firstErr) {
+      console.warn(`  [llm] attempt 1 failed: ${firstErr instanceof Error ? firstErr.message : String(firstErr)}`);
+      await new Promise((r) => setTimeout(r, 1000));
+      try {
+        return await callLlm();
+      } catch (retryErr) {
+        console.warn(`  [llm] attempt 2 failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`);
+        return { signals: [], confidence: 0, narrative: "" };
+      }
+    }
   } catch (err) {
     console.warn(`  [llm] Error: ${err instanceof Error ? err.message : String(err)}`);
     return { signals: [], confidence: 0, narrative: "" };

@@ -105,6 +105,9 @@ export async function enrichListing(
     try {
       log("llm start");
       const result = await analyzeAndNarrate({ listing, assessment, offer, signals, comparables: compForNarrative });
+      if (!result.narrative) {
+        log("llm empty", "LLM returned no narrative — falling back to deterministic");
+      }
       narrative = result.narrative || deterministicNarrative({ listing, assessment, offer, signals, comparables: compForNarrative });
       llmSignals = result.signals;
       log("llm done", `${narrative.length} chars`);
