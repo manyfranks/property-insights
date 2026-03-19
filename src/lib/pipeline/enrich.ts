@@ -63,8 +63,10 @@ export async function enrichListing(
   }
 
   // Score + offer
+  // Area median is a city-level stat, not a property assessment — don't anchor to it.
   const score = scoreV2(listing);
-  const offer = assessment?.found
+  const hasRealAssessment = assessment?.found && assessment.source !== "area_median";
+  const offer = hasRealAssessment && assessment
     ? offerModel(listing, assessment)
     : offerModelLanguage(listing);
   const signals = getSignals(listing);

@@ -169,14 +169,13 @@ export async function analyzeAndNarrate(context: {
   try {
     // Build assessment context — adapt to available data per market
     let assessmentBlock: string;
-    if (assessment && assessment.found) {
+    if (assessment && assessment.found && assessment.source !== "area_median") {
+      // Property-specific assessment (government, tax_reverse, cache)
       const ratio = listing.price / assessment.totalValue;
       const hasLandSplit = assessment.landValue > 0 && assessment.buildingValue > 0;
       const sourceLabel = assessment.source === "tax_reverse"
         ? "Estimated from taxes"
-        : assessment.source === "area_median"
-          ? "City-level area median (StatCan)"
-          : "Government";
+        : "Government";
       assessmentBlock = `Assessment (${assessment.assessmentYear}, ${sourceLabel}): ${fmt(assessment.totalValue)}`;
       if (hasLandSplit) {
         const landPct = ((assessment.landValue / assessment.totalValue) * 100).toFixed(0);
@@ -185,8 +184,6 @@ export async function analyzeAndNarrate(context: {
       assessmentBlock += `\nList-to-assessed ratio: ${ratio.toFixed(3)}x`;
       if (assessment.source === "tax_reverse") {
         assessmentBlock += `\nNOTE: This assessment is reverse-engineered from listed property taxes using municipal rates. It is an estimate, NOT a verified government figure. Treat with lower confidence.`;
-      } else if (assessment.source === "area_median") {
-        assessmentBlock += `\nNOTE: This is a city-level median from StatCan, NOT property-specific. It tells you roughly what properties in this city assess at, but says nothing about this specific property. Treat as approximate.`;
       } else if (assessment.assessmentYear === "2016") {
         assessmentBlock += `\nNOTE: Ontario MPAC assessments are frozen at 2016 Current Value Assessment. Market values have diverged significantly since then.`;
       }
@@ -194,7 +191,11 @@ export async function analyzeAndNarrate(context: {
         assessmentBlock += `\nLand share: ${((assessment.landValue / assessment.totalValue) * 100).toFixed(0)}% — ${assessment.landValue > assessment.buildingValue ? "land-heavy valuation, structure has limited value" : "building carries meaningful value"}`;
       }
     } else {
+      // No property-specific assessment — language-based model
       assessmentBlock = "Assessment: Not available — using language-based offer model (higher uncertainty)";
+      if (assessment?.found && assessment.source === "area_median") {
+        assessmentBlock += `\nCity context: StatCan median for ${listing.city} is ${fmt(assessment.totalValue)} (${assessment.assessmentYear}). This is a city-wide average, NOT this property's assessed value. Use only as background context for the local market, not as an anchor.`;
+      }
     }
 
     // Build offer context
