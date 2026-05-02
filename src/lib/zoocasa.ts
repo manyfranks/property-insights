@@ -684,33 +684,148 @@ function scoreAddressMatch(typed: string, candidate: string): number {
   return 0.5 + 0.5 * (union === 0 ? 0 : intersect / union);
 }
 
+// Metro-area siblings — Google Places usually labels Greater Toronto as
+// "Toronto", Greater Victoria as "Victoria", etc., even when the listing's
+// actual municipality is a separate city. Zoocasa keys URLs by municipality
+// (e.g., 1227 Freshwater Crescent's URL is /langford-bc-real-estate/...,
+// not /victoria-bc-real-estate/...). When the typed city's flat URL misses,
+// we fan out to siblings.
+//
+// Keys are lowercased Google "locality" strings. Values are Zoocasa-format
+// Title-Case city names (citySlug() lowercases them at URL build time).
+const CITY_SIBLINGS: Record<string, string[]> = {
+  victoria: [
+    "Langford", "Saanich", "Esquimalt", "Oak Bay", "Sooke",
+    "Colwood", "View Royal", "Central Saanich", "North Saanich",
+    "Sidney", "Metchosin",
+  ],
+  vancouver: [
+    "Burnaby", "Surrey", "Richmond", "Coquitlam", "Port Coquitlam",
+    "Port Moody", "North Vancouver", "West Vancouver", "New Westminster",
+    "Delta", "Langley", "White Rock", "Maple Ridge", "Pitt Meadows",
+  ],
+  toronto: [
+    "Mississauga", "Brampton", "Vaughan", "Markham", "Richmond Hill",
+    "Oakville", "Burlington", "Milton", "Pickering", "Ajax", "Whitby",
+    "Oshawa", "Aurora", "Newmarket", "Etobicoke", "Scarborough",
+    "North York", "East York",
+  ],
+  calgary: ["Airdrie", "Cochrane", "Okotoks", "Chestermere"],
+  edmonton: [
+    "St. Albert", "Sherwood Park", "Spruce Grove", "Stony Plain",
+    "Beaumont", "Leduc", "Fort Saskatchewan",
+  ],
+  montreal: ["Laval", "Longueuil", "Brossard", "Saint-Lambert"],
+  hamilton: ["Burlington", "Stoney Creek", "Ancaster", "Dundas"],
+  ottawa: ["Gatineau", "Kanata", "Orleans", "Nepean"],
+};
+
+function siblingsFor(city: string): string[] {
+  const key = city.trim().toLowerCase();
+  return CITY_SIBLINGS[key] || [];
+}
+
+/**
+ * Try to fetch the detail page directly via flat-URL slug construction.
+ * Returns null on 404 / missingAddress so callers can fan out to siblings.
+ * Other errors propagate.
+ */
+async function tryFetchByCitySlug(
+  street: string,
+  city: string,
+  province: string
+): Promise<DetailResult | null> {
+  const base = `https://www.zoocasa.com/${citySlug(city)}-${provSlug(province)}-real-estate`;
+  const slug = addressSlug(street);
+  const inputUnit = street.match(/[\s,]+(?:#|unit\s*|suite\s*|apt\s*)(\d+[A-Z]?)\s*$/i)?.[1];
+
+  let html: string;
+  try {
+    html = await fetchPage(`${base}/${slug}`);
+  } catch (err) {
+    if (!(err instanceof ZoocasaNotFoundError)) throw err;
+    // Raw-slug retry — some markets use unabbreviated street types.
+    const rawSlug = street
+      .toLowerCase()
+      .replace(/[#,\.]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    if (rawSlug === slug) return null;
+    try {
+      html = await fetchPage(`${base}/${rawSlug}`);
+    } catch (err2) {
+      if (err2 instanceof ZoocasaNotFoundError) return null;
+      throw err2;
+    }
+  }
+
+  const data = extractNextData(html);
+  if (!data) return null;
+  const props = data.props as Record<string, unknown> | undefined;
+  const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+  const innerProps = pageProps?.props as Record<string, unknown> | undefined;
+  const activeListing = innerProps?.activeListing as Record<string, unknown> | undefined;
+  const raw = (activeListing?.listing || {}) as ZoocasaDetailResult;
+  // Empty raw = SSR served the area page rather than a listing detail.
+  if (!raw.streetNumber && !raw.streetName && !raw.mlsNum) return null;
+
+  raw.city = raw.city || city;
+  raw.province = raw.province || province;
+  return {
+    listing: mapDetailListing(raw, city, province, inputUnit),
+    history: parseHistory(raw),
+    raw,
+  };
+}
+
 /**
  * Find a listing on Zoocasa by typed street address and fetch its detail page.
  *
- * Replaces fetchDetail's slug-guessing for the on-demand /api/assess flow.
- * Throws ZoocasaNotFoundError when no candidate clears the match threshold —
- * callers should surface a "paste a Zoocasa URL instead" UX in that case.
+ * Strategy:
+ *   1. Try flat URLs across [user-typed city, ...metro siblings] in parallel.
+ *      First 200 wins. Handles the common Google-Places-says-Victoria-but-
+ *      listing-is-in-Langford failure mode.
+ *   2. If all flat URLs miss, fall back to search-and-match scoring against
+ *      the typed city's inventory. Less reliable since Zoocasa's SSR widens
+ *      to province-level, but catches cases where the typed city is right
+ *      but the slug doesn't match (rare street-type abbreviations etc.).
+ *
+ * Throws ZoocasaNotFoundError if both phases miss — callers should surface
+ * a "paste the Zoocasa URL instead" UX.
  */
 export async function findAndFetchDetail(
   street: string,
   city: string,
   province: string
 ): Promise<DetailResult> {
-  const candidates = await searchListings(city, province);
+  const candidates = [city, ...siblingsFor(city)];
 
+  // Phase 1 — flat URL fan-out.
+  const flatResults = await Promise.all(
+    candidates.map((c) =>
+      tryFetchByCitySlug(street, c, province).catch(() => null)
+    )
+  );
+  const flatHit = flatResults.find((r) => r !== null);
+  if (flatHit) return flatHit;
+
+  // Phase 2 — search-and-match against the typed city's inventory. Province-
+  // wide noise from Zoocasa's SSR makes this a low-confidence path, hence
+  // the same 0.7 threshold as before.
+  const searchCandidates = await searchListings(city, province).catch(() => []);
   let best: { listing: Listing; score: number } | null = null;
-  for (const c of candidates) {
+  for (const c of searchCandidates) {
     const s = scoreAddressMatch(street, c.address);
     if (s >= ADDRESS_MATCH_THRESHOLD && (!best || s > best.score)) {
       best = { listing: c, score: s };
     }
   }
-
-  if (!best || !best.listing.url) {
-    throw new ZoocasaNotFoundError(`${street}, ${city}, ${province}`);
+  if (best && best.listing.url) {
+    return fetchDetailByUrl(best.listing.url);
   }
 
-  return fetchDetailByUrl(best.listing.url);
+  throw new ZoocasaNotFoundError(`${street}, ${city}, ${province}`);
 }
 
 /**
