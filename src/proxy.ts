@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { apiLimiter, authApiLimiter, assessLimiter } from "@/lib/rate-limit";
+import { apiLimiter, authApiLimiter } from "@/lib/rate-limit";
 
 const isProtectedRoute = createRouteMatcher(["/api/subscribe(.*)"]);
 
@@ -21,8 +21,8 @@ const isAuthApi = createRouteMatcher([
   "/api/analyze(.*)",
 ]);
 
-// Assess endpoint gets its own daily cap
-const isAssessRoute = createRouteMatcher(["/api/assess(.*)"]);
+// /api/assess is rate-limited inside the route handler so failed Zoocasa
+// lookups don't consume slots from the user's daily cap.
 
 function rateLimitResponse(resetMs: number) {
   const retryAfter = Math.ceil(resetMs / 1000);
@@ -66,28 +66,6 @@ export default clerkMiddleware(async (auth, req) => {
     }
   }
 
-  // --- Daily cap for /api/assess (15/day per user) ---
-  if (isAssessRoute(req)) {
-    const { userId } = await auth();
-    if (userId) {
-      const limiter = assessLimiter();
-      if (limiter) {
-        const result = await limiter.limit(userId);
-        if (!result.success) {
-          return NextResponse.json(
-            {
-              error: "Daily assessment limit reached (15/day). Resets in 24 hours.",
-              code: "RATE_LIMIT",
-            },
-            {
-              status: 429,
-              headers: { "Retry-After": String(Math.ceil((result.reset - Date.now()) / 1000)) },
-            }
-          );
-        }
-      }
-    }
-  }
 });
 
 export const config = {

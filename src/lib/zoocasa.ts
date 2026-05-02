@@ -608,6 +608,111 @@ export function parseZoocasaUrl(url: string): { city: string; province: string; 
   return { city, province: match[2].toLowerCase(), slug: match[3].toLowerCase() };
 }
 
+// ---------------------------------------------------------------------------
+// Address-to-listing matching
+// ---------------------------------------------------------------------------
+//
+// fetchDetail() constructs a Zoocasa URL slug from a typed address, which
+// fails whenever Zoocasa abbreviates differently than our SLUG_ABBREVS table
+// (e.g., "Parkway" → "pky" not "pkwy", missing types like "Bay" / "Mews",
+// neighbourhood path segments like /shaganappi/...). Verified at 93% on
+// scripts/test-address-to-zoocasa.ts.
+//
+// findAndFetchDetail searches the city's active inventory and picks the
+// highest-confidence match using a number-anchored token-overlap score.
+// Anchor on street number (must match exactly), then Jaccard overlap on
+// the remaining street-name tokens after stripping street types and
+// directionals. Threshold 0.7 was chosen so a number-only match (no name
+// overlap) doesn't pass — both halves must contribute.
+
+const ADDRESS_STOPWORDS = new Set([
+  // street types (full and abbreviated forms)
+  "st", "street", "ave", "avenue", "dr", "drive", "rd", "road",
+  "blvd", "boulevard", "cres", "crescent", "crt", "court", "pl", "place",
+  "way", "lane", "ln", "trail", "tr", "terr", "terrace", "cir", "circle",
+  "pk", "park", "pkwy", "pky", "parkway", "sq", "square", "close",
+  "gate", "hts", "heights", "pt", "point", "green", "grove", "cove",
+  "landing", "rise", "mews", "bay", "glen", "commons", "row", "walk",
+  // directionals
+  "n", "s", "e", "w", "ne", "nw", "se", "sw",
+  "north", "south", "east", "west",
+  "northeast", "northwest", "southeast", "southwest",
+]);
+
+const ADDRESS_MATCH_THRESHOLD = 0.7;
+
+function tokenizeStreetAddress(line: string): { number: string | null; words: string[] } {
+  // Normalize: lowercase, strip punctuation, drop trailing "Unit X" / "Suite X" hints,
+  // turn "4-170" into "4 170" so the dual-number heuristic below catches Zoocasa's
+  // unit-prefix format ("4-170 Celano Cres" → unit 4, street # 170).
+  let s = line
+    .toLowerCase()
+    .replace(/[#,\.]/g, " ")
+    .replace(/\s+(unit|suite|apt|apartment)\s+\w+\s*$/i, "")
+    .replace(/(\d)-(\d)/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Two leading numbers → unit + street number. Use the second.
+  const dual = s.match(/^(\d+[a-z]?)\s+(\d+[a-z]?)\s+(.+)$/);
+  if (dual) {
+    return {
+      number: dual[2],
+      words: dual[3].split(" ").filter((w) => w && !ADDRESS_STOPWORDS.has(w)),
+    };
+  }
+
+  const single = s.match(/^(\d+[a-z]?)\s+(.+)$/);
+  if (!single) return { number: null, words: s.split(" ").filter(Boolean) };
+
+  return {
+    number: single[1],
+    words: single[2].split(" ").filter((w) => w && !ADDRESS_STOPWORDS.has(w)),
+  };
+}
+
+function scoreAddressMatch(typed: string, candidate: string): number {
+  const a = tokenizeStreetAddress(typed);
+  const b = tokenizeStreetAddress(candidate);
+  if (!a.number || !b.number || a.number !== b.number) return 0;
+  if (a.words.length === 0 || b.words.length === 0) return 0.5;
+  const setA = new Set(a.words);
+  const setB = new Set(b.words);
+  let intersect = 0;
+  for (const w of setA) if (setB.has(w)) intersect++;
+  const union = setA.size + setB.size - intersect;
+  return 0.5 + 0.5 * (union === 0 ? 0 : intersect / union);
+}
+
+/**
+ * Find a listing on Zoocasa by typed street address and fetch its detail page.
+ *
+ * Replaces fetchDetail's slug-guessing for the on-demand /api/assess flow.
+ * Throws ZoocasaNotFoundError when no candidate clears the match threshold —
+ * callers should surface a "paste a Zoocasa URL instead" UX in that case.
+ */
+export async function findAndFetchDetail(
+  street: string,
+  city: string,
+  province: string
+): Promise<DetailResult> {
+  const candidates = await searchListings(city, province);
+
+  let best: { listing: Listing; score: number } | null = null;
+  for (const c of candidates) {
+    const s = scoreAddressMatch(street, c.address);
+    if (s >= ADDRESS_MATCH_THRESHOLD && (!best || s > best.score)) {
+      best = { listing: c, score: s };
+    }
+  }
+
+  if (!best || !best.listing.url) {
+    throw new ZoocasaNotFoundError(`${street}, ${city}, ${province}`);
+  }
+
+  return fetchDetailByUrl(best.listing.url);
+}
+
 /**
  * Fetch a listing directly from a full Zoocasa URL.
  * Bypasses address parsing and slug construction entirely.

@@ -11,12 +11,19 @@
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { fetchDetail, fetchDetailByUrl, parseZoocasaUrl, ZoocasaNotFoundError } from "@/lib/zoocasa";
+import { findAndFetchDetail, fetchDetailByUrl, parseZoocasaUrl, ZoocasaNotFoundError } from "@/lib/zoocasa";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { upsertListing } from "@/lib/kv/listings";
 import { trackEvent } from "@/lib/db/user-events";
 import { sendAssessmentEmail } from "@/lib/email";
+import { assessLimiter } from "@/lib/rate-limit";
 import { slugify } from "@/lib/utils";
+
+const RATE_LIMIT_RESPONSE = (resetMs: number) =>
+  NextResponse.json(
+    { error: "Daily assessment limit reached (15/day). Resets in 24 hours.", code: "RATE_LIMIT" },
+    { status: 429, headers: { "Retry-After": String(Math.ceil(resetMs / 1000)) } }
+  );
 
 export const maxDuration = 60;
 
@@ -88,6 +95,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sign in to request an assessment" }, { status: 401 });
   }
 
+  // Daily cap pre-check (no consume) — blocks spam without charging the user.
+  // The slot is consumed below, after Zoocasa confirms the listing is real,
+  // so failed lookups (bad address, listing not found) don't count.
+  const limiter = assessLimiter();
+  if (limiter) {
+    const { remaining, reset } = await limiter.getRemaining(userId);
+    if (remaining <= 0) {
+      return RATE_LIMIT_RESPONSE(reset - Date.now());
+    }
+  }
+
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -142,13 +160,17 @@ export async function POST(req: Request) {
     log("parsed", `${street} | ${city} | ${province}`);
 
     try {
-      detail = await fetchDetail(street, city, province);
+      detail = await findAndFetchDetail(street, city, province);
       log("zoocasa ok", `${detail.listing.address}${detail.listing.unit ? " unit=" + detail.listing.unit : ""}`);
     } catch (err) {
       log("zoocasa error", err instanceof Error ? err.message : String(err));
       if (err instanceof ZoocasaNotFoundError) {
         return NextResponse.json(
-          { error: "This property wasn't found on Zoocasa. It may not be currently listed for sale." },
+          {
+            error:
+              "We couldn't find this property in Zoocasa's active listings. " +
+              "If you have the Zoocasa listing URL, paste it here for an exact match.",
+          },
           { status: 404 }
         );
       }
@@ -156,6 +178,15 @@ export async function POST(req: Request) {
         { error: "Failed to look up this property. Please try again." },
         { status: 502 }
       );
+    }
+  }
+
+  // Lookup succeeded — now consume a slot from the daily cap. Race with the
+  // pre-check is acceptable: the cap is per-user-per-day, not a security gate.
+  if (limiter) {
+    const result = await limiter.limit(userId);
+    if (!result.success) {
+      return RATE_LIMIT_RESPONSE(result.reset - Date.now());
     }
   }
 
