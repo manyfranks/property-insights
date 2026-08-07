@@ -27,8 +27,13 @@ const RATE_LIMIT_RESPONSE = (resetMs: number) =>
 
 export const maxDuration = 60;
 
-// Province mapping: full names + common abbreviations → 2-letter codes
-const PROVINCE_MAP: Record<string, string> = {
+// Region mapping: full names + common abbreviations → region codes.
+// Canadian provinces map to lowercase 2-letter codes (unchanged from the
+// original PROVINCE_MAP — Zoocasa's search API expects these lowercase).
+// US states/DC map to UPPERCASE USPS codes, which doubles as the CA/US
+// discriminator below (no Canadian code is ever uppercase 2 letters).
+const REGION_MAP: Record<string, string> = {
+  // Canada
   "british columbia": "bc",
   bc: "bc",
   alberta: "ab",
@@ -50,22 +55,84 @@ const PROVINCE_MAP: Record<string, string> = {
   pei: "pe",
   "newfoundland and labrador": "nl",
   nl: "nl",
+
+  // United States — 50 states + DC (US support lands in a later phase;
+  // for now these just let parseAddress recognize the address so the
+  // route can return a clear "not yet" response instead of failing to
+  // parse at all).
+  alabama: "AL", al: "AL",
+  alaska: "AK", ak: "AK",
+  arizona: "AZ", az: "AZ",
+  arkansas: "AR", ar: "AR",
+  california: "CA", ca: "CA",
+  colorado: "CO", co: "CO",
+  connecticut: "CT", ct: "CT",
+  delaware: "DE", de: "DE",
+  florida: "FL", fl: "FL",
+  georgia: "GA", ga: "GA",
+  hawaii: "HI", hi: "HI",
+  idaho: "ID", id: "ID",
+  illinois: "IL", il: "IL",
+  indiana: "IN", in: "IN",
+  iowa: "IA", ia: "IA",
+  kansas: "KS", ks: "KS",
+  kentucky: "KY", ky: "KY",
+  louisiana: "LA", la: "LA",
+  maine: "ME", me: "ME",
+  maryland: "MD", md: "MD",
+  massachusetts: "MA", ma: "MA",
+  michigan: "MI", mi: "MI",
+  minnesota: "MN", mn: "MN",
+  mississippi: "MS", ms: "MS",
+  missouri: "MO", mo: "MO",
+  montana: "MT", mt: "MT",
+  nebraska: "NE", ne: "NE",
+  nevada: "NV", nv: "NV",
+  "new hampshire": "NH", nh: "NH",
+  "new jersey": "NJ", nj: "NJ",
+  "new mexico": "NM", nm: "NM",
+  "new york": "NY", ny: "NY",
+  "north carolina": "NC", nc: "NC",
+  "north dakota": "ND", nd: "ND",
+  ohio: "OH", oh: "OH",
+  oklahoma: "OK", ok: "OK",
+  oregon: "OR", or: "OR",
+  pennsylvania: "PA", pa: "PA",
+  "rhode island": "RI", ri: "RI",
+  "south carolina": "SC", sc: "SC",
+  "south dakota": "SD", sd: "SD",
+  tennessee: "TN", tn: "TN",
+  texas: "TX", tx: "TX",
+  utah: "UT", ut: "UT",
+  vermont: "VT", vt: "VT",
+  virginia: "VA", va: "VA",
+  washington: "WA", wa: "WA",
+  "west virginia": "WV", wv: "WV",
+  wisconsin: "WI", wi: "WI",
+  wyoming: "WY", wy: "WY",
+  "district of columbia": "DC", dc: "DC",
 };
 
 /**
- * Parse a Google Places address into street, city, province.
+ * Parse a Google Places address into street, city, region, country.
  * Expected formats:
  *   "123 Main St, Vancouver, BC V5K 1A1, Canada"
  *   "123 Main St, Vancouver, BC, Canada"
  *   "123 Main St, Vancouver, British Columbia, Canada"
+ *   "123 Main St, Austin, TX 78701, USA"
+ *   "123 Main St, Austin, TX"
  */
 function parseAddress(raw: string): {
   street: string;
   city: string;
-  province: string;
+  region: string;
+  country: "CA" | "US";
 } | null {
-  // Remove "Canada" suffix
-  const cleaned = raw.replace(/,?\s*Canada\s*$/i, "").trim();
+  // Remove trailing country suffix (Canada or USA, in the forms Google
+  // Places tends to emit)
+  const cleaned = raw
+    .replace(/,?\s*(Canada|USA|U\.S\.A\.|United States(?: of America)?)\s*$/i, "")
+    .trim();
   const parts = cleaned.split(",").map((p) => p.trim());
 
   if (parts.length < 3) return null;
@@ -73,16 +140,19 @@ function parseAddress(raw: string): {
   const street = parts[0];
   const city = parts[1];
 
-  // Province is in the third part, possibly with postal code
-  const provPart = parts[2]
-    .replace(/[A-Z]\d[A-Z]\s*\d[A-Z]\d/i, "") // Strip postal code
+  // Region is in the third part, possibly with a postal/ZIP code attached
+  const regionPart = parts[2]
+    .replace(/[A-Z]\d[A-Z]\s*\d[A-Z]\d/i, "") // Strip CA postal code (A1A 1A1)
+    .replace(/\b\d{5}(-\d{4})?\b/, "") // Strip US ZIP / ZIP+4
     .trim()
     .toLowerCase();
 
-  const province = PROVINCE_MAP[provPart];
-  if (!province) return null;
+  const region = REGION_MAP[regionPart];
+  if (!region) return null;
 
-  return { street, city, province };
+  const country: "CA" | "US" = /^[A-Z]{2}$/.test(region) ? "US" : "CA";
+
+  return { street, city, region, country };
 }
 
 export async function POST(req: Request) {
@@ -151,16 +221,33 @@ export async function POST(req: Request) {
     if (!parsed) {
       log("parse failed");
       return NextResponse.json(
-        { error: "Could not parse address. Please use a full Canadian address (e.g., 123 Main St, Vancouver, BC) or paste a Zoocasa listing URL." },
+        {
+          error:
+            "Could not parse address. Please use a full Canadian or US address " +
+            "(e.g., 123 Main St, Vancouver, BC or 123 Main St, Austin, TX) or paste a Zoocasa listing URL.",
+        },
         { status: 400 }
       );
     }
 
-    const { street, city, province } = parsed;
-    log("parsed", `${street} | ${city} | ${province}`);
+    const { street, city, region, country } = parsed;
+    log("parsed", `${street} | ${city} | ${region} (${country})`);
+
+    if (country === "US") {
+      log("us region — not yet supported");
+      return NextResponse.json(
+        {
+          error:
+            "US property assessments are coming soon. Property Insights currently " +
+            "supports Canadian addresses (BC, AB, ON in depth; other provinces via area-median estimate).",
+          code: "US_NOT_SUPPORTED",
+        },
+        { status: 422 }
+      );
+    }
 
     try {
-      detail = await findAndFetchDetail(street, city, province);
+      detail = await findAndFetchDetail(street, city, region);
       log("zoocasa ok", `${detail.listing.address}${detail.listing.unit ? " unit=" + detail.listing.unit : ""}`);
     } catch (err) {
       log("zoocasa error", err instanceof Error ? err.message : String(err));

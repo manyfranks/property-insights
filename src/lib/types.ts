@@ -55,6 +55,16 @@ export interface Assessment {
   assessmentYear: string;
   found: boolean;
   source?: "government" | "tax_reverse" | "area_median" | "cache";
+  // US states vary in how they compute assessed value (some assess below
+  // market, some use acquisition-value schemes like California's Prop 13);
+  // Canadian provinces are assumed market_value. Optional — unset for
+  // existing CA results until backfilled.
+  assessmentBasis?: "market_value" | "assessed_ratio" | "acquisition_value";
+  // How trustworthy the value is: observed (govt record/cache hit) >
+  // derived (computed from another observed field, e.g. tax reverse-
+  // engineering) > modeled (statistical estimate, e.g. area median) >
+  // proxy (rough stand-in) > missing (no assessment at all).
+  evidenceClass?: "observed" | "derived" | "modeled" | "proxy" | "missing";
 }
 
 export interface ListingHistory {

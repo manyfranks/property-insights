@@ -54,5 +54,23 @@ export async function POST(request: Request) {
   await db`CREATE INDEX IF NOT EXISTS idx_profiles_active ON user_profiles (last_active_at DESC)`;
   await db`CREATE INDEX IF NOT EXISTS idx_profiles_consent ON user_profiles (partner_consent) WHERE partner_consent = TRUE`;
 
+  await db`
+    CREATE TABLE IF NOT EXISTS regional_econ (
+      id            BIGSERIAL PRIMARY KEY,
+      geo_level     TEXT NOT NULL,
+      geo_fips      VARCHAR(12) NOT NULL,
+      geo_name      TEXT,
+      metric        TEXT NOT NULL,
+      year          INTEGER NOT NULL,
+      value         DOUBLE PRECISION,
+      unit          TEXT,
+      source        TEXT,
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (geo_level, geo_fips, metric, year)
+    )
+  `;
+
+  await db`CREATE INDEX IF NOT EXISTS idx_regional_econ_fips_metric ON regional_econ (geo_fips, metric)`;
+
   return NextResponse.json({ ok: true, message: "Migration complete" });
 }

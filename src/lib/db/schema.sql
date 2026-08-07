@@ -40,3 +40,24 @@ CREATE INDEX IF NOT EXISTS idx_profiles_consent ON user_profiles (partner_consen
 
 -- Trim old events: keep last 200 per user (run periodically)
 -- This is handled in application code, not a DB trigger.
+
+-- Regional economic & housing indicators, US county-level.
+-- Populated by scripts/ingest-us-*.ts (Census ACS, FHFA HPI, HUD FMR, FEMA NRI).
+-- geo_fips uses "US-SSCCC" (state+county FIPS) for US counties, so it can
+-- eventually sit alongside non-US geographies without a format collision.
+CREATE TABLE IF NOT EXISTS regional_econ (
+  id            BIGSERIAL PRIMARY KEY,
+  geo_level     TEXT NOT NULL,             -- 'county' (only level ingested so far)
+  geo_fips      VARCHAR(12) NOT NULL,      -- e.g. 'US-06075' (San Francisco County, CA)
+  geo_name      TEXT,
+  metric        TEXT NOT NULL,             -- median_home_value, fmr_2br, hpi, fema_risk_score, ...
+  year          INTEGER NOT NULL,
+  value         DOUBLE PRECISION,
+  unit          TEXT,                      -- USD | ratio | index | years
+  source        TEXT,                      -- census_acs | fhfa | hud | fema
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (geo_level, geo_fips, metric, year)
+);
+
+-- Primary lookup path: "give me metric X for county Y" (reader lib queries).
+CREATE INDEX IF NOT EXISTS idx_regional_econ_fips_metric ON regional_econ (geo_fips, metric);

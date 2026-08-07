@@ -1,0 +1,149 @@
+/**
+ * Shared helpers for scripts/ingest-us-*.ts (US county regional_econ ingest).
+ *
+ * Ported from Economic-Atlas's ingest/census.js + the per-source ingest
+ * scripts' common conventions: fail-loud on unexpected response shape,
+ * dry-run by default, --commit to write, throttled fetch with a
+ * descriptive User-Agent, batched UNNEST upsert.
+ *
+ * NOTE: DATABASE_URL is not available in this environment. Every ingest
+ * script defaults to DRY RUN (fetch + parse + print counts, no DB
+ * connection at all). The --commit path below is written correctly and
+ * defensively but is NOT exercised here — see each script's header for the
+ * exact command to run once DATABASE_URL exists.
+ */
+
+import { readFileSync, existsSync } from "fs";
+import path from "path";
+
+// ---------------------------------------------------------------------------
+// Env loading — same convention as scripts/seed-kv.ts, scripts/enrich-listings.ts
+// (manual .env.local parse; the repo has no `dotenv` package installed and
+// doesn't need one for this one job).
+// ---------------------------------------------------------------------------
+
+export function loadEnvLocal(): void {
+  const envPath = path.resolve(process.cwd(), ".env.local");
+  if (!existsSync(envPath)) {
+    console.warn(`[ingest] .env.local not found at ${envPath} — relying on process env only.`);
+    return;
+  }
+  const envContent = readFileSync(envPath, "utf-8");
+  for (const line of envContent.split("\n")) {
+    const match = line.match(/^([^#=]+)=(.*)$/);
+    if (!match) continue;
+    const key = match[1].trim();
+    if (process.env[key] === undefined) {
+      process.env[key] = match[2].trim().replace(/^["']|["']$/g, "");
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Constants shared across all four sources
+// ---------------------------------------------------------------------------
+
+export const INGEST_USER_AGENT =
+  process.env.INGEST_USER_AGENT || "Property Insights ingest mfrancis45@gmail.com";
+
+export const COMMIT = process.argv.includes("--commit");
+
+export const GEO_LEVEL = "county" as const;
+
+// County FIPS format used throughout regional_econ: "US-SSCCC".
+export function toGeoFips(stateFips: string, countyFips: string): string {
+  return `US-${stateFips}${countyFips}`;
+}
+
+// ---------------------------------------------------------------------------
+// Throttling — ported from Economic-Atlas's ingest/census.js throttle().
+// Sliding 1s window, N requests/sec max.
+// ---------------------------------------------------------------------------
+
+export function makeThrottle(maxPerSecond: number): () => Promise<void> {
+  let times: number[] = [];
+  async function throttle(): Promise<void> {
+    const now = Date.now();
+    times = times.filter((t) => now - t < 1000);
+    if (times.length >= maxPerSecond) {
+      await new Promise((r) => setTimeout(r, 1000 - (now - times[0]) + 5));
+      return throttle();
+    }
+    times.push(Date.now());
+  }
+  return throttle;
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// ---------------------------------------------------------------------------
+// regional_econ row shape + batched upsert (--commit path only)
+// ---------------------------------------------------------------------------
+
+export interface RegionalEconRow {
+  geo_fips: string; // "US-SSCCC"
+  geo_name: string;
+  metric: string;
+  year: number;
+  value: number;
+  unit: string;
+  source: string;
+}
+
+/**
+ * Batched UNNEST upsert into regional_econ, mirroring Economic-Atlas's
+ * upsertBatch() (pg Pool + UNNEST arrays) but built on
+ * @neondatabase/serverless, matching src/lib/db/index.ts's connection
+ * pattern (neon(DATABASE_URL) tagged-template client, no separate Pool).
+ *
+ * NOT exercised in this task — DATABASE_URL isn't set locally, and every
+ * ingest script here defaults to dry-run. Written correctly for when it is.
+ */
+export async function upsertRegionalEcon(rows: RegionalEconRow[]): Promise<number> {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL required for --commit (see src/lib/db/index.ts for the expected connection string shape).");
+  }
+  const { neon } = await import("@neondatabase/serverless");
+  const sql = neon(url);
+
+  const BATCH = 1000;
+  let wrote = 0;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH);
+    await sql`
+      INSERT INTO regional_econ (geo_level, geo_fips, geo_name, metric, year, value, unit, source, updated_at)
+      SELECT 'county', t.fips, t.name, t.metric, t.year, t.value, t.unit, t.source, NOW()
+      FROM UNNEST(
+        ${batch.map((r) => r.geo_fips)}::text[],
+        ${batch.map((r) => r.geo_name)}::text[],
+        ${batch.map((r) => r.metric)}::text[],
+        ${batch.map((r) => r.year)}::int[],
+        ${batch.map((r) => r.value)}::double precision[],
+        ${batch.map((r) => r.unit)}::text[],
+        ${batch.map((r) => r.source)}::text[]
+      ) AS t(fips, name, metric, year, value, unit, source)
+      ON CONFLICT (geo_level, geo_fips, metric, year)
+      DO UPDATE SET
+        value = EXCLUDED.value,
+        geo_name = EXCLUDED.geo_name,
+        unit = EXCLUDED.unit,
+        source = EXCLUDED.source,
+        updated_at = NOW()
+    `;
+    wrote += batch.length;
+    console.log(`  upserted ${wrote.toLocaleString()}/${rows.length.toLocaleString()}`);
+  }
+  return wrote;
+}
+
+/** Null-safe numeric parse; treats Census ACS negative sentinel codes
+ * (-666666666 etc, "not computed") as missing, same as Economic-Atlas's num(). */
+export function num(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || Math.abs(n) >= 555555555) return null;
+  return n;
+}

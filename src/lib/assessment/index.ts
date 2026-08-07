@@ -3,10 +3,88 @@ import { lookupBC, lookupBCSync } from "./bc";
 import { lookupON, lookupONSync } from "./on";
 import { lookupAB, lookupABSync } from "./ab";
 import { getStatCanMedian } from "../data/statcan-chsp";
+import { AssessmentAdapter, AssessmentLookupInput } from "./types";
+
+// ---------------------------------------------------------------------------
+// Adapter registry — one entry per region code. Each province module keeps
+// its own historical function signature (they differ from each other, a
+// known footgun); the wrapper below is the only place that adapts them to
+// the common AssessmentLookupInput/AssessmentAdapter shape. Room to add
+// "US-NY", "US-TX", etc. here in a later phase without touching callers.
+// ---------------------------------------------------------------------------
+
+const bcAdapter: AssessmentAdapter = {
+  lookup: (input) => lookupBC(input.address, input.city, input.unit),
+  lookupSync: (input) => lookupBCSync(input.address, input.unit),
+};
+
+const onAdapter: AssessmentAdapter = {
+  lookup: async (input) => lookupON(input.address, input.unit, input.city, input.taxes),
+  lookupSync: (input) => lookupONSync(input.address, input.unit, input.city, input.taxes),
+};
+
+const abAdapter: AssessmentAdapter = {
+  lookup: (input) => lookupAB(input.address, input.unit, input.city),
+  lookupSync: (input) => lookupABSync(input.address, input.unit),
+};
+
+const ADAPTERS: Record<string, AssessmentAdapter> = {
+  BC: bcAdapter,
+  ON: onAdapter,
+  AB: abAdapter,
+};
 
 /**
- * Async lookup — tries province-specific sources, then StatCan area median.
+ * Attach assessmentBasis/evidenceClass to a result based on its source,
+ * without clobbering values an adapter already set explicitly.
+ */
+function withEvidence(result: Assessment | null): Assessment | null {
+  if (!result) return null;
+
+  let evidenceClass: Assessment["evidenceClass"];
+  switch (result.source) {
+    case "government":
+    case "cache":
+      evidenceClass = "observed";
+      break;
+    case "tax_reverse":
+      evidenceClass = "derived";
+      break;
+    case "area_median":
+      evidenceClass = "modeled";
+      break;
+    default:
+      evidenceClass = undefined;
+  }
+
+  return {
+    ...result,
+    assessmentBasis: result.assessmentBasis ?? "market_value",
+    evidenceClass: result.evidenceClass ?? evidenceClass,
+  };
+}
+
+function areaMedianFallback(city?: string): Assessment | null {
+  if (!city) return null;
+  const median = getStatCanMedian(city);
+  if (!median) return null;
+  return {
+    totalValue: median.medianAssessment,
+    landValue: 0,
+    buildingValue: 0,
+    assessmentYear: median.year,
+    found: true,
+    source: "area_median",
+  };
+}
+
+/**
+ * Async lookup — tries the region's adapter first, then StatCan area median.
  * Use in API routes where async is fine.
+ *
+ * External signature is unchanged from the pre-refactor version so existing
+ * call sites keep compiling as-is; internally this now routes through the
+ * ADAPTERS registry.
  */
 export async function lookupAssessment(
   address: string,
@@ -15,43 +93,22 @@ export async function lookupAssessment(
   unit?: string,
   taxes?: string
 ): Promise<Assessment | null> {
-  let result: Assessment | null = null;
+  const input: AssessmentLookupInput = { address, city, unit, taxes };
+  const adapter = ADAPTERS[province];
 
-  switch (province) {
-    case "BC":
-      result = await lookupBC(address, city, unit);
-      break;
-    case "ON":
-      result = await lookupON(address, unit, city, taxes);
-      break;
-    case "AB":
-      result = await lookupAB(address, unit, city);
-      break;
-  }
-
-  if (result) return result;
+  const result = adapter ? await adapter.lookup(input) : null;
+  if (result) return withEvidence(result);
 
   // Last resort: StatCan area median (city-level, not property-specific)
-  if (city) {
-    const median = getStatCanMedian(city);
-    if (median) {
-      return {
-        totalValue: median.medianAssessment,
-        landValue: 0,
-        buildingValue: 0,
-        assessmentYear: median.year,
-        found: true,
-        source: "area_median",
-      };
-    }
-  }
-
-  return null;
+  return withEvidence(areaMedianFallback(city));
 }
 
 /**
  * Sync cache-only lookup — for preloaded data path (server components, dashboard).
  * Falls back to StatCan area median if cache misses.
+ *
+ * External signature (note: unit before city, opposite of lookupAssessment)
+ * is unchanged so existing call sites keep compiling as-is.
  */
 export function lookupAssessmentSync(
   address: string,
@@ -60,35 +117,11 @@ export function lookupAssessmentSync(
   city?: string,
   taxes?: string
 ): Assessment | null {
-  let result: Assessment | null = null;
+  const input: AssessmentLookupInput = { address, city, unit, taxes };
+  const adapter = ADAPTERS[province];
 
-  switch (province) {
-    case "BC":
-      result = lookupBCSync(address, unit);
-      break;
-    case "ON":
-      result = lookupONSync(address, unit, city, taxes);
-      break;
-    case "AB":
-      result = lookupABSync(address, unit);
-      break;
-  }
+  const result = adapter ? adapter.lookupSync(input) : null;
+  if (result) return withEvidence(result);
 
-  if (result) return result;
-
-  if (city) {
-    const median = getStatCanMedian(city);
-    if (median) {
-      return {
-        totalValue: median.medianAssessment,
-        landValue: 0,
-        buildingValue: 0,
-        assessmentYear: median.year,
-        found: true,
-        source: "area_median",
-      };
-    }
-  }
-
-  return null;
+  return withEvidence(areaMedianFallback(city));
 }
