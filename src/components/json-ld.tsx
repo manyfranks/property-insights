@@ -55,6 +55,7 @@ export function OrganizationEntityJsonLd({ url }: { url: string }) {
           "@type": "ImageObject",
           url: `${url}/logo.png`,
         },
+        sameAs: ["https://www.linkedin.com/company/property-insights-xyz"],
       }}
     />
   );
