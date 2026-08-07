@@ -7,7 +7,7 @@ import { Analytics } from "@vercel/analytics/next";
 import NavbarSearch from "@/components/navbar-search";
 import MobileSearch from "@/components/mobile-search";
 import MobileNav from "@/components/mobile-nav";
-import { OrganizationJsonLd } from "@/components/json-ld";
+import { OrganizationJsonLd, OrganizationEntityJsonLd } from "@/components/json-ld";
 import Footer from "@/components/footer";
 import ConsentBanner from "@/components/consent-banner";
 import { BASE_URL, SITE_NAME, SITE_DESCRIPTION, SITE_LOCALE } from "@/lib/seo";
@@ -88,6 +88,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <OrganizationEntityJsonLd url={BASE_URL} />
         <OrganizationJsonLd url={BASE_URL} />
         <ClerkProvider>
           <header className="relative z-50 border-b border-border bg-white">

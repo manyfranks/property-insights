@@ -30,6 +30,11 @@ const FAQ_MAP: Record<string, { question: string; answer: string }[]> = {
     { question: "How does days on market affect your offer?", answer: "The longer a property sits unsold, the more leverage buyers have. At 0–14 days, there's little room to negotiate. At 30–60 days, sellers are becoming anxious. At 90+ days, significant discounts are often achievable because the seller is likely highly motivated." },
     { question: "What data should you use to determine your offer price?", answer: "Four key inputs: government-assessed value (your anchor), days on market (seller urgency), listing language (motivation signals like 'estate sale' or 'price reduced'), and recent comparable sales in the neighbourhood. Together, these tell you how much room you have to negotiate." },
   ],
+  "bc-assessment-to-asking-price-gap": [
+    { question: "How much above BC Assessment do homes typically list for?", answer: "In our sample of 15 matched listings, the median asking price was 7.4% above the BC Assessment value, and the mean was 7.5%. 80% of matched listings (12 of 15) were priced above assessment; 20% (3 of 15) were priced at or below it." },
+    { question: "Does the assessment-to-asking gap vary by city?", answer: "Yes, even within Greater Victoria. In our sample, Victoria listings had a median gap of +9.0% above assessment (n=9), while Saanich listings had a median gap of -3.1%, meaning they trended slightly below assessment (n=4). Sample sizes are small, so these are directional, not definitive, municipal averages." },
+    { question: "How was this assessment-to-asking gap data calculated?", answer: "We matched 15 of 250 live listings in our system to BC Assessment values by normalized street address, then compared asking price to assessed value for each matched pair. The snapshot was taken 2026-08-07. All matched pairs are in Greater Victoria, and BC Assessment values lag the market by about a year, so the gap reflects asking price versus a roughly one-year-old valuation, not today's fair value." },
+  ],
 };
 
 export async function generateStaticParams() {

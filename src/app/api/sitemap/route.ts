@@ -30,6 +30,7 @@ export async function GET() {
     entry(`${BASE_URL}/dashboard`, now, "daily", 0.9),
     entry(`${BASE_URL}/how-it-works`, now, "monthly", 0.7),
     entry(`${BASE_URL}/blog`, now, "weekly", 0.8),
+    entry(`${BASE_URL}/tools/assessment-gap`, now, "monthly", 0.7),
     entry(`${BASE_URL}/privacy`, now, "yearly", 0.3),
     entry(`${BASE_URL}/terms`, now, "yearly", 0.3),
     entry(`${BASE_URL}/data-usage`, now, "yearly", 0.3),

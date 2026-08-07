@@ -7,7 +7,7 @@ import { analyzeListing } from "@/lib/analyze";
 import { slugify, fmt } from "@/lib/utils";
 import { BASE_URL, SITE_NAME } from "@/lib/seo";
 import { getRelatedPosts } from "@/lib/blog";
-import { BreadcrumbJsonLd } from "@/components/json-ld";
+import { BreadcrumbJsonLd, ItemListJsonLd } from "@/components/json-ld";
 import TierBadge from "@/components/tier-badge";
 
 export const revalidate = 600; // 10 min ISR
@@ -99,6 +99,12 @@ export default async function DiscoverCityPage({
           { name: "Discover", url: `${BASE_URL}/dashboard` },
           { name: meta.name, url: `${BASE_URL}/discover/${slug}` },
         ]}
+      />
+      <ItemListJsonLd
+        items={analyses.map((a) => ({
+          name: a.listing.address,
+          url: `${BASE_URL}/property/${slugify(a.listing.address)}`,
+        }))}
       />
 
       <Link

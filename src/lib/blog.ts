@@ -51,6 +51,16 @@ export const BLOG_POSTS: BlogPost[] = [
     readingTime: "11 min read",
     tags: ["negotiation", "offers", "buyer's market", "2026"],
   },
+  {
+    slug: "bc-assessment-to-asking-price-gap",
+    title:
+      "How Far Above BC Assessment Do Sellers List? We Measured 15 Listings",
+    description:
+      "An original data analysis matching 15 live BC listings to their government assessment values. The median asking price runs 7.4% above assessment, with a city-by-city breakdown and full methodology.",
+    publishedAt: "2026-08-07",
+    readingTime: "7 min read",
+    tags: ["assessments", "BC", "data analysis", "market value"],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {

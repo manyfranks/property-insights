@@ -15,7 +15,7 @@ export function JsonLd({ data }: JsonLdProps) {
   );
 }
 
-/** Organization schema — rendered once in root layout */
+/** WebApplication schema — rendered once in root layout */
 export function OrganizationJsonLd({ url }: { url: string }) {
   return (
     <JsonLd
@@ -32,6 +32,28 @@ export function OrganizationJsonLd({ url }: { url: string }) {
           "@type": "Offer",
           price: "0",
           priceCurrency: "CAD",
+        },
+        publisher: {
+          "@id": `${url}/#organization`,
+        },
+      }}
+    />
+  );
+}
+
+/** Organization schema — rendered once in root layout, identifies the publisher entity */
+export function OrganizationEntityJsonLd({ url }: { url: string }) {
+  return (
+    <JsonLd
+      data={{
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": `${url}/#organization`,
+        name: "Property Insights",
+        url,
+        logo: {
+          "@type": "ImageObject",
+          url: `${url}/logo.png`,
         },
       }}
     />
@@ -78,6 +100,28 @@ export function FaqJsonLd({
             "@type": "Answer",
             text: q.answer,
           },
+        })),
+      }}
+    />
+  );
+}
+
+/** ItemList schema — used on discover/city listing pages */
+export function ItemListJsonLd({
+  items,
+}: {
+  items: { name: string; url: string }[];
+}) {
+  return (
+    <JsonLd
+      data={{
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        itemListElement: items.map((item, i) => ({
+          "@type": "ListItem",
+          position: i + 1,
+          name: item.name,
+          url: item.url,
         })),
       }}
     />
