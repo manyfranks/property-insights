@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import Image from "next/image";
@@ -30,6 +30,7 @@ export const metadata: Metadata = {
   },
   description: SITE_DESCRIPTION,
   metadataBase: new URL(BASE_URL),
+  manifest: "/manifest.webmanifest",
   alternates: {
     canonical: "/",
   },
@@ -71,6 +72,10 @@ export const metadata: Metadata = {
     "days on market",
     "seller motivation",
   ],
+};
+
+export const viewport: Viewport = {
+  themeColor: "#fafafa",
 };
 
 export default function RootLayout({

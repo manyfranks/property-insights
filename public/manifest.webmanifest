@@ -4,7 +4,7 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fafafa",
-  "theme_color": "#171717",
+  "theme_color": "#fafafa",
   "icons": [
     { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any" },
     { "src": "/apple-icon.png", "type": "image/png", "sizes": "180x180" }
