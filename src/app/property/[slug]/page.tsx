@@ -11,6 +11,7 @@ import TierBadge from "@/components/tier-badge";
 import ExpandableSection from "@/components/expandable-section";
 import TrackView from "@/components/track-view";
 import PartnerCta from "@/components/partner-cta";
+import { assertAffiliateHealth } from "@/config/affiliate-vendors";
 
 // ISR: serve cached page for 10 minutes, revalidate in background
 export const revalidate = 600;
@@ -131,6 +132,8 @@ export default async function PropertyPage({
   const { slug } = await params;
   const listing = await getListingBySlug(slug);
   if (!listing) notFound();
+
+  assertAffiliateHealth();
 
   const analysis = await analyzeListingAsync(listing);
   const { assessment, score, offer, signals, llmSignals, llmConfidence, narrative } = analysis;
@@ -555,11 +558,13 @@ export default async function PropertyPage({
       {/* I. Next Steps */}
       <div className="mb-6">
         <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
-        <div className="flex flex-wrap gap-3">
-          <PartnerCta type="compare-rates" propertySlug={slugify(listing.address)} city={listing.city} />
-          <PartnerCta type="pre-approval" propertySlug={slugify(listing.address)} city={listing.city} />
-          <PartnerCta type="insurance" propertySlug={slugify(listing.address)} city={listing.city} />
-        </div>
+        <PartnerCta
+          country="CA"
+          state={listing.province}
+          source="property-page"
+          propertySlug={slugify(listing.address)}
+          city={listing.city}
+        />
       </div>
 
       {/* J. Footer links */}
