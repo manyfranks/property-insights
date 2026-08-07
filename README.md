@@ -72,6 +72,13 @@ src/
 
 Currently live for **BC — Southern Vancouver Island** (Victoria, Saanich, Oak Bay, Langford, and more). Ontario and Alberta support planned.
 
+## Docs
+
+- [`docs/brand/BRAND-GUIDE.md`](docs/brand/BRAND-GUIDE.md) — logo files, color tokens, type, and approved copy for external use (LinkedIn, press, decks)
+- [`seo-playbook.md`](seo-playbook.md) — SEO implementation reference
+- [`deployment-security-playbook.md`](deployment-security-playbook.md) — deployment and security reference
+- [`docs/plans/`](docs/plans/) — feature specs and roadmap
+
 ---
 
 Built by [Matt James](https://github.com/manyfranks)
