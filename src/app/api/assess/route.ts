@@ -39,6 +39,7 @@ import { upsertListing } from "@/lib/kv/listings";
 import { trackEvent } from "@/lib/db/user-events";
 import { sendAssessmentEmail } from "@/lib/email";
 import { assessLimiter } from "@/lib/rate-limit";
+import { isPro } from "@/lib/billing";
 import { slugify } from "@/lib/utils";
 import { geocodeUSAddress } from "@/lib/geo/census-geocoder";
 import { lookupAssessment } from "@/lib/assessment";
@@ -215,6 +216,7 @@ function parseAddress(raw: string): {
 async function handleUSAssessment({
   userId,
   limiter,
+  pro,
   street,
   city,
   region,
@@ -222,6 +224,7 @@ async function handleUSAssessment({
 }: {
   userId: string;
   limiter: ReturnType<typeof assessLimiter>;
+  pro: boolean;
   street: string;
   city: string;
   region: string;
@@ -256,7 +259,8 @@ async function handleUSAssessment({
 
   // Address confirmed real — consume a slot from the daily cap now (mirrors
   // the CA path consuming only after Zoocasa confirms the listing exists).
-  if (limiter) {
+  // Pro users bypass the cap entirely.
+  if (limiter && !pro) {
     const result = await limiter.limit(userId);
     if (!result.success) {
       return RATE_LIMIT_RESPONSE(result.reset - Date.now());
@@ -449,11 +453,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sign in to request an assessment" }, { status: 401 });
   }
 
+  // Pro users bypass the daily assessment cap entirely.
+  const pro = await isPro(userId);
+
   // Daily cap pre-check (no consume) — blocks spam without charging the user.
   // The slot is consumed below, after Zoocasa confirms the listing is real,
   // so failed lookups (bad address, listing not found) don't count.
   const limiter = assessLimiter();
-  if (limiter) {
+  if (limiter && !pro) {
     const { remaining, reset } = await limiter.getRemaining(userId);
     if (remaining <= 0) {
       return RATE_LIMIT_RESPONSE(reset - Date.now());
@@ -518,7 +525,7 @@ export async function POST(req: Request) {
     log("parsed", `${street} | ${city} | ${region} (${country})`);
 
     if (country === "US") {
-      return handleUSAssessment({ userId, limiter, street, city, region, log });
+      return handleUSAssessment({ userId, limiter, pro, street, city, region, log });
     }
 
     try {
@@ -545,7 +552,8 @@ export async function POST(req: Request) {
 
   // Lookup succeeded — now consume a slot from the daily cap. Race with the
   // pre-check is acceptable: the cap is per-user-per-day, not a security gate.
-  if (limiter) {
+  // Pro users bypass the cap entirely.
+  if (limiter && !pro) {
     const result = await limiter.limit(userId);
     if (!result.success) {
       return RATE_LIMIT_RESPONSE(result.reset - Date.now());

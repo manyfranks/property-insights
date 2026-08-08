@@ -90,5 +90,20 @@ export async function POST(request: Request) {
   await db`CREATE INDEX IF NOT EXISTS idx_partner_clicks_vendor ON partner_clicks (vendor)`;
   await db`CREATE INDEX IF NOT EXISTS idx_partner_clicks_created ON partner_clicks (created_at)`;
 
+  await db`
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      user_id                 TEXT PRIMARY KEY,
+      plan                    TEXT NOT NULL DEFAULT 'free',
+      stripe_customer_id      TEXT,
+      stripe_subscription_id  TEXT,
+      status                  TEXT,
+      current_period_end      TIMESTAMPTZ,
+      created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await db`CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions (stripe_customer_id)`;
+
   return NextResponse.json({ ok: true, message: "Migration complete" });
 }

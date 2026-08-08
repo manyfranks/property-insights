@@ -23,6 +23,9 @@ export default function Footer() {
               <Link href="/us" className="block text-muted hover:text-foreground transition-colors">
                 US Markets
               </Link>
+              <Link href="/pricing" className="block text-muted hover:text-foreground transition-colors">
+                Pricing
+              </Link>
             </div>
           </div>
 

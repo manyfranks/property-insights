@@ -81,3 +81,20 @@ CREATE TABLE IF NOT EXISTS partner_clicks (
 
 CREATE INDEX IF NOT EXISTS idx_partner_clicks_vendor ON partner_clicks (vendor);
 CREATE INDEX IF NOT EXISTS idx_partner_clicks_created ON partner_clicks (created_at);
+
+-- Subscriptions: Pro tier entitlement state, sourced from Stripe webhooks.
+-- Kept separate from user_profiles (behavioral/intent data) since this is
+-- strictly billing state. One row per Clerk user; 'free' until a checkout
+-- completes.
+CREATE TABLE IF NOT EXISTS subscriptions (
+  user_id                 TEXT PRIMARY KEY,
+  plan                    TEXT NOT NULL DEFAULT 'free',   -- free | pro
+  stripe_customer_id      TEXT,
+  stripe_subscription_id  TEXT,
+  status                  TEXT,                            -- Stripe subscription status (active, past_due, canceled, ...)
+  current_period_end      TIMESTAMPTZ,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions (stripe_customer_id);
