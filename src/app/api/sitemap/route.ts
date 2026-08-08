@@ -3,6 +3,7 @@ import { getAllListings } from "@/lib/kv/listings";
 import { BLOG_POSTS } from "@/lib/blog";
 import { slugify } from "@/lib/utils";
 import { BASE_URL } from "@/lib/seo";
+import { US_COUNTIES, getAllStatesWithCounties, isTopMetroCounty } from "@/lib/us-counties";
 
 function getAllTagSlugs(): string[] {
   const slugs = new Set<string>();
@@ -63,6 +64,24 @@ export async function GET() {
     // Property pages
     ...listings.map((l) =>
       entry(`${BASE_URL}/property/${slugify(l.address)}`, now, "weekly", 0.8)
+    ),
+
+    // US market data hub
+    entry(`${BASE_URL}/us`, now, "monthly", 0.7),
+
+    // US state index pages
+    ...getAllStatesWithCounties().map((s) =>
+      entry(`${BASE_URL}/us/${s.stateSlug}`, now, "monthly", 0.6)
+    ),
+
+    // US county market pages — every county in the registry
+    ...US_COUNTIES.map((c) =>
+      entry(
+        `${BASE_URL}/us/${c.stateSlug}/${c.countySlug}`,
+        now,
+        "monthly",
+        isTopMetroCounty(c.fips) ? 0.7 : 0.6,
+      )
     ),
   ];
 

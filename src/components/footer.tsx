@@ -20,6 +20,9 @@ export default function Footer() {
               <Link href="/tools/assessment-gap" className="block text-muted hover:text-foreground transition-colors">
                 Assessment Gap Calculator
               </Link>
+              <Link href="/us" className="block text-muted hover:text-foreground transition-colors">
+                US Markets
+              </Link>
             </div>
           </div>
 

@@ -40,6 +40,7 @@ const VALID_SOURCES = [
   "calculator",
   "email",
   "discover",
+  "county-page",
 ] as const;
 type Source = (typeof VALID_SOURCES)[number];
 

@@ -52,7 +52,8 @@ export type AffiliateSource =
   | "property-page"
   | "calculator"
   | "email"
-  | "discover";
+  | "discover"
+  | "county-page";
 
 export interface AffiliateVendor {
   /** env var key: NEXT_PUBLIC_AFFILIATE_URL_{ID} (uppercased, hyphens -> underscores) */
@@ -177,7 +178,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     enabled: true,
     affiliateReady: true,
     cpaTier: 2,
-    audienceMode: ["investor"],
+    audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
     offerText: "Use code PROPERTYINSIGHTS at checkout",
@@ -190,12 +191,13 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     vertical: "investor-tools",
     country: "US",
     url: "https://dealcheck.io",
-    enabled: false,
-    affiliateReady: false,
+    enabled: true,
+    affiliateReady: true,
     cpaTier: 2,
-    audienceMode: ["investor"],
+    audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
+    offerText: "Use code BESTDEAL at checkout",
     notes: "30% recurring + $100/10 users, 90d cookie.",
   },
   {
