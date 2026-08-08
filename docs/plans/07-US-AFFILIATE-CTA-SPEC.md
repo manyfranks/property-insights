@@ -63,7 +63,7 @@ Notes: RentCast bans paid-traffic promotion (link-out from app is fine). DealMac
 |---|---|---|---|---|---|
 | Kiavi | investor-tools (lending) | PartnerStack | **$1,000/closed loan** (verified) | n/d | **exclude MS, NM, RI, UT, VT** |
 | Ownwell | tax-appeal | FlexOffers | CPA on completed+paid appeal (months lag) | 45d | **full-service: CA CO FL GA IL NY TX WA; elsewhere → route to "National Appeals Packet" DIY CTA** (launched Feb 2026) |
-| Hippo | insurance | ShareASale | ~$25/lead UNVERIFIED ($5–50 range) | 90d | verify underwriting states |
+| Hippo | insurance | ShareASale | ~$25/lead UNVERIFIED ($5–50 range) | 90d | verify underwriting states. ⚠️ Aug 2026: program appears dormant (last tracked conversion reportedly 2021) — do not feature; never added to code registry |
 | Lemonade | insurance | Impact | ~$15–25/lead UNVERIFIED | 30d | verify per product line |
 
 Kiavi caveats: needs ≥30 investor referrals/yr capability; **agents/brokers ineligible** (software tool should qualify — note it in application); confirm cross-border payout on PartnerStack.
@@ -91,3 +91,57 @@ Kiavi caveats: needs ≥30 investor referrals/yr capability; **agents/brokers in
 2. Adaptive CTA block on property/result pages with FTC disclosure; extend partner-connect payload.
 3. Wire vendors as approvals land (env vars per vendor).
 4. Email CTAs (assessment email) reuse `getAffiliateUrl(id, "email")`.
+
+## Research addendum v2 (verified web pass, Aug 7 2026)
+
+### New additions
+| Vendor | Vertical | Network | Rate | Verification | Apply |
+|---|---|---|---|---|---|
+| Allstate | insurance | Impact | ~$5-8/lead PPL | secondary | Impact marketplace |
+| Insurify | insurance | Impact | ~$15/lead home, 30d cookie | secondary | Impact marketplace or partnerships@insurify.com |
+| SmartFinancial | insurance | direct | up to ~$40/lead claimed | unverified | agents.smartfinancial.com/publishers |
+| Easy Street Capital | investor-tools (lending) | direct | $1,000/closed loan — Kiavi parity | **verified** | easystreetcap.com/refer/ |
+| Lima One Capital | investor-tools (lending) | direct | 0.25-0.50% of funded loan | **verified** | limaone.com/referral-application/ |
+| New American Funding | mortgage | FlexOffers | up to $60/prospect | **verified Active** | FlexOffers (second reason to gate revenue on FlexOffers signup) |
+| Baselane | investor-tools (landlord banking) | direct (Affonso.io) | $150-200/referral, no minimum | **verified** | baselane.com |
+
+A single Impact publisher account covers Allstate + Insurify (plus the existing Lemonade + Policygenius slate).
+
+### Backup
+- **Liberty Mutual** — CJ, $10/lead (home+auto), $3/lead renters. PRIMARY-verified on libertymutual.com/affiliate-program. Use if Allstate declines.
+
+### Documented no-program verdicts (do not re-research)
+- **State Farm** — own corporate site confirms no affiliate program; listicle claims contradicted.
+- **Travelers** — none.
+- **Farmers / Nationwide** — licensed-agent portals only, disqualified.
+- **GEICO** — deactivated on FlexOffers.
+- **American Family** — none on any major network.
+- **Amica** — none.
+- **Chubb** — Sovrn-only, poor fit.
+- **Jerry** — licensed producers only.
+- **MediaAlpha** — RTB infra, volume-gated.
+- **Coverage.com / Red Ventures** — no public program.
+- **QuoteWizard** — affiliate domain dead / DNS failure.
+
+### Mortgage downgrades / disqualifications
+- **Figure** — inactive on FlexOffers; only a licensed-lender B2B API remains.
+- **Rate / Aven / Veterans United** — no self-serve program.
+- **RCN Capital** — broker-track only (yield-spread comp), not a CPL affiliate fit.
+- **Bankrate** — downgraded; the 40% revshare figure traces only to weak secondary sources, and "Partner with us" is a bespoke BD form, not self-serve.
+- **AmeriSave** — caution: weak terms sourcing plus a 2023 CFPB $19.3M settlement.
+
+### Opportunistic tier (worth revisiting, not actioned)
+- **EverQuote** — ~$12/lead home, but no self-serve path found.
+- **Matic** — DCMnetwork; best thematic fit (embedded insurance in mortgage/real-estate journeys); terms unverified.
+- **Gabi / Experian** — redundant with Zebra/Insurify.
+- **SoFi** — ~$100-150/lead secondary, unverified.
+- **Groundfloor** — $500/funded loan via VigLink, unconfirmed.
+
+### Structural legal note
+DSCR / fix-and-flip lending is business-purpose credit, exempt from RESPA/TILA consumer rules (checked against CFPB Reg 1024.5). This is why investor lenders (Kiavi, Easy Street, Lima One) can pay referral fees to unlicensed publishers — investor lending is the structurally safest high-$ category for us.
+
+### Action insight
+One Impact publisher account unlocks Allstate + Insurify + Lemonade + Policygenius. One CJ account unlocks Liberty Mutual + LendingTree. Exact terms and Canada eligibility are only visible inside each network's dashboard post-approval.
+
+### Source-quality note
+Figures marked **verified** above came from primary vendor pages. Everything else is consistent-secondary sourcing from SEO listicles and must be re-verified inside the network dashboard before being encoded as a `cpaTier` change in `src/config/affiliate-vendors.ts`.

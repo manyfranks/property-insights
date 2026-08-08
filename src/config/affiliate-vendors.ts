@@ -315,6 +315,116 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     notes:
       "Self-serve affiliate arm (affiliate.homelight.com), distinct from the licensed agent-referral network. RESPA-clean as a platform affiliate fee.",
   },
+
+  // ---------------------------------------------------------------------
+  // US — Research addendum v2 (verified web pass, Aug 7 2026)
+  // Data-complete, inert until affiliate approvals land.
+  // ---------------------------------------------------------------------
+  {
+    id: "allstate",
+    name: "Allstate",
+    vertical: "insurance",
+    country: "US",
+    url: "https://www.allstate.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 1,
+    audienceMode: ["buyer"],
+    stateCoverage: "all",
+    network: "Impact",
+    notes:
+      "~$5-8/lead PPL (secondary-sourced; verify in Impact dashboard). Impact media-partner application explicitly accepts US/Canada publishers; 2-5 day manual review.",
+  },
+  {
+    id: "smartfinancial",
+    name: "SmartFinancial",
+    vertical: "insurance",
+    country: "US",
+    url: "https://smartfinancial.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 1,
+    audienceMode: ["buyer", "investor"],
+    stateCoverage: "all",
+    network: "direct",
+    notes:
+      "In-house publisher platform (agents.smartfinancial.com/publishers), self-serve low-barrier approval; up to ~$40/lead claimed (unverified).",
+  },
+  {
+    id: "insurify",
+    name: "Insurify",
+    vertical: "insurance",
+    country: "US",
+    url: "https://insurify.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 1,
+    audienceMode: ["buyer", "investor"],
+    stateCoverage: "all",
+    network: "Impact",
+    notes:
+      "~$15/lead home (secondary), 30d cookie; licensed all 50 states; apply via Impact or partnerships@insurify.com.",
+  },
+  {
+    id: "easystreet",
+    name: "Easy Street Capital",
+    vertical: "investor-tools",
+    country: "US",
+    url: "https://www.easystreetcap.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 3,
+    audienceMode: ["investor"],
+    stateCoverage: "all",
+    network: "direct",
+    notes:
+      "$1,000/closed loan (verified on easystreetcap.com/refer/) — Kiavi payout parity; DSCR/hard money is RESPA-exempt business-purpose credit.",
+  },
+  {
+    id: "limaone",
+    name: "Lima One Capital",
+    vertical: "investor-tools",
+    country: "US",
+    url: "https://limaone.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 3,
+    audienceMode: ["investor"],
+    stateCoverage: "all",
+    network: "direct",
+    notes:
+      "0.25-0.50% of funded loan (verified, limaone.com/referral-application/); DSCR/fix-flip/construction.",
+  },
+  {
+    id: "newamericanfunding",
+    name: "New American Funding",
+    vertical: "mortgage",
+    country: "US",
+    url: "https://www.newamericanfunding.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 2,
+    audienceMode: ["buyer"],
+    stateCoverage: "all",
+    network: "FlexOffers",
+    notes:
+      "Up to $60/prospect, verified Active on FlexOffers — second reason FlexOffers signup gates revenue.",
+  },
+  {
+    id: "baselane",
+    name: "Baselane",
+    vertical: "investor-tools",
+    country: "US",
+    url: "https://www.baselane.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 2,
+    audienceMode: ["investor"],
+    stateCoverage: "all",
+    network: "direct",
+    notes:
+      "$150-200/referral via Affonso.io, no minimum (verified); landlord banking/finance.",
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -385,6 +495,13 @@ const ENV_URL_MAP: Record<string, string | undefined> = {
   zebra: process.env.NEXT_PUBLIC_AFFILIATE_URL_ZEBRA,
   lendingtree: process.env.NEXT_PUBLIC_AFFILIATE_URL_LENDINGTREE,
   homelight: process.env.NEXT_PUBLIC_AFFILIATE_URL_HOMELIGHT,
+  allstate: process.env.NEXT_PUBLIC_AFFILIATE_URL_ALLSTATE,
+  smartfinancial: process.env.NEXT_PUBLIC_AFFILIATE_URL_SMARTFINANCIAL,
+  insurify: process.env.NEXT_PUBLIC_AFFILIATE_URL_INSURIFY,
+  easystreet: process.env.NEXT_PUBLIC_AFFILIATE_URL_EASYSTREET,
+  limaone: process.env.NEXT_PUBLIC_AFFILIATE_URL_LIMAONE,
+  newamericanfunding: process.env.NEXT_PUBLIC_AFFILIATE_URL_NEWAMERICANFUNDING,
+  baselane: process.env.NEXT_PUBLIC_AFFILIATE_URL_BASELANE,
 };
 
 function appendSubId(url: string, source: string): string {
