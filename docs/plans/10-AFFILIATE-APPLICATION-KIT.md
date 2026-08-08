@@ -54,6 +54,8 @@ If a field asks "traffic incentive status" or similar (Yes/No) — answer **No**
 
 ### 1. The Zebra (insurance comparison)
 
+> ⚠️ **Status (Aug 8 2026): Awin publisher application DECLINED** — third network-level traffic screen to bounce (after Impact Marketplace + FlexOffers), consistent with the new-domain/no-measurable-traffic pattern. Awin explicitly invites appeal at **global-approvals@awin.com** (draft appeal email lives in Section 3). Zebra is parked behind Awin approval; SmartFinancial/Insurify/Allstate/Lemonade/Policygenius cover the insurance vertical meanwhile.
+
 **Status: ⚠️ blocked by bot protection — could not confirm the exact application form, but the path is well-documented.**
 
 - `thezebra.com/affiliates/`, `thezebra.com/about/partnerships/`, `thezebra.com/about/partners/`, and the bare domain all returned **HTTP 403** to automated fetch (bot/WAF protection) — this needs a real browser session to view.
@@ -155,9 +157,28 @@ If a field asks "traffic incentive status" or similar (Yes/No) — answer **No**
 
 Already documented in `07-US-AFFILIATE-CTA-SPEC.md` (Research addendum v2): Marketplace application auto-declined on a new/low-traffic-site screen; this does **not** affect the direct `campaign-promo-signup` links (Allstate, Insurify, Lemonade) which apply straight into each brand's program. No fixed reapply cooling-off; reapply after GSC shows organic traffic and analytics are connected. Do not create a fresh account to reset the decline (fraud-flag risk).
 
+### Awin (declined Aug 8 2026 — appeal available)
+
+Awin declined the publisher application (same new-domain traffic screen) but, unlike the others, explicitly invites discussion at **global-approvals@awin.com**. Appeal draft (personalize the bracketed bits, keep it short):
+
+> Subject: Application appeal — propertyinsights.xyz (publisher application)
+>
+> Hi Awin team,
+>
+> Thanks for the quick review. I'd like to add context I suspect the initial screen couldn't see, since the site is new enough to be below third-party traffic estimators' measurement floor.
+>
+> Property Insights (propertyinsights.xyz) is a free property-analysis tool: a user enters a US address and receives an assessment-backed valuation and offer analysis. Monetization is contextual link-outs to relevant services (insurance quotes, investor tools) rendered beside the analysis — bottom-of-funnel, one property at a time. There is no paid traffic, no incentivized clicks, and no email list. The site carries per-link sponsored labels and FTC-compliant disclosures, plus a US State Privacy Rights section with a Do Not Sell/Share opt-out honoring GPC.
+>
+> The site launched in 2026 and has ~3,200 URLs indexed via Google Search Console; organic impressions are early but growing. I applied specifically to join The Zebra (US) programme, where the contextual fit (property-level insurance intent) is exact. I'm happy to provide Search Console screenshots or any verification you'd find useful.
+>
+> Best,
+> Matt Francis
+
+If the appeal fails, re-apply once GSC shows sustained impressions (same trigger as FlexOffers/Impact reapplications).
+
 ### General rule
 
-Network-level screens (FlexOffers, Impact Marketplace, and — by the same logic — CJ) gate on **traffic/track record**. Direct brand programs (The Zebra via Awin, Baselane, HomeLight, PropStream, Steadily) gate on **fit**, not volume, and are the right priority while the site is pre-traffic. Prioritize direct signups now; revisit network-level applications once Google Search Console shows sustained organic impressions and the affiliate profile has connected analytics.
+Network-level screens (FlexOffers, Impact Marketplace, **Awin — confirmed Aug 8**, and — by the same logic — CJ) gate on **traffic/track record**. Direct brand programs (Baselane, HomeLight, PropStream, Steadily, Policygenius) gate on **fit**, not volume, and are the right priority while the site is pre-traffic. Prioritize direct signups now; revisit network-level applications once Google Search Console shows sustained organic impressions and the affiliate profile has connected analytics. Scoreboard as of Aug 8: network screens 0-for-3 (Impact Marketplace, FlexOffers, Awin); direct programs 2 approved (RentCast, DealCheck), 4 in review (Easy Street, Lima One, SmartFinancial, Kiavi), 0 declined.
 
 ---
 
