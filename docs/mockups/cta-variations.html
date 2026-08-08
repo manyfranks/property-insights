@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTA Stack — Six Variations</title>
+<style>
+  :root {
+    --page-bg: #eef0f2;
+    --ground: #fafafa;
+    --card-bg: #ffffff;
+    --border: #e5e7eb;
+    --frame-border: #d4d7db;
+    --text: #171717;
+    --muted: #6b7280;
+    --accent: #1a1a2e;
+    --teal: #0f766e;
+    --teal-hover: #0b5c56;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; }
+  a:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  .page-wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  /* ---------- Page header ---------- */
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+  }
+  .page-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 20px;
+  }
+
+  .criteria-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .crit-chip {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 10px;
+  }
+
+  /* ---------- Sticky mini-nav ---------- */
+  .mini-nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    gap: 4px;
+    background: rgba(238, 240, 242, 0.92);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px;
+    margin-bottom: 40px;
+  }
+  .mini-nav a {
+    flex: 1;
+    text-align: center;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    padding: 7px 0;
+    border-radius: 6px;
+  }
+  .mini-nav a:hover { color: var(--text); background: #fff; }
+
+  /* ---------- Variant sections ---------- */
+  .variant-section {
+    padding-top: 40px;
+    margin-top: 40px;
+    border-top: 1px solid var(--border);
+    scroll-margin-top: 76px;
+  }
+  .variant-section:first-of-type {
+    padding-top: 0;
+    margin-top: 0;
+    border-top: none;
+  }
+
+  .eyebrow-badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #fff;
+    background: var(--accent);
+    padding: 3px 9px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+  }
+
+  .variant-section h2 {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+  }
+  .variant-name-sub {
+    font-weight: 400;
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  .variant-defense {
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.65;
+    max-width: 640px;
+    margin: 0 0 16px;
+  }
+
+  .chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .chip {
+    font-size: 12px;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 11px;
+  }
+  .chip b { font-weight: 600; }
+
+  /* ---------- Specimen frame ---------- */
+  .specimen {
+    margin-top: 20px;
+    border: 1px solid var(--frame-border);
+    border-radius: 10px;
+    background: #fff;
+    overflow: hidden;
+  }
+  .specimen + .specimen { margin-top: 16px; }
+  .specimen-caption {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--frame-border);
+    background: #f5f6f7;
+  }
+  .specimen-scroll {
+    overflow-x: auto;
+    background: var(--ground);
+    background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .specimen-inner {
+    width: 720px;
+    min-width: 720px;
+    padding: 32px;
+    font-size: 14px;
+  }
+  .specimen-inner.mobile { width: 375px; min-width: 375px; padding: 0; }
+
+  /* ---------- Shared mockup context: county excerpt ---------- */
+  .mock-breadcrumb { font-size: 12px; color: var(--muted); margin-bottom: 18px; }
+
+  .stat-row { display: flex; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+  .stat-card { flex: 1; min-width: 150px; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 8px; }
+  .stat-figure { font-family: var(--mono); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .internal-box { border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; margin: 22px 0; background: #fff; }
+  .internal-box .title { font-size: 14px; font-weight: 500; margin: 0 0 8px; }
+  .internal-box a { font-size: 12px; font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
+
+  .sibling-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .chip-sibling { font-size: 12px; color: var(--muted); background: #fff; border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; }
+
+  /* ---------- Shared mockup context: result excerpt ---------- */
+  .mock-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 10px; }
+  .mock-address { font-size: 15px; font-weight: 500; margin-bottom: 20px; }
+
+  .hero-figure-card { border: 1px solid var(--border); border-radius: 12px; padding: 28px 20px; text-align: center; background: #fff; margin-bottom: 22px; }
+  .hero-figure-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 10px; }
+  .hero-figure-value { font-family: var(--mono); font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; margin-bottom: 8px; }
+  .hero-figure-sub { font-size: 13px; color: var(--muted); }
+
+  .placeholder-row { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
+  .placeholder-card {
+    flex: 1; min-width: 160px;
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; background: #f3f4f5; color: var(--muted);
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  .cta-heading { font-size: 14px; font-weight: 600; margin: 0 0 14px; }
+
+  .tag-sponsored { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); white-space: nowrap; }
+  .tag-soon { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-style: italic; white-space: nowrap; }
+
+  .disclosure { font-size: 12px; color: var(--muted); line-height: 1.55; margin-top: 14px; }
+
+  .btn-teal {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--teal); color: #fff; border: none;
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; white-space: nowrap;
+  }
+  .btn-teal.small { font-size: 11.5px; padding: 6px 12px; }
+  .btn-teal:hover { background: var(--teal-hover); }
+
+  /* ---------- V1 ---------- */
+  .cta-v1-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .cta-v1-card {
+    position: relative;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: #fff; padding: 18px 18px 18px 21px; overflow: hidden;
+  }
+  .cta-v1-card::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--teal); border-radius: 12px 0 0 12px;
+  }
+  .cta-v1-card.hero { flex: 1 1 260px; }
+  .cta-v1-card.pill { flex: 1 1 200px; }
+  .cta-v1-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .cta-v1-card.hero .cta-v1-label { font-size: 15px; font-weight: 600; }
+  .cta-v1-card.pill .cta-v1-label { font-size: 13px; font-weight: 600; }
+  .cta-v1-desc { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0 0 8px; }
+  .cta-v1-card.pill .cta-v1-desc { font-size: 12px; }
+  .cta-v1-offer { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+  .cta-v1-arrow { font-size: 12px; color: var(--muted); }
+
+  /* ---------- V2 ---------- */
+  .cta-v2-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .cta-v2-unit { flex: 1 1 220px; border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: #fff; }
+  .cta-v2-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .cta-v2-name { font-size: 13px; font-weight: 600; }
+  .cta-v2-desc { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 10px; }
+
+  /* ---------- V3 ---------- */
+  .cta-v3-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cta-v3-card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: #fff; }
+  .cta-v3-card.soon { border-style: dashed; background: #fbfbfb; }
+  .cta-v3-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .cta-v3-label { font-size: 13px; font-weight: 600; }
+  .cta-v3-desc { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 8px; }
+  .cta-v3-arrow { font-size: 12px; color: var(--muted); }
+
+  /* ---------- V4 ---------- */
+  .flavor-caption { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 8px; }
+  .cta-v4-card { border: 1px solid var(--border); border-radius: 12px; padding: 20px; background: #fff; margin-bottom: 18px; }
+  .cta-v4-title { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .cta-v4-sub { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+  .cta-v4-field-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .cta-v4-input {
+    flex: 1; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; background: #f3f4f5; color: var(--text);
+  }
+  .cta-v4-fine { font-size: 11px; color: var(--muted); }
+  .cta-v4-dimmed { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); opacity: 0.45; }
+  .cta-v4-dimmed-label { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .cta-v4-dimmed-row { display: flex; gap: 8px; }
+  .cta-v4-dimmed-input { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; background: #f3f4f5; color: var(--muted); }
+
+  .callout-empty {
+    border: 1px dashed var(--border); border-radius: 12px; padding: 22px;
+    text-align: center; background: #fbfbfb; margin-top: 8px;
+  }
+  .callout-empty .title { font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+  .callout-empty .body { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 0; }
+
+  /* ---------- V5 mobile ---------- */
+  .phone-viewport {
+    position: relative;
+    width: 375px;
+    height: 640px;
+    overflow-y: auto;
+    background: var(--ground);
+    background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .phone-content { padding: 24px 20px 84px; font-size: 13px; }
+  .phone-content .mock-breadcrumb { font-size: 11px; margin-bottom: 14px; }
+  .phone-content .stat-row { flex-wrap: wrap; margin-bottom: 16px; }
+  .phone-content .stat-card { min-width: 100%; padding: 12px 14px; }
+  .phone-content .stat-figure { font-size: 17px; }
+  .phone-inflow-cta {
+    border: 1px solid var(--border); border-radius: 12px; background: #fff;
+    padding: 16px; margin: 16px 0;
+  }
+  .phone-inflow-cta .cta-v1-card { padding: 14px 14px 14px 17px; }
+  .sticky-bar {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-top: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+  .sticky-bar-text { font-size: 13px; font-weight: 500; display: flex; flex-direction: column; gap: 2px; }
+  .mobile-note {
+    font-size: 12.5px; color: var(--muted); line-height: 1.6;
+    margin-top: 12px; max-width: 640px;
+  }
+
+  /* ---------- V6 ---------- */
+  .cta-v6-disclosure-top { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+  .cta-v6-list { border: 1px solid var(--border); border-radius: 12px; background: #fff; overflow: hidden; }
+  .cta-v6-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border); }
+  .cta-v6-row:last-child { border-bottom: none; }
+  .cta-v6-name { font-size: 13px; font-weight: 600; margin: 0 0 2px; }
+  .cta-v6-line { font-size: 12px; color: var(--muted); margin: 0; }
+  .cta-v6-footnote { font-size: 11.5px; color: var(--muted); font-style: italic; margin-top: 10px; }
+
+  /* ---------- Footer ---------- */
+  .page-footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .page-footer p { font-size: 11.5px; color: var(--muted); margin: 0; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <header class="page-header">
+    <h1>CTA Stack — Six Variations</h1>
+    <p class="page-sub">Rendered in the production template · Autauga County + assessment-result excerpts · pick one, or a combination</p>
+    <div class="criteria-strip">
+      <span class="crit-chip">CTR hypothesis</span>
+      <span class="crit-chip">Trust risk</span>
+      <span class="crit-chip">Effort</span>
+      <span class="crit-chip">Mobile</span>
+      <span class="crit-chip">FTC</span>
+      <span class="crit-chip">Scales with approvals</span>
+    </div>
+  </header>
+
+  <nav class="mini-nav" aria-label="Jump to variation">
+    <a href="#v1">V1</a>
+    <a href="#v2">V2</a>
+    <a href="#v3">V3</a>
+    <a href="#v4">V4</a>
+    <a href="#v5">V5</a>
+    <a href="#v6">V6</a>
+  </nav>
+
+  <main>
+
+    <!-- ============================================================ V1 -->
+    <section id="v1" class="variant-section">
+      <span class="eyebrow-badge">V1</span>
+      <h2>Current+ <span class="variant-name-sub">(control-plus)</span></h2>
+      <p class="variant-defense">
+        Today's hero+pill layout, polished. Native-unit design keeps banner blindness at bay per NN/g's
+        research, and Aagaard's first-person CTA copy test found first-person framing lifts clicks — both
+        already baked into <code>partner-cta.tsx</code>. Lowest-risk evolution: same component, same data,
+        just a teal accent bar and a tighter type scale.
+      </p>
+      <div class="chips-row">
+        <span class="chip">Hypothesis strength: <b>Strong</b></span>
+        <span class="chip">Trust risk: <b>Low</b></span>
+        <span class="chip">Effort: <b>S</b></span>
+      </div>
+
+      <div class="specimen">
+        <div class="specimen-caption">County page — CTA zone</div>
+        <div class="specimen-scroll">
+          <div class="specimen-inner">
+            <div class="mock-breadcrumb">US Markets / Alabama / Autauga County</div>
+            <div class="stat-row">
+              <div class="stat-card">
+                <div class="stat-label">Median Home Value</div>
+                <div class="stat-figure">$187,400</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">HPI YoY</div>
+                <div class="stat-figure">+4.2%</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">FEMA Risk</div>
+                <div class="stat-figure">87.3/100</div>
+                <div class="stat-sub">Relatively Moderate</div>
+              </div>
+            </div>
+
+            <h3 class="cta-heading">Tools for this market</h3>
+            <div class="cta-v1-row">
+              <div class="cta-v1-card hero">
+                <div class="cta-v1-card-head">
+                  <div class="cta-v1-label">Track my property's value and rent</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v1-desc">Property data, rent estimates, and market alerts for any US address</p>
+                <p class="cta-v1-offer">Use code PROPERTYINSIGHTS at checkout</p>
+                <span class="cta-v1-arrow">RentCast &rarr;</span>
+              </div>
+              <div class="cta-v1-card pill">
+                <div class="cta-v1-card-head">
+                  <div class="cta-v1-label">Analyze this deal in DealCheck</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v1-desc">Cash flow, ROI, and offer calculators for any investment property</p>
+                <span class="cta-v1-arrow">DealCheck &rarr;</span>
+              </div>
+            </div>
+            <p class="disclosure">We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.</p>
+
+            <div class="internal-box">
+              <p class="title">Looking at a specific Autauga County property?</p>
+              <a href="#">Search any Autauga County address &rarr;</a>
+            </div>
+            <div class="sibling-row">
+              <span class="chip-sibling">Baldwin County</span>
+              <span class="chip-sibling">Barbour County</span>
+              <span class="chip-sibling">Bibb County</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="specimen">
+        <div class="specimen-caption">Assessment result — below the headline number</div>
+        <div class="specimen-scroll">
+          <div class="specimen-inner">
+            <div class="mock-eyebrow">Assessment Result</div>
+            <div class="mock-address">128 Oakwood Dr, Austin, TX</div>
+            <div class="hero-figure-card">
+              <div class="hero-figure-label">Recommended Offer</div>
+              <div class="hero-figure-value">$412,000</div>
+              <div class="hero-figure-sub">4.3% below asking · modeled from AVM, comps, and county data</div>
+            </div>
+
+            <h3 class="cta-heading">Act on this analysis</h3>
+            <div class="cta-v1-row">
+              <div class="cta-v1-card hero">
+                <div class="cta-v1-card-head">
+                  <div class="cta-v1-label">Track my property's value and rent</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v1-desc">Property data, rent estimates, and market alerts for any US address</p>
+                <p class="cta-v1-offer">Use code PROPERTYINSIGHTS at checkout</p>
+                <span class="cta-v1-arrow">RentCast &rarr;</span>
+              </div>
+              <div class="cta-v1-card pill">
+                <div class="cta-v1-card-head">
+                  <div class="cta-v1-label">Analyze this deal in DealCheck</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v1-desc">Cash flow, ROI, and offer calculators for any investment property</p>
+                <span class="cta-v1-arrow">DealCheck &rarr;</span>
+              </div>
+            </div>
+            <p class="disclosure">We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.</p>
+
+            <div class="placeholder-row">
+              <div class="placeholder-card">Signal breakdown</div>
+              <div class="placeholder-card">Market context</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ V2 -->
+    <section id="v2" class="variant-section">
+      <span class="eyebrow-badge">V2</span>
+      <h2>Result-adjacent partner row</h2>
+      <p class="variant-defense">
+        A horizontal partner row sits directly beneath the number the user is looking at, borrowing the
+        calculator&rarr;lender-table pattern NerdWallet uses at the moment intent peaks. Redfin's
+        estimate&rarr;consultation flow and MECLABS' "earned moment" research both point the same way: offer
+        the next step exactly when the user has just gotten the answer they came for.
+      </p>
+      <div class="chips-row">
+        <span class="chip">Hypothesis strength: <b>Strong</b></span>
+        <span class="chip">Trust risk: <b>Low</b></span>
+        <span class="chip">Effort: <b>M</b></span>
+      </div>
+
+      <div class="specimen">
+        <div class="specimen-caption">Assessment result — below the headline number</div>
+        <div class="specimen-scroll">
+          <div class="specimen-inner">
+            <div class="mock-eyebrow">Assessment Result</div>
+            <div class="mock-address">128 Oakwood Dr, Austin, TX</div>
+            <div class="hero-figure-card">
+              <div class="hero-figure-label">Recommended Offer</div>
+              <div class="hero-figure-value">$412,000</div>
+              <div class="hero-figure-sub">4.3% below asking · modeled from AVM, comps, and county data</div>
+            </div>
+
+            <div class="cta-v2-row">
+              <div class="cta-v2-unit">
+                <div class="cta-v2-head">
+                  <div class="cta-v2-name">RentCast</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v2-desc">Track this property's value and rent over time</p>
+                <a class="btn-teal" href="#">Track it &rarr;</a>
+              </div>
+              <div class="cta-v2-unit">
+                <div class="cta-v2-head">
+                  <div class="cta-v2-name">DealCheck</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v2-desc">Run cash flow and ROI numbers on this deal</p>
+                <a class="btn-teal" href="#">Analyze it &rarr;</a>
+              </div>
+            </div>
+            <p class="disclosure">We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.</p>
+
+            <div class="placeholder-row">
+              <div class="placeholder-card">Signal breakdown</div>
+              <div class="placeholder-card">Market context</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ V3 -->
+    <section id="v3" class="variant-section">
+      <span class="eyebrow-badge">V3</span>
+      <h2>Card-grid menu</h2>
+      <p class="variant-defense">
+        Four equal cards let the visitor self-select instead of us picking a hero vendor for them, the way
+        HomeLight's five-card grid and Revive's options menu do. Self-selection tends to raise aggregate CTR
+        across the set, and because every vendor gets an equal-weight card, the grid scales automatically as
+        new approvals land — no re-ranking required.
+      </p>
+      <div class="chips-row">
+        <span class="chip">Hypothesis strength: <b>Medium</b></span>
+        <span class="chip">Trust risk: <b>Low</b></span>
+        <span class="chip">Effort: <b>S</b></span>
+      </div>
+
+      <div class="specimen">
+        <div class="specimen-caption">County page — CTA zone</div>
+        <div class="specimen-scroll">
+          <div class="specimen-inner">
+            <div class="mock-breadcrumb">US Markets / Alabama / Autauga County</div>
+            <div class="stat-row">
+              <div class="stat-card">
+                <div class="stat-label">Median Home Value</div>
+                <div class="stat-figure">$187,400</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">HPI YoY</div>
+                <div class="stat-figure">+4.2%</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">FEMA Risk</div>
+                <div class="stat-figure">87.3/100</div>
+                <div class="stat-sub">Relatively Moderate</div>
+              </div>
+            </div>
+
+            <h3 class="cta-heading">Choose your next step</h3>
+            <div class="cta-v3-grid">
+              <div class="cta-v3-card">
+                <div class="cta-v3-head">
+                  <div class="cta-v3-label">Track rents</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v3-desc">RentCast — property data, rent estimates, and market alerts</p>
+                <span class="cta-v3-arrow">&rarr;</span>
+              </div>
+              <div class="cta-v3-card">
+                <div class="cta-v3-head">
+                  <div class="cta-v3-label">Analyze the deal</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v3-desc">DealCheck — cash flow, ROI, and offer calculators</p>
+                <span class="cta-v3-arrow">&rarr;</span>
+              </div>
+              <div class="cta-v3-card soon">
+                <div class="cta-v3-head">
+                  <div class="cta-v3-label">Get my insurance quote</div>
+                  <span class="tag-soon">Coming soon</span>
+                </div>
+                <p class="cta-v3-desc">Allstate — homeowners insurance quote</p>
+                <span class="cta-v3-arrow">&rarr;</span>
+              </div>
+              <div class="cta-v3-card soon">
+                <div class="cta-v3-head">
+                  <div class="cta-v3-label">Appeal my assessment</div>
+                  <span class="tag-soon">Coming soon</span>
+                </div>
+                <p class="cta-v3-desc">Ownwell — property tax appeal service</p>
+                <span class="cta-v3-arrow">&rarr;</span>
+              </div>
+            </div>
+            <p class="disclosure">We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.</p>
+
+            <div class="internal-box">
+              <p class="title">Looking at a specific Autauga County property?</p>
+              <a href="#">Search any Autauga County address &rarr;</a>
+            </div>
+            <div class="sibling-row">
+              <span class="chip-sibling">Baldwin County</span>
+              <span class="chip-sibling">Barbour County</span>
+              <span class="chip-sibling">Bibb County</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="specimen">
+        <div class="specimen-caption">Assessment result — below the headline number</div>
+        <div class="specimen-scroll">
+          <div class="specimen-inner">
+            <div class="mock-eyebrow">Assessment Result</div>
+            <div class="mock-address">128 Oakwood Dr, Austin, TX</div>
+            <div class="hero-figure-card">
+              <div class="hero-figure-label">Recommended Offer</div>
+              <div class="hero-figure-value">$412,000</div>
+              <div class="hero-figure-sub">4.3% below asking · modeled from AVM, comps, and county data</div>
+            </div>
+
+            <h3 class="cta-heading">Choose your next step</h3>
+            <div class="cta-v3-grid">
+              <div class="cta-v3-card">
+                <div class="cta-v3-head">
+                  <div class="cta-v3-label">Track rents</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v3-desc">RentCast — property data, rent estimates, and market alerts</p>
+                <span class="cta-v3-arrow">&rarr;</span>
+              </div>
+              <div class="cta-v3-card">
+                <div class="cta-v3-head">
+                  <div class="cta-v3-label">Analyze the deal</div>
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <p class="cta-v3-desc">DealCheck — cash flow, ROI, and offer calculators</p>
+                <span class="cta-v3-arrow">&rarr;</span>
+              </div>
+              <div class="cta-v3-card soon">
+                <div class="cta-v3-head">
+                  <div class="cta-v3-label">Get my insurance quote</div>
+                  <span class="tag-soon">Coming soon</span>
+                </div>
+                <p class="cta-v3-desc">Allstate — homeowners insurance quote</p>
+                <span class="cta-v3-arrow">&rarr;</span>
+              </div>
+              <div class="cta-v3-card soon">
+                <div class="cta-v3-head">
+                  <div class="cta-v3-label">Appeal my assessment</div>
+                  <span class="tag-soon">Coming soon</span>
+                </div>
+                <p class="cta-v3-desc">Ownwell — property tax appeal service</p>
+                <span class="cta-v3-arrow">&rarr;</span>
+              </div>
+            </div>
+            <p class="disclosure">We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.</p>
+
+            <div class="placeholder-row">
+              <div class="placeholder-card">Signal breakdown</div>
+              <div class="placeholder-card">Market context</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ V4 -->
+    <section id="v4" class="variant-section">
+      <span class="eyebrow-badge">V4</span>
+      <h2>Aggregator widget</h2>
+      <p class="variant-defense">
+        Aggregators like The Zebra, EverQuote, and SmartFinancial all run ZIP-first funnels that spend two or
+        three steps just collecting an address and a state. We already have the address, state, and risk
+        score on the page before the user asks — so a single prefilled field should out-convert a funnel that
+        starts from zero.
+      </p>
+      <div class="chips-row">
+        <span class="chip">Hypothesis strength: <b>Strong</b></span>
+        <span class="chip">Trust risk: <b>Medium</b></span>
+        <span class="chip">Effort: <b>M</b></span>
+      </div>
+
+      <div class="specimen">
+        <div class="specimen-caption">Assessment result — below the headline number</div>
+        <div class="specimen-scroll">
+          <div class="specimen-inner">
+            <div class="mock-eyebrow">Assessment Result</div>
+            <div class="mock-address">128 Oakwood Dr, Austin, TX</div>
+            <div class="hero-figure-card">
+              <div class="hero-figure-label">Recommended Offer</div>
+              <div class="hero-figure-value">$412,000</div>
+              <div class="hero-figure-sub">4.3% below asking · modeled from AVM, comps, and county data</div>
+            </div>
+
+            <p class="flavor-caption">(a) Link-out flavor — routes to partner with state/zip params, no PII touches our site</p>
+            <div class="cta-v4-card">
+              <div class="cta-v4-title">What should this property cost to insure?</div>
+              <p class="cta-v4-sub">Free estimate for 128 Oakwood Dr — no signup, takes 10 seconds</p>
+              <div class="cta-v4-field-row">
+                <div class="cta-v4-input">Austin, TX 78745</div>
+                <a class="btn-teal" href="#">See my quotes</a>
+              </div>
+              <p class="cta-v4-fine">Powered by our insurance partners · Sponsored</p>
+            </div>
+
+            <p class="flavor-caption">(b) Embedded flavor — partner's form hosted in-page (compliance: partner collects PII under their policy; TCPA consent language required if phone captured)</p>
+            <div class="cta-v4-card">
+              <div class="cta-v4-title">What should this property cost to insure?</div>
+              <p class="cta-v4-sub">Free estimate for 128 Oakwood Dr — no signup, takes 10 seconds</p>
+              <div class="cta-v4-field-row">
+                <div class="cta-v4-input">Austin, TX 78745</div>
+                <a class="btn-teal" href="#">See my quotes</a>
+              </div>
+              <p class="cta-v4-fine">Powered by our insurance partners · Sponsored</p>
+              <div class="cta-v4-dimmed">
+                <div class="cta-v4-dimmed-label">Step 2 of 2</div>
+                <div class="cta-v4-dimmed-row">
+                  <div class="cta-v4-dimmed-input">First name</div>
+                  <div class="cta-v4-dimmed-input">Email</div>
+                </div>
+              </div>
+            </div>
+            <p class="disclosure">We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.</p>
+
+            <div class="placeholder-row">
+              <div class="placeholder-card">Signal breakdown</div>
+              <div class="placeholder-card">Market context</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="specimen">
+        <div class="specimen-caption">County page — CTA zone</div>
+        <div class="specimen-scroll">
+          <div class="specimen-inner">
+            <div class="mock-breadcrumb">US Markets / Alabama / Autauga County</div>
+            <div class="stat-row">
+              <div class="stat-card">
+                <div class="stat-label">Median Home Value</div>
+                <div class="stat-figure">$187,400</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">HPI YoY</div>
+                <div class="stat-figure">+4.2%</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">FEMA Risk</div>
+                <div class="stat-figure">87.3/100</div>
+                <div class="stat-sub">Relatively Moderate</div>
+              </div>
+            </div>
+
+            <p class="flavor-caption">(a) Link-out flavor — routes to partner with state/zip params, no PII touches our site</p>
+            <div class="cta-v4-card">
+              <div class="cta-v4-title">What should this property cost to insure?</div>
+              <p class="cta-v4-sub">Free estimate for any Autauga County home — no signup, takes 10 seconds</p>
+              <div class="cta-v4-field-row">
+                <div class="cta-v4-input">Autauga County, AL 36067</div>
+                <a class="btn-teal" href="#">See my quotes</a>
+              </div>
+              <p class="cta-v4-fine">Powered by our insurance partners · Sponsored</p>
+            </div>
+
+            <p class="flavor-caption">(b) Embedded flavor — partner's form hosted in-page (compliance: partner collects PII under their policy; TCPA consent language required if phone captured)</p>
+            <div class="cta-v4-card">
+              <div class="cta-v4-title">What should this property cost to insure?</div>
+              <p class="cta-v4-sub">Free estimate for any Autauga County home — no signup, takes 10 seconds</p>
+              <div class="cta-v4-field-row">
+                <div class="cta-v4-input">Autauga County, AL 36067</div>
+                <a class="btn-teal" href="#">See my quotes</a>
+              </div>
+              <p class="cta-v4-fine">Powered by our insurance partners · Sponsored</p>
+              <div class="cta-v4-dimmed">
+                <div class="cta-v4-dimmed-label">Step 2 of 2</div>
+                <div class="cta-v4-dimmed-row">
+                  <div class="cta-v4-dimmed-input">First name</div>
+                  <div class="cta-v4-dimmed-input">Email</div>
+                </div>
+              </div>
+            </div>
+            <p class="disclosure">We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.</p>
+
+            <div class="internal-box">
+              <p class="title">Looking at a specific Autauga County property?</p>
+              <a href="#">Search any Autauga County address &rarr;</a>
+            </div>
+            <div class="sibling-row">
+              <span class="chip-sibling">Baldwin County</span>
+              <span class="chip-sibling">Barbour County</span>
+              <span class="chip-sibling">Bibb County</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout-empty">
+        <p class="title">Economics verdict — build the link-out flavor only</p>
+        <p class="body">Verified Aug 8 research: no aggregator offers a self-serve embeddable quote form at our scale except SmartFinancial, whose pay-per-lead economics require completion volume that thin programmatic traffic can't deliver — a $1–5 finance-vertical CPC link approximates the revenue without the machinery. Hosting the form would also make us the PII collector (privacy-policy scope) and the TCPA consent-taker ($500–1,500 statutory damages per violation follow whoever collects consent). The embedded flavor shown above is therefore a future-state reference only. The link-out flavor keeps our pre-fill advantage — address/state/zip carried via URL params into the partner's hosted funnel (the Matic pattern) — with integration cost of "add query params to a link."</p>
+      </div>
+    </section>
+
+    <!-- ============================================================ V5 -->
+    <section id="v5" class="variant-section">
+      <span class="eyebrow-badge">V5</span>
+      <h2>Mobile sticky bar</h2>
+      <p class="variant-defense">
+        A sticky bar keeps the CTA in the thumb zone once the user scrolls past the in-flow one, and
+        thumb-zone research on mobile tap targets is solid. The specific lift numbers usually quoted for
+        sticky bars in this space aren't independently verified, though, so this one should ship as an A/B
+        test, not a default.
+      </p>
+      <div class="chips-row">
+        <span class="chip">Hypothesis strength: <b>Medium</b></span>
+        <span class="chip">Trust risk: <b>Medium</b></span>
+        <span class="chip">Effort: <b>M</b></span>
+      </div>
+
+      <div class="specimen">
+        <div class="specimen-caption">Mobile 375px</div>
+        <div class="specimen-scroll">
+          <div class="specimen-inner mobile">
+            <div class="phone-viewport">
+              <div class="phone-content">
+                <div class="mock-breadcrumb">US Markets / Alabama / Autauga County</div>
+                <div class="stat-row">
+                  <div class="stat-card">
+                    <div class="stat-label">Median Home Value</div>
+                    <div class="stat-figure">$187,400</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-label">HPI YoY</div>
+                    <div class="stat-figure">+4.2%</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-label">FEMA Risk</div>
+                    <div class="stat-figure">87.3/100</div>
+                    <div class="stat-sub">Relatively Moderate</div>
+                  </div>
+                </div>
+
+                <div class="phone-inflow-cta">
+                  <div class="cta-v1-card hero">
+                    <div class="cta-v1-card-head">
+                      <div class="cta-v1-label">Track my property's value and rent</div>
+                      <span class="tag-sponsored">Sponsored</span>
+                    </div>
+                    <p class="cta-v1-desc">Property data, rent estimates, and market alerts for any US address</p>
+                    <span class="cta-v1-arrow">RentCast &rarr;</span>
+                  </div>
+                </div>
+                <p class="disclosure">We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.</p>
+
+                <div class="internal-box">
+                  <p class="title">Looking at a specific Autauga County property?</p>
+                  <a href="#">Search any Autauga County address &rarr;</a>
+                </div>
+                <div class="sibling-row">
+                  <span class="chip-sibling">Baldwin County</span>
+                  <span class="chip-sibling">Barbour County</span>
+                  <span class="chip-sibling">Bibb County</span>
+                </div>
+              </div>
+
+              <div class="sticky-bar">
+                <div class="sticky-bar-text">
+                  RentCast — Track my property's value
+                  <span class="tag-sponsored">Sponsored</span>
+                </div>
+                <a class="btn-teal small" href="#">Open</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="mobile-note">
+        Appears only after the visitor scrolls past the in-flow CTA above — plainest styling deliberately, so
+        it reads as a utility bar, not another ad. A/B-only: thumb-zone tap-target research is solid, but the
+        sticky-bar lift stats commonly cited for this pattern are not independently verified.
+      </p>
+    </section>
+
+    <!-- ============================================================ V6 -->
+    <section id="v6" class="variant-section">
+      <span class="eyebrow-badge">V6</span>
+      <h2>Comparison table <span class="variant-name-sub">(future state)</span></h2>
+      <p class="variant-defense">
+        A list of three or more insurance quotes in a divide-y row is the core mechanic NerdWallet and
+        Bankrate use for their comparison tables, and the comparison structure itself is what signals
+        neutrality to the visitor — no single vendor looks favored. It needs three or more live vendors in
+        the same vertical to avoid looking sparse or biased, so this is a future-state mock against pending
+        applications.
+      </p>
+      <div class="chips-row">
+        <span class="chip">Hypothesis strength: <b>Strong</b></span>
+        <span class="chip">Trust risk: <b>Low</b></span>
+        <span class="chip">Effort: <b>M</b></span>
+      </div>
+
+      <div class="specimen">
+        <div class="specimen-caption">Assessment result — below the headline number</div>
+        <div class="specimen-scroll">
+          <div class="specimen-inner">
+            <div class="mock-eyebrow">Assessment Result</div>
+            <div class="mock-address">128 Oakwood Dr, Austin, TX</div>
+            <div class="hero-figure-card">
+              <div class="hero-figure-label">Recommended Offer</div>
+              <div class="hero-figure-value">$412,000</div>
+              <div class="hero-figure-sub">4.3% below asking · modeled from AVM, comps, and county data</div>
+            </div>
+
+            <h3 class="cta-heading">Home insurance for this property — compare</h3>
+            <p class="cta-v6-disclosure-top">We compare offers from paid partners below — order isn't an endorsement.</p>
+            <div class="cta-v6-list">
+              <div class="cta-v6-row">
+                <div>
+                  <p class="cta-v6-name">Allstate</p>
+                  <p class="cta-v6-line">Get my insurance quote — bundled home + auto discounts</p>
+                </div>
+                <a class="btn-teal small" href="#">View rates</a>
+              </div>
+              <div class="cta-v6-row">
+                <div>
+                  <p class="cta-v6-name">SmartFinancial</p>
+                  <p class="cta-v6-line">Compare home insurance rates from multiple carriers</p>
+                </div>
+                <a class="btn-teal small" href="#">View rates</a>
+              </div>
+              <div class="cta-v6-row">
+                <div>
+                  <p class="cta-v6-name">Insurify</p>
+                  <p class="cta-v6-line">See quotes from 100+ insurers side by side</p>
+                </div>
+                <a class="btn-teal small" href="#">View rates</a>
+              </div>
+            </div>
+            <p class="cta-v6-footnote">Requires 3+ live same-vertical vendors — mocked with pending applications.</p>
+            <p class="disclosure">We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.</p>
+
+            <div class="placeholder-row">
+              <div class="placeholder-card">Signal breakdown</div>
+              <div class="placeholder-card">Market context</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="page-footer">
+    <p>Static mockups · registry copy as of Aug 2026 · no production code changed · evidence + sources: docs/plans/11-CTA-OPTIMIZATION-PLAYBOOK.md</p>
+  </footer>
+
+</div>
+</body>
+</html>
