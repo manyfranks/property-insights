@@ -48,6 +48,7 @@
  */
 
 import { discoverActiveListingsByCity, getRentcastQuotaStatus, DiscoveredListing } from "../rentcast";
+import { buildUsListingDedupKey } from "./dedup";
 import { buildUsListing } from "./us-assess";
 import { enrichUSCityListings } from "./us-enrich";
 import { scoreV2 } from "../scoring";
@@ -332,9 +333,18 @@ export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
 
   if (allNew.length > 0) {
     const existing = await getAllListings();
-    const newKeys = new Set(allNew.map((l) => `${l.address}|${l.city}|${l.province}`.toLowerCase()));
-    const kept = existing.filter((l) => !newKeys.has(`${l.address}|${l.city}|${l.province}`.toLowerCase()));
-    await writeAllListings([...kept, ...allNew]);
+    // Normalized keys collapse abbreviation variants ("Tx Hwy"/"Texas Hwy")
+    // and dedupe the new batch against itself (city sweeps can return the
+    // same property twice under different address spellings).
+    const seen = new Set<string>();
+    const deduped = allNew.filter((l) => {
+      const key = buildUsListingDedupKey(l.address, l.city, l.province);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const kept = existing.filter((l) => !seen.has(buildUsListingDedupKey(l.address, l.city, l.province)));
+    await writeAllListings([...kept, ...deduped]);
   }
 
   const quotaAfter = await getRentcastQuotaStatus();

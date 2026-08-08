@@ -9,11 +9,14 @@
  * per-county adapters and their source-verification doc comments — at
  * zero RentCast quota cost and no per-request limit.
  *
- * SCOPE: only Phoenix (Maricopa County) and Miami (Miami-Dade County) are
- * feasible — see travis.ts's doc comment for why Austin/Travis County is
- * not (a real, confirmed auth wall on the only source with actual value
- * data). This script still iterates Austin so the report shows it was
- * checked and honestly skipped, rather than silently omitted.
+ * SCOPE: all three metros are feasible. Phoenix (Maricopa) and Miami
+ * (Miami-Dade) use live, address-indexed county GIS endpoints. Austin
+ * (Travis) has no free live per-address API (confirmed dead end — see
+ * travis.ts's doc comment) but TCAD publishes its full certified appraisal
+ * roll as a free bulk-download ZIP; travis.ts downloads and indexes that
+ * once per process (expect the first Austin lookup in a run to take
+ * minutes, not milliseconds — see travis.ts's module doc) rather than
+ * calling out per address.
  *
  * CONCURRENCY / ADDITIVE-ONLY CONTRACT: another in-flight change enriches
  * the same KV listings from RentCast (yearBuilt/taxes/lotSize/
@@ -224,9 +227,21 @@ function printTable(stats: CityStats[]) {
   }
 }
 
+/** Optional `--cities=austin,miami` filter (matches US_DISCOVER_CITIES'
+ * `slug`) — lets a targeted re-run (e.g. after fixing one county's adapter)
+ * skip the other metros' live API calls entirely instead of just running
+ * them again for no reason. Omit for the original all-cities behavior. */
+function citiesFilter(): Set<string> | null {
+  const arg = process.argv.find((a) => a.startsWith("--cities="));
+  if (!arg) return null;
+  return new Set(arg.slice("--cities=".length).split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+}
+
 async function main() {
+  const filter = citiesFilter();
+  const cities = filter ? US_DISCOVER_CITIES.filter((c) => filter.has(c.slug)) : US_DISCOVER_CITIES;
   const stats: CityStats[] = [];
-  for (const cfg of US_DISCOVER_CITIES) {
+  for (const cfg of cities) {
     stats.push(await enrichCity(cfg));
   }
   printTable(stats);

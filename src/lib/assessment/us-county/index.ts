@@ -32,8 +32,8 @@ const REGISTRY: Record<string, CountyAdapter> = {
     lookupByAddress: lookupMiamiDade,
   },
   "austin|tx": {
-    name: "Travis CAD — confirmed infeasible (see travis.ts doc comment)",
-    feasible: false,
+    name: "Travis CAD certified appraisal export (bulk-file index, see travis.ts doc comment)",
+    feasible: true,
     lookupByAddress: lookupTravis,
   },
 };

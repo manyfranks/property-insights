@@ -39,6 +39,30 @@
  *   format as step 1's FOLIO field (verified byte-for-byte match). So step
  *   2 is always a PARCEL_ID equality query, never an address query.
  *
+ * MATCH-RATE FOLLOW-UP (re-verified 2026-08-07 against all 36 of 50 cached
+ * Miami listings this adapter didn't match): 33 of those 36 are genuinely
+ * ambiguous multi-unit/condo complexes at step 1 (confirmed by direct
+ * TRUE_SITE_ADDR query — e.g. "1900 N Bayshore Dr" alone resolves to 705
+ * individually-folioed condo units; none of our cached listings carry a
+ * unit number, see the rows.length!==1 guard below) or a condo unit whose
+ * FOLIO exists in step 1 but has no corresponding record in the FDOR
+ * statewide roll at all (confirmed for 2 addresses by direct PARCEL_ID
+ * query — FDOR only publishes the master/common-area parcel for some small
+ * condo buildings, not every individual unit). Both are real, structural
+ * gaps in the free data, not fixable by better string normalization —
+ * consistent with this adapter's existing "skip rather than guess" stance.
+ * The remaining 3 of 36 WERE a real normalization bug, since fixed by
+ * normalizeMiamiAddress() below: Miami-Dade's own TRUE_SITE_ADDR keeps a
+ * street-type word spelled out in full when it is NOT the address's final
+ * suffix — e.g. "486 NW 165th Street Rd" is stored as
+ * "486 NW 165 STREET RD" (STREET full, only the trailing RD abbreviated),
+ * not "486 NW 165 ST RD" as the old unconditional STREET->ST regex
+ * produced. All 3 rediscovered addresses turned out to also be condo
+ * buildings once correctly found, so this fix doesn't move today's 14/50
+ * count, but it's a genuine correctness fix (the old code could 0-result
+ * ANY compound-suffix street, condo or not) kept for whatever single-family
+ * "___ Street Road"/"___ Avenue Road"-style address comes up next.
+ *
  * FIELD MAPPING (FDOR NAL schema, see the 2025 NAL/SDF/NAP User's Guide):
  *   AV_NSD (Assessed Value, Non-School District) -> assessedValue (FL's
  *     Save-Our-Homes-capped figure — the actual tax-relevant value,
@@ -67,29 +91,41 @@ const FETCH_TIMEOUT_MS = 10_000;
 // full-word street types to the county's abbreviations — our cached
 // listings (RentCast-sourced) already arrive abbreviated in every sample
 // tested, but this is defensive for any that aren't.
-const STREET_TYPE_ABBREVS: [RegExp, string][] = [
-  [/\bSTREET\b/g, "ST"],
-  [/\bAVENUE\b/g, "AVE"],
-  [/\bBOULEVARD\b/g, "BLVD"],
-  [/\bDRIVE\b/g, "DR"],
-  [/\bCOURT\b/g, "CT"],
-  [/\bROAD\b/g, "RD"],
-  [/\bPLACE\b/g, "PL"],
-  [/\bTERRACE\b/g, "TER"],
-  [/\bLANE\b/g, "LN"],
-  [/\bCIRCLE\b/g, "CIR"],
-  [/\bTRAIL\b/g, "TRL"],
-  [/\bPARKWAY\b/g, "PKWY"],
-  [/\bHIGHWAY\b/g, "HWY"],
-  [/\bWAY\b/g, "WAY"],
+//
+// IMPORTANT: only the LAST token of the address is a candidate for this
+// abbreviation, never an earlier one — see the module doc's "MATCH-RATE
+// FOLLOW-UP" note. TRUE_SITE_ADDR keeps a street-type word spelled out in
+// full when something else (another suffix, e.g. "RD"/"LN") follows it, so
+// unconditionally abbreviating every occurrence (the old behavior) turned
+// real addresses like "486 NW 165th Street Rd" into a query for
+// "486 NW 165 ST RD", which zero-results against the county's actual
+// "486 NW 165 STREET RD".
+const STREET_TYPE_ABBREV_MAP: [string, string][] = [
+  ["STREET", "ST"],
+  ["AVENUE", "AVE"],
+  ["BOULEVARD", "BLVD"],
+  ["DRIVE", "DR"],
+  ["COURT", "CT"],
+  ["ROAD", "RD"],
+  ["PLACE", "PL"],
+  ["TERRACE", "TER"],
+  ["LANE", "LN"],
+  ["CIRCLE", "CIR"],
+  ["TRAIL", "TRL"],
+  ["PARKWAY", "PKWY"],
+  ["HIGHWAY", "HWY"],
 ];
 
 function normalizeMiamiAddress(street: string): string {
-  let s = street.trim().toUpperCase().replace(/\s+/g, " ");
-  s = s.replace(/\b(\d+)(ST|ND|RD|TH)\b/g, "$1");
-  for (const [pat, repl] of STREET_TYPE_ABBREVS) s = s.replace(pat, repl);
-  s = s.replace(/'/g, "''");
-  return s;
+  const s = street.trim().toUpperCase().replace(/\s+/g, " ");
+  const ordinalsStripped = s.replace(/\b(\d+)(ST|ND|RD|TH)\b/g, "$1");
+  const tokens = ordinalsStripped.split(" ");
+  const lastIdx = tokens.length - 1;
+  if (lastIdx >= 0) {
+    const abbrev = STREET_TYPE_ABBREV_MAP.find(([full]) => tokens[lastIdx] === full);
+    if (abbrev) tokens[lastIdx] = abbrev[1];
+  }
+  return tokens.join(" ").replace(/'/g, "''");
 }
 
 interface MdcParcelAttributes {

@@ -170,3 +170,106 @@ export async function filterUnseen(
   const seenSet = new Set(seen);
   return mlsNumbers.filter((m) => !seenSet.has(m));
 }
+
+// ---------------------------------------------------------------------------
+// US listing address-normalization dedup
+//
+// The CA pipeline above dedups on a stable MLS number, but US Discover
+// listings (src/lib/pipeline/us-discover.ts) have no MLS-equivalent — the
+// merge step there keys on a literal `${address}|${city}|${province}`
+// string (lowercased, no other normalization; see writeAllListings' caller
+// around us-discover.ts's `newKeys`/`kept` merge). That's why the same
+// Austin property was seeded twice under "6804 N Capital Of Tx Hwy" and
+// "6804 N Capital Of Texas Hwy" — RentCast/realtor data returned the same
+// parcel with a differently-abbreviated street name across two refresh
+// runs, and a literal string key sees those as two different addresses.
+//
+// normalizeUsAddress() below produces a canonical dedup key for exactly
+// this class of bug: directional words (North/N), common USPS street-type
+// abbreviations (Highway/Hwy, Boulevard/Blvd, ...), and the "Texas"/"Tx"
+// spelling-out seen in real Austin data (e.g. "Capital of Texas Highway",
+// commonly abbreviated "Capital of Tx Hwy" by both TxDOT signage and
+// several listing sources) all collapse to the same token before the parts
+// are rejoined. It intentionally does NOT touch unit/suite numbers or
+// street numbers — only word-level abbreviation variance, the specific
+// failure mode observed here.
+//
+// HOOKUP NOTE (not applied — us-discover.ts is out of this module's
+// scope): the merge in us-discover.ts around
+//   const newKeys = new Set(allNew.map((l) => `${l.address}|${l.city}|${l.province}`.toLowerCase()));
+//   const kept = existing.filter((l) => !newKeys.has(`${l.address}|${l.city}|${l.province}`.toLowerCase()));
+// should build both `newKeys` and the `kept` filter's probe key from
+// `buildUsListingDedupKey(l.address, l.city, l.province)` (exported below)
+// instead of the raw lowercased address. That's a one-line swap at each of
+// those two call sites — left to a follow-up change since us-discover.ts is
+// outside this task's scope.
+// ---------------------------------------------------------------------------
+
+/** Directional words that appear as standalone tokens in US street addresses. */
+const US_ADDRESS_DIRECTIONAL_ABBREVS: [RegExp, string][] = [
+  [/\bNORTHEAST\b/g, "NE"],
+  [/\bNORTHWEST\b/g, "NW"],
+  [/\bSOUTHEAST\b/g, "SE"],
+  [/\bSOUTHWEST\b/g, "SW"],
+  [/\bNORTH\b/g, "N"],
+  [/\bSOUTH\b/g, "S"],
+  [/\bEAST\b/g, "E"],
+  [/\bWEST\b/g, "W"],
+];
+
+/** Common USPS Publication 28 street-suffix abbreviations (superset of the
+ * list in miami-dade.ts's STREET_TYPE_ABBREVS — this one also covers
+ * generic dedup needs beyond Miami's quadrant format). */
+const US_ADDRESS_STREET_TYPE_ABBREVS: [RegExp, string][] = [
+  [/\bSTREET\b/g, "ST"],
+  [/\bAVENUE\b/g, "AVE"],
+  [/\bBOULEVARD\b/g, "BLVD"],
+  [/\bDRIVE\b/g, "DR"],
+  [/\bCOURT\b/g, "CT"],
+  [/\bROAD\b/g, "RD"],
+  [/\bPLACE\b/g, "PL"],
+  [/\bTERRACE\b/g, "TER"],
+  [/\bLANE\b/g, "LN"],
+  [/\bCIRCLE\b/g, "CIR"],
+  [/\bTRAIL\b/g, "TRL"],
+  [/\bPARKWAY\b/g, "PKWY"],
+  [/\bHIGHWAY\b/g, "HWY"],
+  [/\bSQUARE\b/g, "SQ"],
+  [/\bLOOP\b/g, "LOOP"],
+  [/\bCOVE\b/g, "CV"],
+  [/\bCRESCENT\b/g, "CRES"],
+  [/\bCROSSING\b/g, "XING"],
+];
+
+/** Words that appear spelled out in some listing sources' street names and
+ * abbreviated in others, beyond the standard USPS suffix/directional sets
+ * above — e.g. Austin's "Capital of Texas Highway" vs "Capital of Tx
+ * Highway" (confirmed duplicate in cached KV data, see module doc). */
+const US_ADDRESS_MISC_WORD_ABBREVS: [RegExp, string][] = [[/\bTEXAS\b/g, "TX"]];
+
+/**
+ * Canonicalize a US street address for dedup comparison — NOT for display.
+ * Uppercases, strips punctuation, collapses whitespace, and folds common
+ * directional/street-type/misc word variants to one spelling so listings
+ * that differ only in how a source abbreviated a word collide on the same
+ * key. Street numbers and unit numbers are left as-is (this targets word
+ * abbreviation drift, not numbering variance).
+ */
+export function normalizeUsAddress(address: string): string {
+  let s = address.trim().toUpperCase().replace(/[.,]/g, "").replace(/\s+/g, " ");
+  for (const [pat, repl] of US_ADDRESS_DIRECTIONAL_ABBREVS) s = s.replace(pat, repl);
+  for (const [pat, repl] of US_ADDRESS_STREET_TYPE_ABBREVS) s = s.replace(pat, repl);
+  for (const [pat, repl] of US_ADDRESS_MISC_WORD_ABBREVS) s = s.replace(pat, repl);
+  return s.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Stable dedup key for a US listing — mirrors the shape of us-discover.ts's
+ * inline `${address}|${city}|${province}` key, but with the address side
+ * run through normalizeUsAddress() so word-abbreviation variance (see
+ * module doc) doesn't produce two keys for the same property. City/province
+ * are still just lowercased/trimmed — no known bug there today.
+ */
+export function buildUsListingDedupKey(address: string, city: string, province: string): string {
+  return `${normalizeUsAddress(address)}|${city.trim().toUpperCase()}|${province.trim().toUpperCase()}`;
+}
