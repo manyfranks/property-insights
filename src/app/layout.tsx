@@ -96,6 +96,8 @@ export default function RootLayout({
             nonstandard value= attribute (not content=), so this is a raw tag —
             React hoists it into <head> — rather than metadata.other. */}
         <meta name="impact-site-verification" {...{ value: "0ace5bae-67e1-46b6-8692-148801f40b03" }} />
+        {/* FlexOffers site verification (standard content= attribute). */}
+        <meta name="fo-verify" content="f7a80bd4-10ee-4813-941a-6be2253e7186" />
         <OrganizationEntityJsonLd url={BASE_URL} />
         <OrganizationJsonLd url={BASE_URL} />
         <ClerkProvider>
