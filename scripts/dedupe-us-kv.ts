@@ -37,10 +37,14 @@ loadEnvLocal();
     if (richness(l) > richness(out[prevIdx])) out[prevIdx] = l;
   }
   console.log(`total: ${listings.length} -> ${out.length} | dropped US duplicates: ${dropped}`);
-  const res = await fetch(`${url}/SET/listings:all`, {
-    method: "POST",
-    headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify(JSON.stringify(out)),
-  });
-  console.log("KV write:", ((await res.json()) as { result?: string }).result ?? "failed");
+  // Write through the app's own store (correct encoding + slug/meta keys kept
+  // in sync). NEVER write listings:all via the raw REST path — a hand-rolled
+  // SET here once double-encoded the value and 500'd the whole site.
+  const { writeAllListings, getAllListings } = await import("../src/lib/kv/listings");
+  const { written } = await writeAllListings(out);
+  const roundTrip = await getAllListings();
+  if (!Array.isArray(roundTrip) || roundTrip.length !== out.length) {
+    throw new Error(`round-trip verification failed: expected ${out.length}, got ${Array.isArray(roundTrip) ? roundTrip.length : typeof roundTrip}`);
+  }
+  console.log(`KV write OK: ${written} listings, round-trip verified through getAllListings()`);
 })();

@@ -115,15 +115,19 @@ export async function getAllListings(): Promise<Listing[]> {
   }
 
   try {
-    const raw = await kvGet("listings:all");
-    if (raw && typeof raw === "string") {
-      return JSON.parse(raw) as Listing[];
+    let raw = await kvGet("listings:all");
+    // Tolerate double-encoded values (a raw REST SET once stored a
+    // JSON-string-of-JSON and took the site down): unwrap string layers
+    // until we reach the array, then validate the shape before trusting it.
+    for (let depth = 0; typeof raw === "string" && depth < 3; depth++) {
+      raw = JSON.parse(raw);
     }
-    if (Array.isArray(raw)) {
+    if (Array.isArray(raw) && raw.every((l) => l && typeof l === "object" && typeof (l as Listing).address === "string")) {
       return raw as Listing[];
     }
-  } catch {
-    // KV parse error — fall back
+    console.error("[kv-shape] listings:all is not a valid Listing[] — falling back to static data");
+  } catch (err) {
+    console.error("[kv-shape] listings:all unreadable — falling back to static data:", err);
   }
 
   // Fallback to static
