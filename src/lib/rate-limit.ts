@@ -13,10 +13,23 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
+// Module-level flag so the "disabled" warning fires once per warm instance,
+// not once per request (RUNBOOK.md §8 gap #5 — this used to fail silently:
+// every route just checks `if (limiter && ...)` and skips the check with no
+// log line anywhere, so a production Upstash misconfiguration silently
+// removed abuse protection).
+let loggedDisabled = false;
+
 function getRedis(): Redis | null {
   const url = process.env.KV_REST_API_URL;
   const token = process.env.KV_REST_API_TOKEN;
-  if (!url || !token) return null;
+  if (!url || !token) {
+    if (process.env.NODE_ENV === "production" && !loggedDisabled) {
+      loggedDisabled = true;
+      console.error("[rate-limit] DISABLED — Upstash env missing");
+    }
+    return null;
+  }
   return new Redis({ url, token });
 }
 
