@@ -181,6 +181,8 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
+    ctaLabel: "Track this property's value and rent",
+    description: "Property data, rent estimates, and market alerts for any US address",
     offerText: "Use code PROPERTYINSIGHTS at checkout",
     notes:
       "30% recurring + $100/10 customers, PayPal monthly, 90d cookie. Bans paid-traffic promotion — app link-out is fine. Apply: affiliates.rentcast.io",
