@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getListingBySlug } from "@/lib/kv/listings";
 import { analyzeListingAsync } from "@/lib/analyze";
-import { OfferResult } from "@/lib/types";
+import { Assessment, Listing, OfferResult, PrecomputedOffer } from "@/lib/types";
 import { cityToSlug, fmt, pct, slugify } from "@/lib/utils";
 import { BASE_URL } from "@/lib/seo";
 import { PropertyJsonLd, BreadcrumbJsonLd } from "@/components/json-ld";
@@ -12,6 +12,16 @@ import ExpandableSection from "@/components/expandable-section";
 import TrackView from "@/components/track-view";
 import PartnerCta from "@/components/partner-cta";
 import { assertAffiliateHealth } from "@/config/affiliate-vendors";
+import { isUSState } from "@/lib/assessment/us";
+import type {
+  UsAdvantageBundle,
+  EquityTenureSignal,
+  ValuationTriangulation,
+  InvestorYield,
+  RiskMomentumContext,
+  OverAssessmentFlag,
+} from "@/lib/pipeline/us-advantage";
+import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 
 // ISR: serve cached page for 10 minutes, revalidate in background
 export const revalidate = 600;
@@ -132,6 +142,19 @@ export default async function PropertyPage({
   const { slug } = await params;
   const listing = await getListingBySlug(slug);
   if (!listing) notFound();
+
+  // US listings (US Discover cron — src/lib/pipeline/us-discover.ts) go
+  // through an entirely separate render path: analyzeListingAsync() below
+  // is built around the CA pipeline (Zoocasa assessment lookup, CA offer
+  // model) and previously mis-rendered every US listing as a permanent
+  // "Generating analysis" placeholder (a US listing always has preSignals
+  // set by the Discover scorer, which sent analyzeListingAsync down its
+  // "hasPre" fast path — but never had preNarrative, so narrative stayed
+  // empty forever). See renderUSPropertyPage() below. The CA path from here
+  // down is unchanged.
+  if (isUSState(listing.province)) {
+    return renderUSPropertyPage(listing, slug);
+  }
 
   assertAffiliateHealth();
 
@@ -580,6 +603,506 @@ export default async function PropertyPage({
           </a>
         </div>
       )}
+    </main>
+  );
+}
+
+// ===========================================================================
+// US listings — src/lib/pipeline/us-discover.ts / us-enrich.ts
+//
+// Renders straight from the CACHED Listing, no live calls. Two states:
+//   1. Enriched (listing.preNarrative set — see us-enrich.ts) — full offer
+//      hero, THE SIGNAL, listing facts, assessment, US Advantage sections
+//      (equity/tenure, triangulation, investor yield, risk/momentum,
+//      over-assessment), comparables, and the partner CTA.
+//   2. Sparse (top-N enrichment budget didn't reach this listing, or
+//      RentCast has no record for the address — e.g. new construction)
+//      — an honest "limited data" state with a link to run a full
+//      on-demand assessment (/assess?address=...), never a fake or
+//      indefinitely-pending narrative.
+// ===========================================================================
+
+/** Snake_case PrecomputedOffer (KV-persisted) -> camelCase OfferResult for
+ * display — mirrors analyze.ts's preOfferToResult() (not exported there;
+ * duplicated here rather than touching that CA-owned file). */
+function usOfferResult(pre: PrecomputedOffer, assessment: Assessment | null): OfferResult {
+  return {
+    anchor: pre.anchor,
+    anchorTag: pre.anchor_tag,
+    anchorType: assessment?.found ? "assessment" : "language",
+    listToAssessedRatio: pre.ratio,
+    domAdjusted: pre.dom_adjusted,
+    domMultiplier: pre.dom_mult,
+    domTag: pre.dom_tag,
+    signalAdjusted: pre.signal_adjusted,
+    signalTags: pre.signal_tags,
+    finalOffer: pre.final_offer,
+    percentOfList: pre.pct_of_list,
+    savings: pre.savings,
+    inTargetRange: false, // not rendered for US listings
+  };
+}
+
+function usAssessmentSourceLabel(assessment: Assessment): string {
+  switch (assessment.source) {
+    case "government":
+    case "cache":
+      return "County tax assessment";
+    case "avm":
+      return "RentCast AVM estimate (modeled)";
+    case "area_median":
+      return "County ACS median (not property-specific)";
+    default:
+      return "County record";
+  }
+}
+
+function UsAssessmentCard({ assessment, offer }: { assessment: Assessment | null; offer: OfferResult | null }) {
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="text-xs uppercase tracking-widest text-muted mb-3">Assessment</div>
+      {assessment ? (
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted">Total Value</span>
+            <span className="font-mono font-medium">{fmt(assessment.totalValue)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted">Year</span>
+            <span>{assessment.assessmentYear}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted">Source</span>
+            <span className="text-xs">{usAssessmentSourceLabel(assessment)}</span>
+          </div>
+          {offer && (
+            <div className="flex justify-between pt-1 border-t border-border">
+              <span className="text-muted">List/Assessed</span>
+              <span className="font-mono font-medium">{offer.listToAssessedRatio.toFixed(2)}x</span>
+            </div>
+          )}
+          {assessment.source === "avm" && (
+            <p className="text-xs text-muted/70 pt-1">
+              Modeled valuation, not a government-verified tax assessment.
+            </p>
+          )}
+          {assessment.assessmentBasis === "acquisition_value" && (
+            <p className="text-xs text-muted/70 pt-1">
+              This state assesses on acquisition value (purchase price + a small annual cap), not market
+              value — expect it to lag market price by design.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-muted">No assessed value on record for this address.</p>
+      )}
+    </div>
+  );
+}
+
+function UsPropertyFactsCard({ listing }: { listing: Listing }) {
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="text-xs uppercase tracking-widest text-muted mb-3">Property</div>
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <span className="text-muted text-xs">Beds</span>
+          <div className="font-medium">{listing.beds || "N/A"}</div>
+        </div>
+        <div>
+          <span className="text-muted text-xs">Baths</span>
+          <div className="font-medium">{listing.baths || "N/A"}</div>
+        </div>
+        <div>
+          <span className="text-muted text-xs">Sqft</span>
+          <div className="font-medium">{listing.sqft || "N/A"}</div>
+        </div>
+        <div>
+          <span className="text-muted text-xs">Built</span>
+          <div className="font-medium">{listing.yearBuilt || "N/A"}</div>
+        </div>
+        <div>
+          <span className="text-muted text-xs">Lot</span>
+          <div className="font-medium">{listing.lotSize || "N/A"}</div>
+        </div>
+        <div>
+          <span className="text-muted text-xs">Taxes</span>
+          <div className="font-medium">{listing.taxes ? `$${listing.taxes}` : "N/A"}</div>
+        </div>
+      </div>
+      {listing.mlsNumber && (
+        <div className="text-xs text-muted mt-3 pt-2 border-t border-border">MLS# {listing.mlsNumber}</div>
+      )}
+    </div>
+  );
+}
+
+function UsEquityTenureCard({ equitySignal }: { equitySignal: EquityTenureSignal | null }) {
+  if (!equitySignal || equitySignal.tier === "moderate_hold") return null;
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs uppercase tracking-widest text-muted">Seller Equity/Tenure</div>
+        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{equitySignal.label}</span>
+      </div>
+      <p className="text-sm text-foreground leading-relaxed">{equitySignal.narrative}</p>
+    </div>
+  );
+}
+
+function UsTriangulationCard({ triangulation }: { triangulation: ValuationTriangulation }) {
+  if (triangulation.anchors.length === 0) return null;
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs uppercase tracking-widest text-muted">Valuation Triangulation</div>
+        <span
+          className={`text-xs px-2 py-0.5 rounded-full ${
+            triangulation.confidence === "high"
+              ? "bg-emerald-100 text-emerald-700"
+              : triangulation.confidence === "medium"
+                ? "bg-amber-100 text-amber-700"
+                : "bg-zinc-100 text-zinc-500"
+          }`}
+        >
+          {triangulation.confidence} confidence
+        </span>
+      </div>
+      <div className="space-y-1.5 mb-2">
+        {triangulation.anchors.map((a) => (
+          <div key={a.label} className="flex items-center justify-between text-sm">
+            <span className="text-muted">{a.label}</span>
+            <span className="font-mono font-medium">{fmt(a.value)}</span>
+          </div>
+        ))}
+      </div>
+      {triangulation.triangulatedValue != null && (
+        <div className="flex items-center justify-between text-sm pt-1.5 border-t border-border mb-2">
+          <span className="text-muted">Triangulated value</span>
+          <span className="font-mono font-semibold">{fmt(triangulation.triangulatedValue)}</span>
+        </div>
+      )}
+      <p className="text-xs text-muted">{triangulation.agreementNote}</p>
+    </div>
+  );
+}
+
+function UsInvestorYieldCard({ investorYield }: { investorYield: InvestorYield | null }) {
+  if (!investorYield) return null;
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="text-xs uppercase tracking-widest text-muted mb-3">Investor Yield</div>
+      <p className="text-sm text-foreground leading-relaxed">{investorYield.verdict}</p>
+    </div>
+  );
+}
+
+function UsRiskMomentumCard({ riskMomentum }: { riskMomentum: RiskMomentumContext }) {
+  if (riskMomentum.momentum === "unknown" && riskMomentum.topPerils.length === 0 && !riskMomentum.vacancyElevated) {
+    return null;
+  }
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="text-xs uppercase tracking-widest text-muted mb-3">County Risk &amp; Momentum</div>
+      <p className="text-sm text-foreground leading-relaxed">{riskMomentum.note}</p>
+    </div>
+  );
+}
+
+function UsOverAssessmentCallout({ overAssessment }: { overAssessment: OverAssessmentFlag }) {
+  if (!overAssessment.triggered || !overAssessment.note) return null;
+  return (
+    <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 text-sm text-amber-800 mb-6">
+      {overAssessment.note}
+    </div>
+  );
+}
+
+function UsComparablesCard({ comparables }: { comparables: UsCompSupport }) {
+  if (comparables.confidence === "none" || comparables.comparables.length === 0) return null;
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs uppercase tracking-widest text-muted">Comparables</div>
+        <span
+          className={`text-xs px-2 py-0.5 rounded-full ${
+            comparables.confidence === "high"
+              ? "bg-emerald-100 text-emerald-700"
+              : comparables.confidence === "medium"
+                ? "bg-amber-100 text-amber-700"
+                : "bg-zinc-100 text-zinc-500"
+          }`}
+        >
+          {comparables.confidence === "high" ? "Anchored by comps" : comparables.confidence === "medium" ? "Supported by similar sales" : "Limited data"}
+        </span>
+      </div>
+      <p className="text-xs text-muted mb-3">{comparables.marketNote}</p>
+      <div className="space-y-2">
+        {comparables.comparables.slice(0, 5).map((c, i) => (
+          <div key={i} className="border border-border/50 rounded-lg p-2.5 text-xs">
+            <div className="flex justify-between items-start mb-1">
+              <span className="font-medium">{c.address || "Comparable property"}</span>
+              {c.distanceMi != null && <span className="text-muted ml-2 whitespace-nowrap">{c.distanceMi.toFixed(1)}mi</span>}
+            </div>
+            <div className="flex justify-between text-muted">
+              <span>
+                {c.beds ?? "?"}bd{c.sqft ? ` · ${c.sqft}sqft` : ""}
+              </span>
+              {c.price != null && <span className="font-mono font-medium text-foreground">{fmt(c.price)}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+      {comparables.dataGaps.length > 0 && <p className="text-xs text-muted/60 mt-2">{comparables.dataGaps.join(" · ")}</p>}
+    </div>
+  );
+}
+
+/** Honest "not enough data yet" state for a US listing the top-N enrichment
+ * budget hasn't reached (or RentCast has no record for) — a link to a full
+ * on-demand assessment, never an indefinite "generating" placeholder. */
+function renderUSSparseListing(listing: Listing, slug: string) {
+  const fullAddress = `${listing.address}, ${listing.city}, ${listing.province}`;
+  const assessUrl = `/assess?address=${encodeURIComponent(fullAddress)}`;
+
+  return (
+    <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
+      <PropertyJsonLd
+        url={`${BASE_URL}/property/${slug}`}
+        address={listing.address}
+        city={listing.city}
+        province={listing.province}
+        beds={listing.beds}
+        baths={listing.baths}
+        price={listing.price}
+        description={listing.description}
+      />
+      <TrackView slug={slug} city={listing.city} price={listing.price} />
+
+      <Link
+        href={`/discover/${cityToSlug(listing.city)}`}
+        className="text-sm text-muted hover:text-foreground transition-colors"
+      >
+        &larr; {listing.city}
+      </Link>
+
+      <div className="mt-6 mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight">{listing.address}</h1>
+        <p className="text-sm text-muted mt-0.5">
+          {listing.city}, {listing.province}
+        </p>
+      </div>
+
+      <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
+        <div className="text-xs uppercase tracking-widest text-muted mb-2">List Price</div>
+        <div className="font-mono text-4xl sm:text-5xl font-bold mb-3">{fmt(listing.price)}</div>
+        <div className="text-sm text-muted">
+          {listing.beds || "?"} bed / {listing.baths || "?"} bath{listing.sqft ? ` · ${listing.sqft} sqft` : ""} ·{" "}
+          {listing.dom}d on market
+        </div>
+      </div>
+
+      <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
+        <div className="text-xs uppercase tracking-widest text-muted mb-2">Limited Data</div>
+        <p className="text-sm text-foreground leading-relaxed mb-4">
+          We haven&apos;t run a full assessment on this address yet — tax records, valuation triangulation, and a
+          written analysis aren&apos;t available for it from the batch scan that surfaced it. Run a full
+          on-demand assessment to pull RentCast&apos;s property record, AVM valuation, and county context for
+          this exact address.
+        </p>
+        <Link
+          href={assessUrl}
+          className="inline-block px-4 py-2 text-sm font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all"
+        >
+          Run a full assessment &rarr;
+        </Link>
+      </div>
+
+      <div className="mb-6">
+        <PartnerCta country="US" state={listing.province} source="property-page" propertySlug={slug} city={listing.city} />
+      </div>
+    </main>
+  );
+}
+
+function renderUSPropertyPage(listing: Listing, slug: string) {
+  if (!listing.preNarrative) {
+    return renderUSSparseListing(listing, slug);
+  }
+
+  const assessment = listing.preAssessment ?? null;
+  const offer = listing.preOffer ? usOfferResult(listing.preOffer, assessment) : null;
+  const tier = listing.preTier ?? "WATCH";
+  const score = listing.preScore ?? 0;
+  const signals = listing.preSignals ?? [];
+  const advantage: UsAdvantageBundle | undefined = listing.preUsAdvantage;
+  const comparables = listing.preUsComparables;
+  const confidence = listing.preNarrativeConfidence;
+
+  return (
+    <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
+      <PropertyJsonLd
+        url={`${BASE_URL}/property/${slug}`}
+        address={listing.address}
+        city={listing.city}
+        province={listing.province}
+        beds={listing.beds}
+        baths={listing.baths}
+        price={listing.price}
+        description={listing.description}
+      />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: BASE_URL },
+          { name: listing.city, url: `${BASE_URL}/discover/${cityToSlug(listing.city)}` },
+          { name: listing.address, url: `${BASE_URL}/property/${slug}` },
+        ]}
+      />
+      <TrackView slug={slug} city={listing.city} price={listing.price} />
+
+      <Link
+        href={`/discover/${cityToSlug(listing.city)}`}
+        className="text-sm text-muted hover:text-foreground transition-colors"
+      >
+        &larr; {listing.city}
+      </Link>
+
+      <div className="mt-6 mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{listing.address}</h1>
+          <p className="text-sm text-muted mt-0.5">
+            {listing.city}, {listing.province}
+          </p>
+        </div>
+        <TierBadge tier={tier} />
+      </div>
+
+      {/* Hero — offer or list price */}
+      <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
+        {offer ? (
+          <>
+            <div className="text-xs uppercase tracking-widest text-muted mb-2">
+              {offer.anchorType === "language" ? "Estimated Offer" : "Recommended Offer"}
+            </div>
+            <div className="text-4xl sm:text-5xl font-mono font-bold mb-2">{fmt(offer.finalOffer)}</div>
+            <div className="text-sm text-green-600 mb-4">
+              Save {fmt(offer.savings)} &middot; {pct(offer.percentOfList)} of list
+            </div>
+            {offer.anchorType === "language" && (
+              <p className="text-xs text-muted mb-4 max-w-sm mx-auto">
+                Based on market duration and structural signals. No assessed value available for this address.
+              </p>
+            )}
+            <div className="border-t border-border pt-4 flex justify-center gap-4 sm:gap-8 text-center">
+              <div>
+                <div className="text-xs text-muted">List Price</div>
+                <div className="font-mono font-medium">{fmt(listing.price)}</div>
+              </div>
+              {offer.anchorType === "assessment" && (
+                <div>
+                  <div className="text-xs text-muted">Assessed</div>
+                  <div className="font-mono font-medium">{assessment ? fmt(assessment.totalValue) : "N/A"}</div>
+                </div>
+              )}
+              <div>
+                <div className="text-xs text-muted">DOM</div>
+                <div className="font-mono font-medium">{listing.dom}d</div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="py-4">
+            <div className="text-xs uppercase tracking-widest text-muted mb-2">List Price</div>
+            <div className="font-mono text-4xl sm:text-5xl font-bold mb-3">{fmt(listing.price)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* THE SIGNAL */}
+      <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs uppercase tracking-widest text-muted">The Signal</div>
+          {confidence != null && confidence > 0 && (
+            <span className="text-xs text-muted font-mono">{Math.round(confidence * 100)}% confidence</span>
+          )}
+        </div>
+        <div className="space-y-3">
+          {listing.preNarrative.split(/\n\n+/).map((para, i) => (
+            <p key={i} className="text-sm text-foreground leading-relaxed">
+              {para.trim()}
+            </p>
+          ))}
+        </div>
+      </div>
+
+      {offer && (
+        <div className="mb-4">
+          <ExpandableSection title="How we calculated this" defaultOpen={false}>
+            <OfferCascade offer={offer} />
+          </ExpandableSection>
+        </div>
+      )}
+
+      {advantage && <UsOverAssessmentCallout overAssessment={advantage.overAssessment} />}
+
+      <div className="mb-4">
+        <ExpandableSection title="Score breakdown" defaultOpen={false}>
+          {/* Per-rule breakdown isn't persisted for US listings (only the
+              total + signals list are — see us-enrich.ts); the total score
+              is still shown via the Motivation Signals card below. */}
+          <ScoreBreakdown breakdown={{ "Total score": score }} />
+        </ExpandableSection>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <UsPropertyFactsCard listing={listing} />
+        <UsAssessmentCard assessment={assessment} offer={offer} />
+        {comparables && <UsComparablesCard comparables={comparables} />}
+        {advantage && <UsEquityTenureCard equitySignal={advantage.equitySignal} />}
+        {advantage && <UsTriangulationCard triangulation={advantage.triangulation} />}
+        {advantage && <UsInvestorYieldCard investorYield={advantage.investorYield} />}
+        {advantage && <UsRiskMomentumCard riskMomentum={advantage.riskMomentum} />}
+
+        <div className="border border-border rounded-xl p-4 bg-white">
+          <div className="text-xs uppercase tracking-widest text-muted mb-3">Market Activity</div>
+          <div className="flex items-center gap-3 mb-3">
+            <span className={`w-2.5 h-2.5 rounded-full ${domColor(listing.dom)}`} />
+            <span className="font-mono text-2xl font-bold">{listing.dom}</span>
+            <span className="text-sm text-muted">days on market</span>
+          </div>
+          {offer && <div className="text-xs text-muted mb-2">{offer.domTag}</div>}
+          {listing.priceReduced && (
+            <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">Price reduced</span>
+          )}
+        </div>
+
+        <div className="border border-border rounded-xl p-4 bg-white">
+          <div className="text-xs uppercase tracking-widest text-muted mb-3">Motivation Signals</div>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="font-mono text-2xl font-bold">{score}</span>
+            <span className="text-sm text-muted">/100</span>
+            <TierBadge tier={tier} />
+          </div>
+          {signals.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {signals.map((s) => (
+                <span
+                  key={s}
+                  title={s.length > 40 ? s : undefined}
+                  className="text-xs px-2 py-0.5 rounded-full max-w-[200px] truncate bg-gray-100 text-gray-600"
+                >
+                  {s.length > 40 ? s.slice(0, 37) + "..." : s}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
+        <PartnerCta country="US" state={listing.province} source="property-page" propertySlug={slug} city={listing.city} />
+      </div>
     </main>
   );
 }

@@ -776,3 +776,75 @@ const ACQUISITION_VALUE_STATES = new Set(["CA"]);
 export function assessmentBasisForState(state: string): Assessment["assessmentBasis"] {
   return ACQUISITION_VALUE_STATES.has(state.toUpperCase()) ? "acquisition_value" : "assessed_ratio";
 }
+
+// ---------------------------------------------------------------------------
+// Lite bundle — budget-aware bulk enrichment
+// ---------------------------------------------------------------------------
+
+export interface USPropertyLiteBundle {
+  record: RentCastPropertyRecord | null;
+  avm: RentCastAvm | null;
+  meta: USPropertyBundle["meta"];
+}
+
+/**
+ * Record + AVM only — no rent, no active-listing lookup. Built for
+ * src/lib/pipeline/us-enrich.ts's budget-aware bulk enrichment of already-
+ * discovered US Discover listings (src/lib/pipeline/us-discover.ts): the
+ * active listing is already known (it's the Listing being enriched, sourced
+ * from the same city-wide /listings/sale sweep), and the rent estimate is
+ * skippable — enrichment prioritizes assessed value/taxes/yearBuilt/comps,
+ * and every skipped call is quota headroom preserved (see this file's
+ * module doc for the 45/mo free-tier constraint). Two requests per address
+ * on a cache miss instead of getUSProperty()'s four.
+ *
+ * Uses the exact same cache keys as getUSProperty() (cachedRentcastCall,
+ * `rentcast:property:*` / `rentcast:avm:*`), so a later getUSProperty() call
+ * for the same address gets a cache hit on both these fields and only pays
+ * for the rent/listing fields it's still missing — never a duplicate spend.
+ */
+export async function getUSPropertyLite(
+  address: string,
+  city: string,
+  state: string
+): Promise<USPropertyLiteBundle> {
+  const addrKey = normalizeAddressKey(address, city, state);
+  const fullAddress = `${address}, ${city}, ${state}`;
+
+  const [propRes, avmRes] = await Promise.all([
+    cachedRentcastCall<RawPropertyRecord[]>({
+      cacheKey: `rentcast:property:${addrKey}`,
+      ttlSeconds: TTL_PROPERTY_SECONDS,
+      path: "/properties",
+      params: { address: fullAddress, limit: 1 },
+    }),
+    cachedRentcastCall<RawAvm>({
+      cacheKey: `rentcast:avm:${addrKey}`,
+      ttlSeconds: TTL_AVM_SECONDS,
+      path: "/avm/value",
+      params: { address: fullAddress },
+    }),
+  ]);
+
+  let quotaExhausted = false;
+  let cacheHits = 0;
+  let liveCalls = 0;
+  const errors: string[] = [];
+
+  function tally<T>(res: CachedCallResult<T>, label: string) {
+    if (res.cacheHit) cacheHits++;
+    else if (res.quotaBlocked) quotaExhausted = true;
+    else liveCalls++;
+    if (res.error) errors.push(`${label}: ${res.error}`);
+  }
+  tally(propRes, "property");
+  tally(avmRes, "avm");
+
+  const propRaw = Array.isArray(propRes.data) ? propRes.data[0] : undefined;
+
+  return {
+    record: mapPropertyRecord(propRaw),
+    avm: mapAvm(avmRes.data ?? undefined),
+    meta: { quotaExhausted, cacheHits, liveCalls, errors },
+  };
+}

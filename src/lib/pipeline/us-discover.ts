@@ -49,6 +49,7 @@
 
 import { discoverActiveListingsByCity, getRentcastQuotaStatus, DiscoveredListing } from "../rentcast";
 import { buildUsListing } from "./us-assess";
+import { enrichUSCityListings } from "./us-enrich";
 import { scoreV2 } from "../scoring";
 import { getAcsCountyMedian } from "../db/regional-econ";
 import { getAllListings, writeAllListings, getMetaValue, setMetaValue } from "../kv/listings";
@@ -236,6 +237,11 @@ export interface USDiscoverCityRunResult {
   skipReason?: string;
   fetched: number;
   scored: number;
+  // Top-N enrichment stats (see enrichUSCityListings in us-enrich.ts) —
+  // undefined when the city was skipped (no fetch, nothing to enrich).
+  enrichAttempted?: number;
+  enrichSucceeded?: number;
+  enrichQuotaStoppedEarly?: boolean;
 }
 
 export interface USDiscoverRefreshResult {
@@ -247,11 +253,15 @@ export interface USDiscoverRefreshResult {
 /**
  * Iterate US_DISCOVER_CITIES, skip any city refreshed within
  * US_DISCOVER_REFRESH_DAYS, fetch+score the rest (1 RentCast call each),
- * merge into the shared KV listings store (the SAME listings:all key CA
- * listings live in — see kv/listings.ts's doc comment; US listings carry
- * province = USPS state code, distinguished from CA province codes via
- * isUSState() in assessment/us.ts), and stamp each refreshed city's
- * last-refresh timestamp.
+ * enrich each city's top-N scored listings in the same run
+ * (enrichUSCityListings — src/lib/pipeline/us-enrich.ts; quota-guarded, so
+ * a run that goes quota-exhausted mid-city just leaves the remaining
+ * candidates sparse rather than failing), merge into the shared KV listings
+ * store (the SAME listings:all key CA listings live in — see
+ * kv/listings.ts's doc comment; US listings carry province = USPS state
+ * code, distinguished from CA province codes via isUSState() in
+ * assessment/us.ts), and stamp each refreshed city's last-refresh
+ * timestamp.
  */
 export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
   const results: USDiscoverCityRunResult[] = [];
@@ -276,15 +286,36 @@ export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
 
     try {
       const { listings, fetchedCount } = await fetchUSCityListings(cfg);
+
+      // Enrich the top-N scored listings (default 3 — see
+      // usEnrichTopN()'s doc comment in us-enrich.ts) within this same run,
+      // before writing to KV. Quota-guarded internally — degrades to
+      // "leave sparse" rather than throwing if the monthly cap is hit
+      // partway through.
+      let enrichedListings = listings;
+      let enrichAttempted = 0;
+      let enrichSucceeded = 0;
+      let enrichQuotaStoppedEarly = false;
+      if (listings.length > 0) {
+        const enrichResult = await enrichUSCityListings(listings, cfg);
+        enrichedListings = enrichResult.listings;
+        enrichAttempted = enrichResult.attempted;
+        enrichSucceeded = enrichResult.succeeded;
+        enrichQuotaStoppedEarly = enrichResult.quotaStoppedEarly;
+      }
+
       results.push({
         city: cfg.name,
         state: cfg.state,
         slug: cfg.slug,
         skipped: false,
         fetched: fetchedCount,
-        scored: listings.length,
+        scored: enrichedListings.length,
+        enrichAttempted,
+        enrichSucceeded,
+        enrichQuotaStoppedEarly,
       });
-      allNew.push(...listings);
+      allNew.push(...enrichedListings);
       await setLastRefresh(cfg.slug);
     } catch (err) {
       results.push({

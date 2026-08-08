@@ -1,3 +1,9 @@
+// Type-only imports — erased at compile time, so this doesn't create a
+// runtime circular dependency even though both pipeline modules import
+// Assessment/ScoreResult/Listing back from this file.
+import type { UsAdvantageBundle } from "./pipeline/us-advantage";
+import type { UsCompSupport } from "./pipeline/us-assess";
+
 export interface PrecomputedOffer {
   anchor: number;
   anchor_tag: string;
@@ -39,10 +45,21 @@ export interface Listing {
   preTier?: "HOT" | "WARM" | "WATCH";
   preSignals?: string[];
   preNarrative?: string;
+  // LLM confidence (0-1) behind preNarrative — US listings only (see
+  // src/lib/pipeline/us-narrative.ts); 0 or absent when the deterministic
+  // fallback template was used instead of the LLM.
+  preNarrativeConfidence?: number;
   preOffer?: PrecomputedOffer;
   preAssessment?: Assessment;
   assessmentNote?: string;
   preComparables?: ComparableResult;
+  // US-only additions (src/lib/pipeline/us-enrich.ts) — the US Advantage
+  // signal bundle and AVM-comp support, persisted at enrichment time so
+  // /property/[slug] can render them from cache without recomputation.
+  // No CA equivalent (CA doesn't have RentCast's tax/sale-history + AVM
+  // data this bundle is built from — see us-advantage.ts's module doc).
+  preUsAdvantage?: UsAdvantageBundle;
+  preUsComparables?: UsCompSupport;
   // Lifecycle metadata
   source?: "cron" | "user";
   enrichedAt?: string;
