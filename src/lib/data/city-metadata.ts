@@ -1,5 +1,6 @@
 import { Listing } from "../types";
 import { cityToSlug } from "../utils";
+import { getAllStatesWithCounties } from "../us-counties";
 
 export interface CityMeta {
   name: string;
@@ -45,6 +46,55 @@ export const POPULAR_US_STATES: { name: string; slug: string }[] = [
   { name: "Colorado", slug: "colorado" },
   { name: "Georgia", slug: "georgia" },
 ];
+
+/**
+ * Curated "Popular markets" row shown on the homepage explorer by default
+ * (no visitor geo, or geo we can't place) and appended after the
+ * geo-detected leading pill when we can. Mixes both countries deliberately
+ * — this product now serves CA and US alike, so the entry point shouldn't
+ * default to an all-Canada wall with the US as an afterthought.
+ *
+ * CA entries point at a specific city (slug matches CityMeta.slug, built
+ * from live listings) but select that city's whole province, matching the
+ * existing province-pill behavior. US entries point at a state (slug
+ * matches stateSlug in us-counties.json / POPULAR_US_STATES).
+ */
+export interface PopularMarket {
+  country: "CA" | "US";
+  label: string;
+  kind: "province" | "state";
+  /** CA: province code (BC/AB/ON). US: state slug (e.g. "texas"). */
+  target: string;
+  /** CA only — the representative city slug/name to key off of for display context. */
+  city?: string;
+}
+
+export const POPULAR_MARKETS: PopularMarket[] = [
+  { country: "CA", label: "Victoria", kind: "province", target: "BC", city: "Victoria" },
+  { country: "CA", label: "Vancouver", kind: "province", target: "BC", city: "Vancouver" },
+  { country: "CA", label: "Calgary", kind: "province", target: "AB", city: "Calgary" },
+  { country: "CA", label: "Toronto", kind: "province", target: "ON", city: "Toronto" },
+  { country: "US", label: "Texas", kind: "state", target: "texas" },
+  { country: "US", label: "California", kind: "state", target: "california" },
+  { country: "US", label: "Florida", kind: "state", target: "florida" },
+  { country: "US", label: "New York", kind: "state", target: "new-york" },
+];
+
+/**
+ * Map a visitor's detected US region code (USPS state code from
+ * x-vercel-ip-country-region, e.g. "TX") to the state slug used by
+ * /us/[state] pages and getCountiesByState. Returns null for codes with no
+ * county data (shouldn't happen — every state has counties in the registry
+ * — but geo headers are visitor-supplied and unverified).
+ */
+export function getUsStateByRegionCode(
+  code: string
+): { slug: string; name: string; usps: string } | null {
+  const upper = code.toUpperCase();
+  const match = getAllStatesWithCounties().find((s) => s.state === upper);
+  if (!match) return null;
+  return { slug: match.stateSlug, name: match.stateName, usps: match.state };
+}
 
 export const PROVINCE_GROUPS: { province: string; label: string; active: boolean }[] = [
   { province: "BC", label: "BC", active: true },
