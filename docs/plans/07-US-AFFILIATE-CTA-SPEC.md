@@ -97,15 +97,17 @@ Kiavi caveats: needs ≥30 investor referrals/yr capability; **agents/brokers in
 ### New additions
 | Vendor | Vertical | Network | Rate | Verification | Apply |
 |---|---|---|---|---|---|
-| Allstate | insurance | Impact | ~$5-8/lead PPL | secondary | Impact marketplace |
-| Insurify | insurance | Impact | ~$15/lead home, 30d cookie | secondary | Impact marketplace or partnerships@insurify.com |
+| Allstate | insurance | Impact | ~$5-8/lead PPL | secondary | **app.impact.com/campaign-promo-signup/Allstate.brand** (verified live; bypasses Marketplace) |
+| Insurify | insurance | Impact | ~$15/lead home, 30d cookie | secondary | **app.impact.com/campaign-promo-signup/Insurify.brand** (verified live) or partnerships@insurify.com |
 | SmartFinancial | insurance | direct | up to ~$40/lead claimed | unverified | agents.smartfinancial.com/publishers |
 | Easy Street Capital | investor-tools (lending) | direct | $1,000/closed loan — Kiavi parity | **verified** | easystreetcap.com/refer/ |
 | Lima One Capital | investor-tools (lending) | direct | 0.25-0.50% of funded loan | **verified** | limaone.com/referral-application/ |
 | New American Funding | mortgage | FlexOffers | up to $60/prospect | **verified Active** | FlexOffers (second reason to gate revenue on FlexOffers signup) |
 | Baselane | investor-tools (landlord banking) | direct (Affonso.io) | $150-200/referral, no minimum | **verified** | baselane.com |
 
-A single Impact publisher account covers Allstate + Insurify (plus the existing Lemonade + Policygenius slate).
+A single Impact publisher account covers Allstate + Insurify + Lemonade (Lemonade direct link verified: app.impact.com/campaign-promo-signup/Lemonade.brand). **Correction (Aug 8): Policygenius is NOT on Impact** — its publisher program runs on TUNE at policygenius.hasoffers.com/signup (verified live); share.policygenius.com is the consumer refer-a-friend program, not the affiliate program.
+
+**Impact Marketplace note (Aug 8 2026)**: our Marketplace application was auto-declined (most likely documented reason: "limited reach or activity" — new/low-traffic site). Per Impact's own docs this does NOT affect the direct campaign-promo-signup links above, which apply straight into each brand's program. No fixed reapply cooling-off; appeal path is a PDM/support ticket. Reapply to the Marketplace after GSC shows organic traffic and the profile has connected analytics + all media properties. Do NOT create a fresh account to reset a decline (MPA fraud-flag risk).
 
 ### Backup
 - **Liberty Mutual** — CJ, $10/lead (home+auto), $3/lead renters. PRIMARY-verified on libertymutual.com/affiliate-program. Use if Allstate declines.
