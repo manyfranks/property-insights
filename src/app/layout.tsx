@@ -92,6 +92,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        {/* Impact affiliate-network site verification. Their scanner expects the
+            nonstandard value= attribute (not content=), so this is a raw tag —
+            React hoists it into <head> — rather than metadata.other. */}
+        <meta name="impact-site-verification" {...{ value: "0ace5bae-67e1-46b6-8692-148801f40b03" }} />
         <OrganizationEntityJsonLd url={BASE_URL} />
         <OrganizationJsonLd url={BASE_URL} />
         <ClerkProvider>
