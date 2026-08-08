@@ -31,6 +31,21 @@ const CITY_DESCRIPTIONS: Record<string, string> = {
   Ottawa: "National capital, stable government market",
 };
 
+/**
+ * Popular US states shown in the home page explorer's US panel. Slugs match
+ * stateSlug in src/lib/data/us-counties.json (used by /us/[state] pages).
+ */
+export const POPULAR_US_STATES: { name: string; slug: string }[] = [
+  { name: "California", slug: "california" },
+  { name: "Texas", slug: "texas" },
+  { name: "Florida", slug: "florida" },
+  { name: "New York", slug: "new-york" },
+  { name: "Washington", slug: "washington" },
+  { name: "Arizona", slug: "arizona" },
+  { name: "Colorado", slug: "colorado" },
+  { name: "Georgia", slug: "georgia" },
+];
+
 export const PROVINCE_GROUPS: { province: string; label: string; active: boolean }[] = [
   { province: "BC", label: "BC", active: true },
   { province: "AB", label: "AB", active: true },

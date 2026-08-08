@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Terms of Service",
   description:
-    "Terms and conditions for using Property Insights, a Canadian real estate analysis tool.",
+    "Terms and conditions for using Property Insights, a real estate analysis tool.",
   alternates: { canonical: "/terms" },
 };
 
@@ -25,7 +25,7 @@ export default function TermsPage() {
         <section>
           <h2 className="text-base font-medium text-foreground mb-2">What the Service Provides</h2>
           <p>
-            Property Insights is a research and analysis tool for Canadian residential real estate.
+            Property Insights is a research and analysis tool for residential real estate in Canada and the US.
             The Service provides property assessment data, offer price modeling, seller motivation
             scoring, and AI-generated analysis for informational purposes.
           </p>

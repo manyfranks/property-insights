@@ -25,7 +25,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: `${SITE_NAME} — Canadian Real Estate Offer Intelligence`,
+    default: `${SITE_NAME} — Real Estate Offer Intelligence`,
     template: `%s | ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
@@ -38,13 +38,13 @@ export const metadata: Metadata = {
     type: "website",
     locale: SITE_LOCALE,
     siteName: SITE_NAME,
-    title: `${SITE_NAME} — Canadian Real Estate Offer Intelligence`,
+    title: `${SITE_NAME} — Real Estate Offer Intelligence`,
     description: SITE_DESCRIPTION,
     url: BASE_URL,
   },
   twitter: {
     card: "summary_large_image",
-    title: `${SITE_NAME} — Canadian Real Estate Offer Intelligence`,
+    title: `${SITE_NAME} — Real Estate Offer Intelligence`,
     description: SITE_DESCRIPTION,
   },
   robots: {
@@ -58,14 +58,17 @@ export const metadata: Metadata = {
     },
   },
   keywords: [
-    "Canadian real estate",
+    "real estate offer intelligence",
     "property assessment",
     "home offer calculator",
     "real estate offer tool",
     "BC assessment",
     "Alberta property assessment",
     "Ontario property assessment",
+    "county property assessment",
     "home buying Canada",
+    "US home values",
+    "home buying USA",
     "below asking price",
     "real estate negotiation",
     "property analysis",

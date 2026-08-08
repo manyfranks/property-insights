@@ -13,7 +13,7 @@ const FAQ_ITEMS = [
   },
   {
     question: "Can I assess a property that isn't in your listings?",
-    answer: "Yes. Paste a Zoocasa listing URL into the search bar or type any Canadian street address. Sign up for a free account and we'll run a full assessment — including offer modeling — and email you the report.",
+    answer: "Yes. Paste a Zoocasa listing URL into the search bar or type any street address in Canada or the US. Sign up for a free account and we'll run a full assessment — including offer modeling — and email you the report.",
   },
   {
     question: "Which provinces are supported?",
@@ -23,12 +23,16 @@ const FAQ_ITEMS = [
     question: "How often is the data updated?",
     answer: "Listings refresh daily. Sold or delisted properties are automatically detected and removed each week.",
   },
+  {
+    question: "Does it work for US properties?",
+    answer: "Yes, for market research. A US address returns a modeled county-median estimate along with a market panel — rent, price trend, and risk — rather than a listing-based offer. Listing-based offer analysis is currently available for BC, Alberta, and Ontario only.",
+  },
 ];
 
 export const metadata: Metadata = {
   title: "How It Works — Assessment-Backed Offer Intelligence",
   description:
-    "Learn how Property Insights uses government assessment values, days on market, and AI listing analysis to calculate what you should offer on a Canadian property.",
+    "Learn how Property Insights uses government assessment values, days on market, and AI listing analysis to calculate what you should offer on a property.",
   alternates: { canonical: "/how-it-works" },
 };
 
@@ -65,12 +69,13 @@ export default function HowItWorksPage() {
             <h3 className="text-sm font-medium text-foreground mb-1">Assess any listing on demand</h3>
             <p className="text-sm text-muted leading-relaxed mb-3">
               Found a property you&apos;re interested in? Paste a Zoocasa listing
-              URL into the search bar and press Enter — or type any Canadian
-              street address. Sign up for free and we&apos;ll run the full
+              URL into the search bar and press Enter — or type any street
+              address in Canada or the US. Sign up for free and we&apos;ll run the full
               analysis and email you a complete report.
             </p>
             <p className="text-xs text-muted">
-              Works with any active residential listing across BC, Alberta, and Ontario.
+              Full listing-based offer analysis covers BC, Alberta, and Ontario.
+              US addresses return a county-level market estimate.
             </p>
           </div>
 

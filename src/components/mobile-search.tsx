@@ -236,7 +236,10 @@ export default function MobileSearch() {
         ) : (
           <>
             <p className="text-xs text-muted mb-4">
-              Sign in and we&apos;ll look up any Canadian property, run a full assessment, and email you the analysis.
+              Sign in and we&apos;ll look up any property, run a full assessment, and email you the analysis.
+            </p>
+            <p className="text-[10px] text-muted/70 mb-4">
+              US addresses return a county-level market estimate rather than a listing-based offer.
             </p>
             <SignInButton mode="modal">
               <button className="px-5 py-2 text-sm font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all">
@@ -359,7 +362,7 @@ export default function MobileSearch() {
           {!detectedUrl && !otherUrl && !selectedAddress && !hasLocal && !hasPlaces && !noResults && (
             <div className="px-6 py-10 text-center">
               <p className="text-xs text-muted leading-relaxed">
-                Type any Canadian address to look it up, or paste a Zoocasa listing URL to instantly assess a property you found online.
+                Type any address in Canada or the US to look it up, or paste a Zoocasa listing URL to instantly assess a property you found online.
               </p>
             </div>
           )}

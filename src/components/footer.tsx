@@ -44,7 +44,7 @@ export default function Footer() {
           <div>
             <div className="text-xs uppercase tracking-widest text-muted mb-3">About</div>
             <p className="text-muted leading-relaxed">
-              Property Insights is a free research tool for Canadian home buyers.
+              Property Insights is a free research tool for home buyers in Canada and the US.
               Built by{" "}
               <a
                 href="https://useorio.com"

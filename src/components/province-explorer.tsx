@@ -3,7 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { CityMeta } from "@/lib/data/city-metadata";
+import { POPULAR_US_STATES } from "@/lib/data/city-metadata";
 import RequestCityPrompt from "./request-city-prompt";
+
+// Sentinel value for `selected` when the US pill is active. Not part of
+// PROVINCE_GROUPS/ProvinceGroup (that type models CA provinces only) —
+// handled as its own branch below rather than forced into the CA data model.
+const US_SENTINEL = "US";
 
 interface ProvinceGroup {
   province: string;
@@ -65,10 +71,51 @@ export default function ProvinceExplorer({ cities, provinces }: ProvinceExplorer
             {g.label}
           </button>
         ))}
+        <button
+          key={US_SENTINEL}
+          onClick={() => setSelected(US_SENTINEL)}
+          className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
+            selected === US_SENTINEL
+              ? "bg-foreground text-white"
+              : "bg-white text-foreground border border-border hover:border-foreground/30"
+          }`}
+        >
+          US
+        </button>
       </div>
 
-      {/* Coming soon state for inactive provinces */}
-      {isInactive ? (
+      {/* US panel — links into the /us/[state] county market pages */}
+      {selected === US_SENTINEL ? (
+        <div className="border border-border rounded-xl p-6 text-center">
+          <p className="text-sm text-muted mb-5">
+            County-level market data for all 50 states
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-left mb-6">
+            {POPULAR_US_STATES.map((s) => (
+              <Link
+                key={s.slug}
+                href={`/us/${s.slug}`}
+                className="group border border-border rounded-xl p-4 hover:shadow-md hover:-translate-y-0.5 transition-all bg-white"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-foreground text-sm group-hover:text-foreground/80">
+                    {s.name}
+                  </span>
+                  <span className="text-muted group-hover:text-foreground transition-colors text-sm opacity-0 group-hover:opacity-100">
+                    &rarr;
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+          <Link
+            href="/us"
+            className="text-sm font-medium text-foreground underline underline-offset-2 hover:text-foreground/70 transition-colors"
+          >
+            Browse all US states &rarr;
+          </Link>
+        </div>
+      ) : isInactive ? (
         <div className="border border-dashed border-border rounded-xl py-12 px-6 text-center">
           <p className="text-sm text-muted">Coming soon</p>
         </div>

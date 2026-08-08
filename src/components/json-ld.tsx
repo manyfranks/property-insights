@@ -24,15 +24,10 @@ export function OrganizationJsonLd({ url }: { url: string }) {
         "@type": "WebApplication",
         name: "Property Insights",
         description:
-          "AI-powered property analysis tool for Canadian home buyers. Get assessed values, offer price modeling, and listing intelligence.",
+          "AI-powered property analysis tool for home buyers. Get assessed values, offer price modeling, and listing intelligence.",
         url,
         applicationCategory: "FinanceApplication",
         operatingSystem: "Any",
-        offers: {
-          "@type": "Offer",
-          price: "0",
-          priceCurrency: "CAD",
-        },
         publisher: {
           "@id": `${url}/#organization`,
         },

@@ -7,9 +7,9 @@ import ProvinceExplorer from "@/components/province-explorer";
 export const revalidate = 300; // Re-fetch from KV every 5 min
 
 export const metadata: Metadata = {
-  title: "Property Insights — Canadian Real Estate Offer Intelligence",
+  title: "Property Insights — Real Estate Offer Intelligence",
   description:
-    "Find out what to offer on any Canadian property. AI-powered analysis using government assessments, days on market, and seller motivation signals across BC, Alberta, and Ontario.",
+    "Find out what to offer on any property in Canada or the US. AI-powered analysis using government assessments, days on market, and seller motivation signals across BC, Alberta, Ontario, and US counties.",
   alternates: { canonical: "/" },
 };
 
@@ -25,7 +25,7 @@ export default async function Home() {
           Smarter property acquisition starts here
         </h1>
         <p className="text-lg text-muted mb-8 sm:mb-14">
-          Data-driven insights for residential real estate across Canada.
+          Data-driven insights for residential real estate across Canada and the US.
         </p>
 
         <ProvinceExplorer cities={cities} provinces={provinces} />
@@ -35,7 +35,7 @@ export default async function Home() {
         </div>
 
         <p className="text-xs text-muted mt-12">
-          Search any address, or request an assessment for any Canadian property.
+          Search any address, or request an assessment for any property in Canada or the US.
         </p>
       </div>
     </main>

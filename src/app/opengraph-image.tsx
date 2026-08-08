@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "Property Insights — Acquisition intelligence for Canadian real estate";
+export const alt = "Property Insights — Acquisition intelligence for North American real estate";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -51,9 +51,9 @@ export default function OgImage() {
 
         {/* Headline */}
         <div style={{ fontSize: "48px", fontWeight: 700, color: "#171717", lineHeight: 1.2, marginBottom: "24px" }}>
-          Know what to offer on any
+          Know what to offer on
           <br />
-          Canadian property.
+          any property.
         </div>
 
         {/* Subline */}

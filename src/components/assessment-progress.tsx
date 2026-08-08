@@ -12,10 +12,10 @@ interface Step {
 }
 
 const STEPS: Step[] = [
-  { label: "Looking up property listing", detail: "Searching active listings on Zoocasa", delay: 0 },
-  { label: "Fetching assessment data", detail: "Checking government property assessment records", delay: 2500 },
-  { label: "Running AI analysis", detail: "Scoring motivation signals and modeling offer price", delay: 7000 },
-  { label: "Saving results", detail: "Storing analysis and preparing your report", delay: 16000 },
+  { label: "Looking up the address", detail: "Confirming the address and location", delay: 0 },
+  { label: "Checking market and assessment data", detail: "Pulling property, market, and assessment records", delay: 2500 },
+  { label: "Running AI analysis", detail: "Scoring signals and building your analysis", delay: 7000 },
+  { label: "Saving results", detail: "Preparing your report", delay: 16000 },
 ];
 
 type StepStatus = "pending" | "active" | "complete";
@@ -158,7 +158,7 @@ export default function AssessmentProgress({ address }: { address: string }) {
           </h1>
           <p className="text-sm text-muted break-words mb-6">{address}</p>
           <p className="text-sm text-muted mb-8 max-w-sm mx-auto">
-            We&apos;ll look up the listing, pull government assessment records,
+            We&apos;ll look up the address, pull market and assessment records,
             run AI analysis, and email you the full report.
           </p>
           <SignInButton mode="modal">
@@ -249,9 +249,13 @@ export default function AssessmentProgress({ address }: { address: string }) {
           </p>
           <p className="text-xs text-amber-700 break-words mb-3">{address}</p>
           <p className="text-xs text-amber-600 mb-4">
-            Use a full Canadian address like: 123 Main St, Vancouver, BC
-            <br />
-            or paste a Zoocasa listing URL directly.
+            {errorState.message || (
+              <>
+                Use a full address like: 123 Main St, Vancouver, BC or 123 Main St, Austin, TX
+                <br />
+                or paste a Zoocasa listing URL directly.
+              </>
+            )}
           </p>
           <button
             onClick={() => router.push("/")}
@@ -265,15 +269,17 @@ export default function AssessmentProgress({ address }: { address: string }) {
       {errorState?.kind === "not-found" && (
         <div className="border border-border rounded-xl p-5 text-center">
           <HouseIconCircle />
-          <p className="text-sm font-medium text-foreground mb-3">
-            This property doesn&apos;t appear to be listed for sale
+          <p className="text-sm font-medium text-foreground mb-4 max-w-xs mx-auto">
+            {errorState.message}
           </p>
-          <ul className="text-xs text-muted text-left max-w-xs mx-auto space-y-1.5 mb-4">
-            <li>• Check the spelling of the address</li>
-            <li>• Verify it&apos;s currently listed on Zoocasa or Realtor.ca</li>
-            <li>• Try without the unit number</li>
-            <li>• Or paste the Zoocasa listing URL directly into the search bar</li>
-          </ul>
+          {/zoocasa/i.test(errorState.message) && (
+            <ul className="text-xs text-muted text-left max-w-xs mx-auto space-y-1.5 mb-4">
+              <li>• Check the spelling of the address</li>
+              <li>• Verify it&apos;s currently listed on Zoocasa or Realtor.ca</li>
+              <li>• Try without the unit number</li>
+              <li>• Or paste the Zoocasa listing URL directly into the search bar</li>
+            </ul>
+          )}
           <button
             onClick={() => router.push("/")}
             className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all"
@@ -329,8 +335,8 @@ export default function AssessmentProgress({ address }: { address: string }) {
       {!errorState && (
         <div className="text-center">
           <p className="text-xs text-muted">
-            This usually takes 10-20 seconds. We&apos;re looking up the listing,
-            pulling government assessment records, and running AI analysis.
+            This usually takes 10-20 seconds. We&apos;re looking up the address,
+            pulling market and assessment records, and running AI analysis.
           </p>
         </div>
       )}

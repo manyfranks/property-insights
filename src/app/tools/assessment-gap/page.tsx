@@ -7,7 +7,7 @@ const FAQ_ITEMS = [
   {
     question: "What is a property assessment?",
     answer:
-      "A property assessment is a government-issued estimate of a property's value, used mainly to calculate annual property taxes. In BC it's set by BC Assessment, in Alberta by municipal assessors, and in Ontario by MPAC. Assessments are typically based on market value as of a fixed date each year, not the current moment.",
+      "A property assessment is a government-issued estimate of a property's value, used mainly to calculate annual property taxes. In BC it's set by BC Assessment, in Alberta by municipal assessors, and in Ontario by MPAC. In the US, county assessors set property assessments, typically on their own annual or multi-year cycle. Assessments are typically based on market value as of a fixed date each year, not the current moment.",
   },
   {
     question: "Why does assessed value differ from market value?",
@@ -32,22 +32,22 @@ const FAQ_ITEMS = [
 ];
 
 export const metadata: Metadata = {
-  title: "BC Assessment vs Asking Price — Assessment Gap Calculator",
+  title: "Property Assessment vs Asking Price — Assessment Gap Calculator",
   description:
     "Free calculator: compare a property's government assessed value to its asking price and instantly see the assessment gap, with plain-English interpretation of what it signals.",
   alternates: { canonical: "/tools/assessment-gap" },
   openGraph: {
-    title: "BC Assessment vs Asking Price — Assessment Gap Calculator",
+    title: "Property Assessment vs Asking Price — Assessment Gap Calculator",
     description:
       "Paste an assessed value and asking price to see the gap in dollars and percent, with an instant read on what it signals about seller pricing strategy.",
     url: `${BASE_URL}/tools/assessment-gap`,
     siteName: SITE_NAME,
     type: "website",
-    locale: "en_CA",
+    locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "BC Assessment vs Asking Price — Assessment Gap Calculator",
+    title: "Property Assessment vs Asking Price — Assessment Gap Calculator",
     description:
       "Paste an assessed value and asking price to see the gap in dollars and percent, with an instant read on seller pricing strategy.",
   },

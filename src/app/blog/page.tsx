@@ -4,9 +4,9 @@ import { BLOG_POSTS } from "@/lib/blog";
 import { slugify } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Blog — Real Estate Insights for Canadian Buyers",
+  title: "Blog — Real Estate Insights",
   description:
-    "Guides, analysis, and data-driven insights for Canadian home buyers. Learn about property assessments, offer strategies, and market signals.",
+    "Guides, analysis, and data-driven insights for home buyers. Learn about property assessments, offer strategies, and market signals.",
   alternates: { canonical: "/blog" },
 };
 
@@ -15,7 +15,7 @@ export default function BlogIndex() {
     <main className="max-w-3xl mx-auto px-6 py-8 sm:py-16">
       <h1 className="text-2xl font-semibold tracking-tight mb-2">Blog</h1>
       <p className="text-sm text-muted mb-10">
-        Guides and analysis for Canadian home buyers.
+        Guides and analysis for home buyers.
       </p>
 
       <div className="space-y-6">
@@ -27,7 +27,7 @@ export default function BlogIndex() {
             <Link href={`/blog/${post.slug}`} className="block">
               <div className="flex items-center gap-3 text-xs text-muted mb-2">
                 <time dateTime={post.publishedAt}>
-                  {new Date(post.publishedAt).toLocaleDateString("en-CA", {
+                  {new Date(post.publishedAt).toLocaleDateString("en-US", {
                     year: "numeric",
                     month: "long",
                     day: "numeric",

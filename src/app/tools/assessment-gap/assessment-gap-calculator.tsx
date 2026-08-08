@@ -4,7 +4,49 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { getStatCanMedian } from "@/lib/data/statcan-chsp";
 
-type Province = "" | "BC" | "AB" | "ON";
+type Region = "" | "BC" | "AB" | "ON" | UsRegion;
+
+// USPS codes for all 50 states + DC. US regions don't have a StatCan median
+// lookup (that data is Canada-only, keyed by CSD/city name) — the median
+// context line is simply omitted for these, see `cityMedian` below.
+type UsRegion =
+  | "AL" | "AK" | "AZ" | "AR" | "CA" | "CO" | "CT" | "DE" | "DC" | "FL"
+  | "GA" | "HI" | "ID" | "IL" | "IN" | "IA" | "KS" | "KY" | "LA" | "ME"
+  | "MD" | "MA" | "MI" | "MN" | "MS" | "MO" | "MT" | "NE" | "NV" | "NH"
+  | "NJ" | "NM" | "NY" | "NC" | "ND" | "OH" | "OK" | "OR" | "PA" | "RI"
+  | "SC" | "SD" | "TN" | "TX" | "UT" | "VT" | "VA" | "WA" | "WV" | "WI"
+  | "WY";
+
+const CA_REGIONS = new Set(["BC", "AB", "ON"]);
+
+const US_STATES: { code: UsRegion; name: string }[] = [
+  { code: "AL", name: "Alabama" }, { code: "AK", name: "Alaska" },
+  { code: "AZ", name: "Arizona" }, { code: "AR", name: "Arkansas" },
+  { code: "CA", name: "California" }, { code: "CO", name: "Colorado" },
+  { code: "CT", name: "Connecticut" }, { code: "DE", name: "Delaware" },
+  { code: "DC", name: "District of Columbia" }, { code: "FL", name: "Florida" },
+  { code: "GA", name: "Georgia" }, { code: "HI", name: "Hawaii" },
+  { code: "ID", name: "Idaho" }, { code: "IL", name: "Illinois" },
+  { code: "IN", name: "Indiana" }, { code: "IA", name: "Iowa" },
+  { code: "KS", name: "Kansas" }, { code: "KY", name: "Kentucky" },
+  { code: "LA", name: "Louisiana" }, { code: "ME", name: "Maine" },
+  { code: "MD", name: "Maryland" }, { code: "MA", name: "Massachusetts" },
+  { code: "MI", name: "Michigan" }, { code: "MN", name: "Minnesota" },
+  { code: "MS", name: "Mississippi" }, { code: "MO", name: "Missouri" },
+  { code: "MT", name: "Montana" }, { code: "NE", name: "Nebraska" },
+  { code: "NV", name: "Nevada" }, { code: "NH", name: "New Hampshire" },
+  { code: "NJ", name: "New Jersey" }, { code: "NM", name: "New Mexico" },
+  { code: "NY", name: "New York" }, { code: "NC", name: "North Carolina" },
+  { code: "ND", name: "North Dakota" }, { code: "OH", name: "Ohio" },
+  { code: "OK", name: "Oklahoma" }, { code: "OR", name: "Oregon" },
+  { code: "PA", name: "Pennsylvania" }, { code: "RI", name: "Rhode Island" },
+  { code: "SC", name: "South Carolina" }, { code: "SD", name: "South Dakota" },
+  { code: "TN", name: "Tennessee" }, { code: "TX", name: "Texas" },
+  { code: "UT", name: "Utah" }, { code: "VT", name: "Vermont" },
+  { code: "VA", name: "Virginia" }, { code: "WA", name: "Washington" },
+  { code: "WV", name: "West Virginia" }, { code: "WI", name: "Wisconsin" },
+  { code: "WY", name: "Wyoming" },
+];
 
 interface Verdict {
   key: string;
@@ -58,7 +100,7 @@ function getVerdict(gapPct: number): Verdict {
 export default function AssessmentGapCalculator() {
   const [assessed, setAssessed] = useState("");
   const [asking, setAsking] = useState("");
-  const [province, setProvince] = useState<Province>("");
+  const [region, setRegion] = useState<Region>("");
   const [city, setCity] = useState("");
 
   const assessedNum = parseFloat(assessed.replace(/[^0-9.]/g, ""));
@@ -71,10 +113,14 @@ export default function AssessmentGapCalculator() {
     return { gapDollar, gapPct, verdict: getVerdict(gapPct) };
   }, [assessedNum, askingNum]);
 
+  // StatCan CHSP median lookup is Canada-only data (keyed by CSD/city name) —
+  // skip it entirely for US regions rather than surfacing a bogus match.
+  const isUsRegion = region !== "" && !CA_REGIONS.has(region);
+
   const cityMedian = useMemo(() => {
-    if (!city.trim()) return null;
+    if (!city.trim() || isUsRegion) return null;
     return getStatCanMedian(city.trim());
-  }, [city]);
+  }, [city, isUsRegion]);
 
   return (
     <div>
@@ -120,19 +166,28 @@ export default function AssessmentGapCalculator() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label htmlFor="province" className="block text-xs font-medium text-muted uppercase tracking-wide mb-1.5">
-              Province <span className="normal-case text-muted/70">(optional)</span>
+            <label htmlFor="region" className="block text-xs font-medium text-muted uppercase tracking-wide mb-1.5">
+              Region <span className="normal-case text-muted/70">(optional)</span>
             </label>
             <select
-              id="province"
-              value={province}
-              onChange={(e) => setProvince(e.target.value as Province)}
+              id="region"
+              value={region}
+              onChange={(e) => setRegion(e.target.value as Region)}
               className="w-full text-sm border border-border rounded-lg px-3 py-2.5 bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
             >
-              <option value="">Select province</option>
-              <option value="BC">British Columbia</option>
-              <option value="AB">Alberta</option>
-              <option value="ON">Ontario</option>
+              <option value="">Select region</option>
+              <optgroup label="Canada">
+                <option value="BC">British Columbia</option>
+                <option value="AB">Alberta</option>
+                <option value="ON">Ontario</option>
+              </optgroup>
+              <optgroup label="United States">
+                {US_STATES.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
 

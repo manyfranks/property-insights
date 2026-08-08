@@ -135,7 +135,7 @@ export default async function BlogPostPage({
         </h1>
         <div className="flex items-center gap-3 text-xs text-muted">
           <time dateTime={post.publishedAt}>
-            {new Date(post.publishedAt).toLocaleDateString("en-CA", {
+            {new Date(post.publishedAt).toLocaleDateString("en-US", {
               year: "numeric",
               month: "long",
               day: "numeric",

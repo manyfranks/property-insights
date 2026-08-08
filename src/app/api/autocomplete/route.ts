@@ -1,7 +1,7 @@
 /**
  * GET /api/autocomplete?q=<query>
  *
- * Proxies to Google Places Autocomplete API (New) for Canadian addresses.
+ * Proxies to Google Places Autocomplete API (New) for Canadian and US addresses.
  * Keeps the API key server-side. Includes in-memory cache to deduplicate
  * rapid keystrokes and reduce Google Places costs.
  */
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
         },
         body: JSON.stringify({
           input: q,
-          includedRegionCodes: ["ca"],
+          includedRegionCodes: ["ca", "us"],
           languageCode: "en",
         }),
       }
