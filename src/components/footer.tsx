@@ -4,7 +4,7 @@ export default function Footer() {
   return (
     <footer className="border-t border-border mt-16">
       <div className="max-w-5xl mx-auto px-6 py-10">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 text-sm">
           <div>
             <div className="text-xs uppercase tracking-widest text-muted mb-3">Product</div>
             <div className="space-y-2">
@@ -17,6 +17,18 @@ export default function Footer() {
               <Link href="/blog" className="block text-muted hover:text-foreground transition-colors">
                 Blog
               </Link>
+              <Link href="/us" className="block text-muted hover:text-foreground transition-colors">
+                US Markets
+              </Link>
+              <Link href="/pricing" className="block text-muted hover:text-foreground transition-colors">
+                Pricing
+              </Link>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-widest text-muted mb-3">Free Tools</div>
+            <div className="space-y-2">
               <Link href="/tools/assessment-gap" className="block text-muted hover:text-foreground transition-colors">
                 Assessment Gap Calculator
               </Link>
@@ -26,11 +38,8 @@ export default function Footer() {
               <Link href="/us/rankings/investment" className="block text-muted hover:text-foreground transition-colors">
                 Best Counties to Invest
               </Link>
-              <Link href="/us" className="block text-muted hover:text-foreground transition-colors">
-                US Markets
-              </Link>
-              <Link href="/pricing" className="block text-muted hover:text-foreground transition-colors">
-                Pricing
+              <Link href="/us/rankings/rent-to-price" className="block text-muted hover:text-foreground transition-colors">
+                1% Rule Rankings
               </Link>
             </div>
           </div>

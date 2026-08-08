@@ -137,7 +137,7 @@ export default function PartnerCta({
                   optOut: optedOut,
                 })
               }
-              className="relative flex-1 min-w-[140px] overflow-hidden border border-border rounded-xl p-4 pl-5 bg-white hover:border-foreground/20 hover:shadow-sm transition-all group"
+              className="relative flex-1 min-w-[140px] basis-full sm:basis-auto overflow-hidden border border-border rounded-xl p-4 pl-5 bg-white hover:border-foreground/20 hover:shadow-sm transition-all group"
             >
               <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-cta-accent" aria-hidden="true" />
               <div className="flex items-start justify-between gap-2 mb-1">

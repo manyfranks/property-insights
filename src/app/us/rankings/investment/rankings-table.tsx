@@ -123,7 +123,7 @@ export default function RankingsTable({ rows }: { rows: InvestmentScoreRow[] }) 
 
   return (
     <div className="border border-border rounded-xl bg-white overflow-hidden">
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[75vh]">
         <table className="w-full text-sm min-w-[760px]">
           <thead>
             <tr className="border-b border-border bg-background/60">
@@ -131,9 +131,9 @@ export default function RankingsTable({ rows }: { rows: InvestmentScoreRow[] }) 
                 <th
                   key={col.key}
                   scope="col"
-                  className={`px-4 py-3 text-xs uppercase tracking-widest text-muted font-medium ${
+                  className={`sticky top-0 z-10 bg-background px-4 py-3 text-xs uppercase tracking-widest text-muted font-medium border-b border-border ${
                     col.numeric ? "text-right" : "text-left"
-                  }`}
+                  } ${col.key === "state" ? "hidden sm:table-cell" : ""}`}
                 >
                   <button
                     type="button"
@@ -165,8 +165,9 @@ export default function RankingsTable({ rows }: { rows: InvestmentScoreRow[] }) 
                   >
                     {r.countyName}
                   </Link>
+                  <div className="sm:hidden text-[11px] text-muted">{r.state}</div>
                 </td>
-                <td className="px-4 py-3 text-muted">{r.state}</td>
+                <td className="hidden sm:table-cell px-4 py-3 text-muted">{r.state}</td>
                 <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-foreground">
                   {r.score.toFixed(1)}
                 </td>
