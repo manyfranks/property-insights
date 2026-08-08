@@ -1,9 +1,19 @@
 /**
  * POST /api/assess
  *
- * On-demand property assessment. Accepts a Google Places address,
- * finds the listing on Zoocasa, enriches it (scoring + offer model + LLM),
- * saves to KV, and emails the result to the user.
+ * On-demand property assessment.
+ *
+ * Canadian addresses: finds the listing on Zoocasa, enriches it (scoring +
+ * offer model + LLM), saves to KV, and emails the result to the user. The
+ * response is `{ ok, slug, address, city, emailSent }` — the frontend
+ * redirects to /property/[slug] to render the full analysis.
+ *
+ * US addresses: no listing search exists yet (no Zoocasa equivalent), so
+ * this resolves to a county-level assessment + market panel instead —
+ * see handleUSAssessment(). The response is rendered inline by the caller
+ * (no slug, no redirect): `{ ok, country: "US", address, city, state,
+ * countyName, countyFips, assessment, marketPanel, offerAvailable,
+ * offerUnavailableReason?, emailSent }`.
  *
  * Auth required (Clerk).
  * maxDuration: 60s (assessment lookup + LLM call).
@@ -18,6 +28,9 @@ import { trackEvent } from "@/lib/db/user-events";
 import { sendAssessmentEmail } from "@/lib/email";
 import { assessLimiter } from "@/lib/rate-limit";
 import { slugify } from "@/lib/utils";
+import { geocodeUSAddress } from "@/lib/geo/census-geocoder";
+import { lookupAssessment } from "@/lib/assessment";
+import { getCountyMarketPanel } from "@/lib/db/regional-econ";
 
 const RATE_LIMIT_RESPONSE = (resetMs: number) =>
   NextResponse.json(
@@ -155,6 +168,111 @@ function parseAddress(raw: string): {
   return { street, city, region, country };
 }
 
+/**
+ * US assessment flow — county-level, not listing-level. No Zoocasa listing
+ * search, no comparables, no HouseSigma, no KV persistence: there is no
+ * "listing" to enrich, just a geocoded address resolving to a county market
+ * panel. Auth + rate limiting mirror the Canadian path (see POST): the daily
+ * cap is pre-checked by the caller before this runs, and consumed here once
+ * the address is confirmed real (geocode match), the same checkpoint the CA
+ * path uses ("listing confirmed on Zoocasa").
+ */
+async function handleUSAssessment({
+  userId,
+  limiter,
+  street,
+  city,
+  region,
+  log,
+}: {
+  userId: string;
+  limiter: ReturnType<typeof assessLimiter>;
+  street: string;
+  city: string;
+  region: string;
+  log: (step: string, extra?: string) => void;
+}) {
+  log("us region", `${street} | ${city} | ${region}`);
+
+  let geo;
+  try {
+    geo = await geocodeUSAddress(`${street}, ${city}, ${region}`);
+  } catch (err) {
+    log("geocode error", err instanceof Error ? err.message : String(err));
+    return NextResponse.json(
+      { error: "Failed to look up this address. Please try again." },
+      { status: 502 }
+    );
+  }
+
+  if (!geo) {
+    log("geocode no match");
+    return NextResponse.json(
+      {
+        error:
+          "We couldn't locate this address. Please check the spelling and use a full " +
+          "street address (e.g., 123 Main St, Austin, TX).",
+      },
+      { status: 404 }
+    );
+  }
+
+  log("geocode ok", `${geo.countyName}, ${geo.stateUsps}`);
+
+  // Address confirmed real — consume a slot from the daily cap now (mirrors
+  // the CA path consuming only after Zoocasa confirms the listing exists).
+  if (limiter) {
+    const result = await limiter.limit(userId);
+    if (!result.success) {
+      return RATE_LIMIT_RESPONSE(result.reset - Date.now());
+    }
+  }
+
+  const countyFips = `US-${geo.stateFips}${geo.countyFips}`;
+
+  // Assessment lookup re-geocodes internally (adapter interface takes an
+  // address, not a precomputed FIPS) — an acceptable duplicate call to the
+  // free Census geocoder in exchange for keeping the adapter interface
+  // uniform across BC/ON/AB/US. Runs alongside the market panel fetch.
+  const [assessment, marketPanel] = await Promise.all([
+    lookupAssessment(street, region, city),
+    getCountyMarketPanel(countyFips),
+  ]);
+  log(
+    "us data done",
+    `assessment_found=${assessment?.found ?? false} panel=${marketPanel ? "yes" : "no"}`
+  );
+
+  trackEvent(userId, "assessment_request", {
+    address: geo.matchedAddress,
+    city,
+    state: geo.stateUsps,
+    country: "US",
+  }).catch(() => {}); // fire and forget
+
+  log("done (US)", geo.matchedAddress);
+
+  return NextResponse.json({
+    ok: true,
+    country: "US" as const,
+    address: geo.matchedAddress,
+    city,
+    state: geo.stateUsps,
+    countyName: geo.countyName,
+    countyFips,
+    assessment,
+    marketPanel,
+    // The offer model (src/lib/offer-model.ts) needs an asking price, DOM,
+    // and listing description/notes to anchor on — none of which exist for
+    // a bare county-level assessment. Rather than contort it with fake
+    // inputs, the offer is simply omitted; this flag lets the frontend
+    // render a clean "no offer" state instead of guessing why it's missing.
+    offerAvailable: false,
+    offerUnavailableReason: "no_listing_data",
+    emailSent: false,
+  });
+}
+
 export async function POST(req: Request) {
   const t0 = Date.now();
   const log = (step: string, extra?: string) =>
@@ -234,16 +352,7 @@ export async function POST(req: Request) {
     log("parsed", `${street} | ${city} | ${region} (${country})`);
 
     if (country === "US") {
-      log("us region — not yet supported");
-      return NextResponse.json(
-        {
-          error:
-            "US property assessments are coming soon. Property Insights currently " +
-            "supports Canadian addresses (BC, AB, ON in depth; other provinces via area-median estimate).",
-          code: "US_NOT_SUPPORTED",
-        },
-        { status: 422 }
-      );
+      return handleUSAssessment({ userId, limiter, street, city, region, log });
     }
 
     try {

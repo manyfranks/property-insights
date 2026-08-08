@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, SignInButton } from "@clerk/nextjs";
+import UsAssessmentResult, { UsAssessResult } from "@/components/us-assessment-result";
 
 interface Step {
   label: string;
@@ -50,6 +51,10 @@ export default function AssessmentProgress({ address }: { address: string }) {
   const [apiDone, setApiDone] = useState(false);
   const [slug, setSlug] = useState("");
   const [retryCount, setRetryCount] = useState(0);
+  // US addresses render inline (county assessment + market panel) instead
+  // of redirecting to a /property/[slug] page — there's no Listing to
+  // persist for a bare county-level lookup. See UsAssessmentResult.
+  const [usResult, setUsResult] = useState<UsAssessResult | null>(null);
 
   // Complete all steps and redirect
   const finishAll = useCallback((resultSlug: string) => {
@@ -84,7 +89,10 @@ export default function AssessmentProgress({ address }: { address: string }) {
           setErrorState({ kind, message: data.error || "Something went wrong." });
           return;
         }
-        if (data.slug) {
+        if (data.country === "US") {
+          setStepStatuses(STEPS.map(() => "complete"));
+          setUsResult(data as UsAssessResult);
+        } else if (data.slug) {
           setSlug(data.slug);
           setApiDone(true);
         } else {
@@ -102,7 +110,7 @@ export default function AssessmentProgress({ address }: { address: string }) {
 
   // Step timers (simulated progress)
   useEffect(() => {
-    if (errorState) return;
+    if (errorState || usResult) return;
 
     const timers = STEPS.map((step, i) => {
       if (i === 0) return undefined; // step 0 starts active immediately
@@ -119,7 +127,7 @@ export default function AssessmentProgress({ address }: { address: string }) {
     });
 
     return () => timers.forEach((t) => t && clearTimeout(t));
-  }, [errorState, retryCount]);
+  }, [errorState, retryCount, usResult]);
 
   // When API completes, fast-forward all steps
   useEffect(() => {
@@ -159,6 +167,15 @@ export default function AssessmentProgress({ address }: { address: string }) {
             </button>
           </SignInButton>
         </div>
+      </main>
+    );
+  }
+
+  // US result — rendered inline, no redirect (see UsAssessmentResult).
+  if (usResult) {
+    return (
+      <main className="max-w-3xl mx-auto px-6 py-10 sm:py-16">
+        <UsAssessmentResult data={usResult} />
       </main>
     );
   }

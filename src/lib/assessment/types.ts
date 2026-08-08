@@ -11,6 +11,10 @@ export interface AssessmentLookupInput {
   city?: string;
   unit?: string;
   taxes?: string;
+  /** province/state code as passed to lookupAssessment(Sync) — only the US
+   * adapter uses this (one adapter shared across all 50 states + DC, so it
+   * needs to know which state it's geocoding within). */
+  region?: string;
 }
 
 export interface AssessmentAdapter {
