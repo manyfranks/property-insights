@@ -197,6 +197,8 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
+    ctaLabel: "Analyze this deal in DealCheck",
+    description: "Cash flow, ROI, and offer calculators for any investment property",
     offerText: "Use code BESTDEAL at checkout",
     notes: "30% recurring + $100/10 users, 90d cookie.",
   },
