@@ -61,6 +61,16 @@ export const BLOG_POSTS: BlogPost[] = [
     readingTime: "7 min read",
     tags: ["assessments", "BC", "data analysis", "market value"],
   },
+  {
+    slug: "us-rent-to-price-ratio-by-county",
+    title:
+      "Where Rents Are Outrunning Home Prices: 29 U.S. Counties That Clear the 1% Rule",
+    description:
+      "An original analysis of rent-to-price ratios across 3,212 U.S. counties using Census ACS and FHFA data. The national median sits at 0.467% monthly, but 29 counties clear the classic 1% investing rule — led by Kinney County, Texas at 1.55%.",
+    publishedAt: "2026-08-08",
+    readingTime: "10 min read",
+    tags: ["data analysis", "market value", "US"],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {

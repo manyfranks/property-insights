@@ -35,6 +35,11 @@ const FAQ_MAP: Record<string, { question: string; answer: string }[]> = {
     { question: "Does the assessment-to-asking gap vary by city?", answer: "Yes, even within Greater Victoria. In our sample, Victoria listings had a median gap of +9.0% above assessment (n=9), while Saanich listings had a median gap of -3.1%, meaning they trended slightly below assessment (n=4). Sample sizes are small, so these are directional, not definitive, municipal averages." },
     { question: "How was this assessment-to-asking gap data calculated?", answer: "We matched 15 of 250 live listings in our system to BC Assessment values by normalized street address, then compared asking price to assessed value for each matched pair. The snapshot was taken 2026-08-07. All matched pairs are in Greater Victoria, and BC Assessment values lag the market by about a year, so the gap reflects asking price versus a roughly one-year-old valuation, not today's fair value." },
   ],
+  "us-rent-to-price-ratio-by-county": [
+    { question: "What is the national median rent-to-price ratio for U.S. counties?", answer: "Across 3,212 U.S. counties with both ACS median home value and median gross rent data for 2024, the median monthly rent-to-price ratio is 0.467%, which annualizes to a 5.60% gross rental yield before taxes, insurance, vacancy, or maintenance." },
+    { question: "Which U.S. counties have the highest rent-to-price ratio?", answer: "Kinney County, Texas leads at 1.551% monthly (18.6% annualized gross yield) on an $82,000 median home value, followed by Harding County, New Mexico (1.483%) and Culberson County, Texas (1.315%). All of the top-ranked counties have median home values under $125,000 — the high ratio reflects very low home prices, not exceptionally strong rents." },
+    { question: "How many U.S. counties clear the 1% rule?", answer: "29 of the 3,212 counties we analyzed (0.9%) have a median monthly rent at or above 1% of median home value, the informal cash-flow threshold real estate investors often use. They cluster in rural Texas, the Nevada mining belt, Kansas, and Appalachia, and all have median home values under $125,000." },
+  ],
 };
 
 export async function generateStaticParams() {
