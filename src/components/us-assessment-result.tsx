@@ -1,6 +1,13 @@
 import type { Assessment, Listing, OfferResult, ScoreResult } from "@/lib/types";
 import type { CountyMarketPanel } from "@/lib/db/regional-econ";
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
+import type {
+  EquityTenureSignal,
+  ValuationTriangulation,
+  InvestorYield,
+  RiskMomentumContext,
+  OverAssessmentFlag,
+} from "@/lib/pipeline/us-advantage";
 import { fmt, pct } from "@/lib/utils";
 import PartnerCta from "@/components/partner-cta";
 import ExpandableSection from "@/components/expandable-section";
@@ -33,7 +40,18 @@ interface UsResultBase {
   emailSent: boolean;
 }
 
-export interface UsListedResult extends UsResultBase {
+// US Advantage layer fields (src/lib/pipeline/us-advantage.ts) — signals
+// with no CA equivalent, present on both the listed and off-market shapes
+// (off-market uses the AVM value in place of an asking price).
+interface UsAdvantageFields {
+  equitySignal: EquityTenureSignal | null;
+  triangulation: ValuationTriangulation;
+  investorYield: InvestorYield | null;
+  riskMomentum: RiskMomentumContext;
+  overAssessment: OverAssessmentFlag;
+}
+
+export interface UsListedResult extends UsResultBase, UsAdvantageFields {
   offerAvailable: true;
   listing: Listing;
   score: ScoreResult;
@@ -42,7 +60,7 @@ export interface UsListedResult extends UsResultBase {
   comparables: UsCompSupport;
 }
 
-export interface UsOffMarketResult extends UsResultBase {
+export interface UsOffMarketResult extends UsResultBase, UsAdvantageFields {
   offerAvailable: false;
   offerUnavailableReason: "not_listed";
   offerUnavailableMessage: string;
@@ -209,6 +227,223 @@ function FooterCredits({ marketPanel }: { marketPanel: CountyMarketPanel | null 
 }
 
 // ---------------------------------------------------------------------------
+// US Advantage layer — shared rendering pieces (src/lib/pipeline/us-advantage.ts).
+// These are the signals CA structurally can't produce: seller equity/tenure
+// from sale history, 3-4-anchor valuation triangulation, investor yield, and
+// county risk/momentum. Every number here is a modeled estimate — carries
+// the same disclaimer treatment as the rest of the US result.
+// ---------------------------------------------------------------------------
+
+const EQUITY_TIER_STYLE: Record<EquityTenureSignal["tier"], { badge: string; label: string }> = {
+  loss_sale_distress: { badge: "bg-rose-100 text-rose-700", label: "Loss-Sale Distress" },
+  short_hold_flip: { badge: "bg-amber-100 text-amber-700", label: "Investor Flip" },
+  long_tenure_high_equity: { badge: "bg-emerald-100 text-emerald-700", label: "Long-Tenure Equity" },
+  moderate_hold: { badge: "bg-zinc-100 text-zinc-600", label: "Moderate Hold" },
+};
+
+/**
+ * "Crown jewel" signal — the structural replacement for CA's keyword-driven
+ * motivation signals (see us-advantage.ts's module doc). Rendered as its own
+ * bento card, not just a chip, since it's derived from real transaction
+ * history (sale date + price), not text pattern-matching.
+ */
+function EquityTenureCard({ equitySignal }: { equitySignal: EquityTenureSignal | null }) {
+  if (!equitySignal) {
+    return (
+      <div className="border border-border rounded-xl p-4 bg-white">
+        <div className="text-xs uppercase tracking-widest text-muted mb-3">Seller Equity &amp; Tenure</div>
+        <p className="text-xs text-muted/70">
+          No prior sale on record for this address from RentCast — hold length and equity position can&apos;t be
+          estimated.
+        </p>
+      </div>
+    );
+  }
+
+  const style = EQUITY_TIER_STYLE[equitySignal.tier];
+
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs uppercase tracking-widest text-muted">Seller Equity &amp; Tenure</div>
+        <span className={`text-xs px-2 py-0.5 rounded-full ${style.badge}`}>{style.label}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+        <div>
+          <div className="text-muted text-xs">Hold period</div>
+          <div className="font-mono font-medium">{equitySignal.holdYears.toFixed(1)}yr</div>
+        </div>
+        <div>
+          <div className="text-muted text-xs">Last sale</div>
+          <div className="font-mono font-medium">{fmt(equitySignal.lastSalePrice)}</div>
+        </div>
+        <div>
+          <div className="text-muted text-xs">Implied change</div>
+          <div className="font-mono font-medium">
+            {equitySignal.impliedAppreciationPct >= 0 ? "+" : ""}
+            {pct(equitySignal.impliedAppreciationPct)}
+          </div>
+        </div>
+        <div>
+          <div className="text-muted text-xs">HPI corroboration</div>
+          <div className="font-medium text-xs">
+            {equitySignal.hpiCorroboration === "consistent"
+              ? "Consistent w/ county trend"
+              : equitySignal.hpiCorroboration === "below_hpi_trend"
+                ? "Below county trend"
+                : equitySignal.hpiCorroboration === "above_hpi_trend"
+                  ? "Above county trend"
+                  : "No county HPI data"}
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-muted leading-relaxed">{equitySignal.narrative}</p>
+      <p className="text-xs text-muted/60 mt-2">
+        Modeled from RentCast sale history — the appreciation figure doesn&apos;t account for any mortgage balance or
+        paydown.
+      </p>
+    </div>
+  );
+}
+
+const TRIANGULATION_CONFIDENCE_BADGE: Record<ValuationTriangulation["confidence"], string> = {
+  high: "bg-emerald-100 text-emerald-700",
+  medium: "bg-amber-100 text-amber-700",
+  low: "bg-rose-100 text-rose-700",
+  insufficient: "bg-zinc-100 text-zinc-500",
+};
+
+/**
+ * Valuation triangulation — CA anchors an offer on exactly 2 points
+ * (assessment, asking); RentCast's data supports 3-4 independent anchors.
+ * Rendered as methodology detail, not a headline number, since
+ * offer-model.ts's own anchor (see OfferCascade) is still what drives the
+ * actual offer — this is the confidence check layered on top.
+ */
+function TriangulationDetail({ triangulation }: { triangulation: ValuationTriangulation }) {
+  if (triangulation.anchors.length === 0) {
+    return <p className="text-sm text-muted">No valuation anchors available for this address.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">
+          {triangulation.triangulatedValue != null ? fmt(triangulation.triangulatedValue) : "—"}
+        </span>
+        <span className={`text-xs px-2 py-0.5 rounded-full ${TRIANGULATION_CONFIDENCE_BADGE[triangulation.confidence]}`}>
+          {triangulation.confidence === "insufficient" ? "Limited data" : `${triangulation.confidence} confidence`}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {triangulation.anchors.map((a) => (
+          <div key={a.kind} className="flex items-center justify-between text-sm">
+            <span className="text-muted">{a.label}</span>
+            <span className="font-mono font-medium">{fmt(a.value)}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted leading-relaxed pt-1 border-t border-border">{triangulation.agreementNote}</p>
+    </div>
+  );
+}
+
+/**
+ * Investor yield — no CA equivalent (no per-property rent estimate exists
+ * there). Only renders when RentCast returned a rent estimate for this
+ * address and there's a price to compute yield against.
+ */
+function InvestorYieldCard({ investorYield }: { investorYield: InvestorYield | null }) {
+  if (!investorYield) {
+    return (
+      <div className="border border-border rounded-xl p-4 bg-white">
+        <div className="text-xs uppercase tracking-widest text-muted mb-3">Investor Yield</div>
+        <p className="text-xs text-muted/70">No rent estimate available for this address to compute yield.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs uppercase tracking-widest text-muted">Investor Yield</div>
+        <span
+          className={`text-xs px-2 py-0.5 rounded-full ${
+            investorYield.onePercentRuleMet ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
+          }`}
+        >
+          {investorYield.onePercentRuleMet ? "Meets 1% rule" : "Below 1% rule"}
+        </span>
+      </div>
+      <div className="flex items-baseline gap-2 mb-3">
+        <span className="font-mono text-2xl font-bold">{pct(investorYield.grossYieldPct)}</span>
+        <span className="text-sm text-muted">gross yield</span>
+      </div>
+      <p className="text-xs text-muted leading-relaxed">{investorYield.verdict}</p>
+      <p className="text-xs text-muted/60 mt-2">Modeled estimate — based on RentCast&apos;s rent AVM, not a signed lease.</p>
+    </div>
+  );
+}
+
+const MOMENTUM_BADGE: Record<RiskMomentumContext["momentum"], string> = {
+  accelerating: "bg-amber-100 text-amber-700",
+  steady: "bg-zinc-100 text-zinc-600",
+  cooling: "bg-emerald-100 text-emerald-700",
+  unknown: "bg-zinc-100 text-zinc-500",
+};
+
+const MOMENTUM_LABEL: Record<RiskMomentumContext["momentum"], string> = {
+  accelerating: "Accelerating",
+  steady: "Steady growth",
+  cooling: "Cooling",
+  unknown: "No trend data",
+};
+
+/**
+ * Risk & momentum — county HPI trend, vacancy, and top FEMA perils
+ * condensed into one offer-adjacent note. No CA equivalent (no county risk
+ * panel exists there).
+ */
+function RiskMomentumCard({ riskMomentum }: { riskMomentum: RiskMomentumContext }) {
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs uppercase tracking-widest text-muted">Risk &amp; Momentum</div>
+        <span className={`text-xs px-2 py-0.5 rounded-full ${MOMENTUM_BADGE[riskMomentum.momentum]}`}>
+          {MOMENTUM_LABEL[riskMomentum.momentum]}
+        </span>
+      </div>
+      {riskMomentum.topPerils.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {riskMomentum.topPerils.map((p) => (
+            <span key={p.hazard} className="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 capitalize">
+              {p.label} {p.score.toFixed(0)}/100
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-muted leading-relaxed">{riskMomentum.note}</p>
+    </div>
+  );
+}
+
+/**
+ * Over-assessment flag — highlighted callout, not a bento card, positioned
+ * near the CTA block so it makes the Ownwell tax-appeal CTA
+ * (src/config/affiliate-vendors.ts) contextually relevant instead of a
+ * generic pitch. Only renders when the flag actually triggered.
+ */
+function OverAssessmentCallout({ overAssessment }: { overAssessment: OverAssessmentFlag }) {
+  if (!overAssessment.triggered || !overAssessment.note) return null;
+  return (
+    <div className="border border-blue-200 bg-blue-50 rounded-xl p-4 mb-4 text-sm text-blue-800">
+      <span className="font-medium">Possible over-assessment: </span>
+      {overAssessment.note}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Listed variant — same experience as the Canadian /property/[slug] page
 // ---------------------------------------------------------------------------
 
@@ -289,7 +524,20 @@ function domColor(dom: number): string {
 }
 
 function UsListedView({ data }: { data: UsListedResult }) {
-  const { listing, assessment, offer, score, signals, comparables, marketPanel } = data;
+  const {
+    listing,
+    assessment,
+    offer,
+    score,
+    signals,
+    comparables,
+    marketPanel,
+    equitySignal,
+    triangulation,
+    investorYield,
+    riskMomentum,
+    overAssessment,
+  } = data;
 
   return (
     <div>
@@ -354,6 +602,12 @@ function UsListedView({ data }: { data: UsListedResult }) {
       <div className="mb-4">
         <ExpandableSection title="Score breakdown" defaultOpen={false}>
           <ScoreBreakdown breakdown={score.breakdown} />
+        </ExpandableSection>
+      </div>
+
+      <div className="mb-4">
+        <ExpandableSection title="Valuation triangulation" defaultOpen={false}>
+          <TriangulationDetail triangulation={triangulation} />
         </ExpandableSection>
       </div>
 
@@ -520,7 +774,13 @@ function UsListedView({ data }: { data: UsListedResult }) {
             </p>
           )}
         </div>
+
+        <EquityTenureCard equitySignal={equitySignal} />
+        <InvestorYieldCard investorYield={investorYield} />
+        <RiskMomentumCard riskMomentum={riskMomentum} />
       </div>
+
+      <OverAssessmentCallout overAssessment={overAssessment} />
 
       <div className="mb-6">
         <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
@@ -542,7 +802,8 @@ function UsListedView({ data }: { data: UsListedResult }) {
 // ---------------------------------------------------------------------------
 
 function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
-  const { assessment, avm, rent, marketPanel } = data;
+  const { assessment, avm, rent, marketPanel, equitySignal, triangulation, investorYield, riskMomentum, overAssessment } =
+    data;
 
   return (
     <div>
@@ -594,6 +855,20 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
           )}
         </div>
       )}
+
+      <div className="mb-4">
+        <ExpandableSection title="Valuation triangulation" defaultOpen={false}>
+          <TriangulationDetail triangulation={triangulation} />
+        </ExpandableSection>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <EquityTenureCard equitySignal={equitySignal} />
+        <InvestorYieldCard investorYield={investorYield} />
+        <RiskMomentumCard riskMomentum={riskMomentum} />
+      </div>
+
+      <OverAssessmentCallout overAssessment={overAssessment} />
 
       <div className="pt-2">
         <MarketPanelSection marketPanel={marketPanel} />

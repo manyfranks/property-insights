@@ -14,13 +14,18 @@
  * to). Three response shapes, all `{ ok, country: "US", address, city,
  * state, countyName, countyFips, assessment, marketPanel, ... }` plus:
  *   - Listed (RentCast has an active listing): `offerAvailable: true,
- *     listing, score, signals, offer, comparables`.
+ *     listing, score, signals, offer, comparables`, plus the US Advantage
+ *     layer (src/lib/pipeline/us-advantage.ts — signals with no CA
+ *     equivalent): `equitySignal, triangulation, investorYield,
+ *     riskMomentum, overAssessment`.
  *   - Off-market (RentCast has property/AVM data, no active listing):
  *     `offerAvailable: false, offerUnavailableReason: "not_listed", avm,
- *     rent`.
+ *     rent`, plus the same US Advantage fields (AVM value stands in for
+ *     asking price).
  *   - Fallback (RentCast quota exhausted / API down / no record at all):
  *     `offerAvailable: false, offerUnavailableReason: "no_listing_data"` —
- *     the original county-median-only shape, unchanged.
+ *     the original county-median-only shape, unchanged (no RentCast record
+ *     means no basis for the US Advantage layer either).
  *
  * Auth required (Clerk).
  * maxDuration: 60s (assessment lookup + LLM call).
@@ -40,6 +45,7 @@ import { lookupAssessment } from "@/lib/assessment";
 import { getCountyMarketPanel } from "@/lib/db/regional-econ";
 import { getUSProperty } from "@/lib/rentcast";
 import { buildUsAssessment, buildUsListing, buildUsCompSupport } from "@/lib/pipeline/us-assess";
+import { buildUsAdvantageBundle, applyEquitySignalToScore, equitySignalLabel } from "@/lib/pipeline/us-advantage";
 import { getSignals } from "@/lib/signals";
 import { scoreV2 } from "@/lib/scoring";
 import { offerModel, offerModelLanguage } from "@/lib/offer-model";
@@ -325,14 +331,35 @@ async function handleUSAssessment({
   // Listed variant — same pipeline as Canada.
   if (bundle.activeListing) {
     const listing = buildUsListing(bundle, city, geo.stateUsps);
-    const signals = getSignals(listing);
-    const score = scoreV2(listing);
-    const offer = assessment?.found ? offerModel(listing, assessment) : offerModelLanguage(listing);
+    const baseScore = scoreV2(listing);
     const comparables = buildUsCompSupport(bundle.avm, parseInt(listing.sqft) || 0);
+
+    // US Advantage layer (src/lib/pipeline/us-advantage.ts) — equity/tenure,
+    // valuation triangulation, investor yield, risk/momentum, and
+    // over-assessment, all computed from data already fetched above (zero
+    // extra RentCast calls). The equity signal's score bump is applied here,
+    // outside scoring.ts, so CA's scoreV2 weights are untouched.
+    const advantage = buildUsAdvantageBundle({
+      record: bundle.record,
+      askingPrice: listing.price || null,
+      avmValue: bundle.avm?.value ?? null,
+      taxAssessedValue: bundle.record?.taxAssessments?.[0]?.value ?? null,
+      assessmentBasis: assessment?.assessmentBasis,
+      compImpliedValue: comparables.impliedValue,
+      monthlyRent: bundle.rent?.value ?? null,
+      marketPanel,
+    });
+
+    const score = applyEquitySignalToScore(baseScore, advantage.equitySignal);
+    const equityLabel = equitySignalLabel(advantage.equitySignal);
+    const signals = equityLabel ? [...getSignals(listing), equityLabel] : getSignals(listing);
+
+    const offer = assessment?.found ? offerModel(listing, assessment) : offerModelLanguage(listing);
 
     log(
       "done (US, listed)",
-      `${geo.matchedAddress} tier=${score.tier} offer=${offer?.finalOffer} anchor=${assessment?.source}`
+      `${geo.matchedAddress} tier=${score.tier} offer=${offer?.finalOffer} anchor=${assessment?.source} ` +
+        `equity=${advantage.equitySignal?.tier ?? "none"} triangulation=${advantage.triangulation.confidence}`
     );
 
     return NextResponse.json({
@@ -351,16 +378,37 @@ async function handleUSAssessment({
       signals,
       offer,
       comparables,
+      equitySignal: advantage.equitySignal,
+      triangulation: advantage.triangulation,
+      investorYield: advantage.investorYield,
+      riskMomentum: advantage.riskMomentum,
+      overAssessment: advantage.overAssessment,
       emailSent: false,
     });
   }
 
   // Off-market variant — RentCast has data on the property, but it isn't
   // currently listed for sale. No asking price or DOM to anchor an offer
-  // model against; surface AVM/assessed/rent instead.
+  // model against; surface AVM/assessed/rent instead. Still worth the full
+  // US Advantage layer — an off-market property can still show equity/
+  // tenure, triangulation, yield, and risk/momentum using the AVM value as
+  // the market reference (currentValueKind: "avm_estimate").
+  const offMarketComparables = buildUsCompSupport(bundle.avm, bundle.record?.squareFootage ?? 0);
+  const advantage = buildUsAdvantageBundle({
+    record: bundle.record,
+    askingPrice: null,
+    avmValue: bundle.avm?.value ?? null,
+    taxAssessedValue: bundle.record?.taxAssessments?.[0]?.value ?? null,
+    assessmentBasis: assessment?.assessmentBasis,
+    compImpliedValue: offMarketComparables.impliedValue,
+    monthlyRent: bundle.rent?.value ?? null,
+    marketPanel,
+  });
+
   log(
     "done (US, off-market)",
-    `${geo.matchedAddress} assessed=${assessment?.totalValue} avm=${bundle.avm?.value} rent=${bundle.rent?.value}`
+    `${geo.matchedAddress} assessed=${assessment?.totalValue} avm=${bundle.avm?.value} rent=${bundle.rent?.value} ` +
+      `equity=${advantage.equitySignal?.tier ?? "none"} triangulation=${advantage.triangulation.confidence}`
   );
 
   return NextResponse.json({
@@ -382,6 +430,11 @@ async function handleUSAssessment({
     offerAvailable: false as const,
     offerUnavailableReason: "not_listed",
     offerUnavailableMessage: "This property is not currently listed for sale.",
+    equitySignal: advantage.equitySignal,
+    triangulation: advantage.triangulation,
+    investorYield: advantage.investorYield,
+    riskMomentum: advantage.riskMomentum,
+    overAssessment: advantage.overAssessment,
     emailSent: false,
   });
 }

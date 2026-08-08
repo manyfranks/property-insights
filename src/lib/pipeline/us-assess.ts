@@ -194,6 +194,11 @@ function median(nums: number[]): number {
  * correlation + distance), a mix of recently sold and active listings, not
  * confirmed sold-to-list transactions — hence the separate type and the
  * "rentcast_avm" source tag rather than pretending this is ComparableResult.
+ *
+ * See also src/lib/pipeline/us-advantage.ts — the sibling module that turns
+ * this file's outputs (plus the RentCast bundle's sale/tax history) into
+ * the equity/tenure, triangulation, yield, risk/momentum, and
+ * over-assessment signals that have no CA equivalent.
  */
 export function buildUsCompSupport(avm: RentCastAvm | null, subjectSqft: number): UsCompSupport {
   const dataGaps: string[] = [];
