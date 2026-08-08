@@ -293,9 +293,13 @@ ${desc || "(No description available)"}`,
     // Single-attempt LLM call with JSON parsing
     const callLlm = async (): Promise<LLMAnalysis> => {
       const response = await openrouter().chat.completions.create({
-        model: "anthropic/claude-haiku-4.5",
+        model: "qwen/qwen3.7-flash",
         max_tokens: 1024,
         messages,
+        // Qwen flash models default to reasoning-on via OpenRouter, which burns the
+        // entire max_tokens budget on hidden chain-of-thought and returns null content.
+        // @ts-expect-error OpenRouter extension not in the OpenAI SDK types
+        reasoning: { enabled: false },
       });
 
       const text = response.choices[0]?.message?.content?.trim() || "";
