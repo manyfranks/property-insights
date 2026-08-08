@@ -367,7 +367,21 @@ export default async function CountyPage({
         </p>
       )}
 
-      {/* CTA */}
+      {/* Tools for this market — moved above the internal address search box
+          (Aug 2026 CTA redesign audit found the internal box previously sat
+          above and cannibalized this CTA's clicks). */}
+      <div className="mb-10">
+        <PartnerCta
+          country="US"
+          state={county.state}
+          source="county-page"
+          surface="county-page"
+          heading="Tools for this market"
+          city={county.county}
+        />
+      </div>
+
+      {/* Internal search box */}
       <div className="border border-border rounded-xl p-6 mb-10 text-center">
         <p className="text-sm font-medium text-foreground mb-1">
           Looking at a specific {county.county} property?
@@ -382,10 +396,6 @@ export default async function CountyPage({
         >
           Search any {county.county} address &rarr;
         </Link>
-      </div>
-
-      <div className="mb-10">
-        <PartnerCta country="US" state={county.state} source="county-page" city={county.county} />
       </div>
 
       {/* Internal links: siblings + tools */}

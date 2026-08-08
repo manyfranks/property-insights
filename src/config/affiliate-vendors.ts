@@ -91,6 +91,8 @@ export interface AffiliateVendor {
   ctaLabel?: string;
   /** one-line helper text under the CTA label */
   description?: string;
+  /** 1-2 word action verb for the compact PartnerCtaRow button, e.g. "Track it" */
+  shortCta?: string;
   /**
    * Maps to the pre-Phase-1 PartnerType so /api/partner-connect keeps
    * populating `data->>'partnerType'` for the existing intent-score SQL
@@ -125,7 +127,8 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     stateCoverage: "all",
     network: "direct",
     ctaLabel: "Compare mortgage rates",
-    description: "See today's best mortgage rates from 50+ lenders",
+    description: "See today's best Canadian mortgage rates in one place",
+    shortCta: "Compare",
     legacyPartnerType: "compare-rates",
     envKey: "NEXT_PUBLIC_RATEHUB_URL",
   },
@@ -141,8 +144,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
-    ctaLabel: "Get pre-approved",
-    description: "Online mortgage pre-approval in minutes",
+    ctaLabel: "Get pre-approved for a mortgage",
+    description: "Find out how much you can borrow — free, online, in minutes",
+    shortCta: "Start",
     legacyPartnerType: "pre-approval",
     envKey: "NEXT_PUBLIC_NESTO_URL",
   },
@@ -159,8 +163,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     stateCoverage: "all",
     offerText: "$20 credit applied automatically",
     network: "direct",
-    ctaLabel: "Get a home insurance quote",
-    description: "Customizable coverage — $20 credit applied automatically",
+    ctaLabel: "Get home insurance",
+    description: "Quote in 5 minutes — $20 credit applied automatically",
+    shortCta: "Get quote",
     legacyPartnerType: "insurance",
     envKey: "NEXT_PUBLIC_SQUAREONE_URL",
   },
@@ -181,8 +186,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
-    ctaLabel: "Track this property's value and rent",
-    description: "Property data, rent estimates, and market alerts for any US address",
+    ctaLabel: "Track this home's value and rent",
+    description: "Free alerts when a property's value or rent changes",
+    shortCta: "Track it",
     offerText: "Use code PROPERTYINSIGHTS at checkout",
     notes:
       "30% recurring + $100/10 customers, PayPal monthly, 90d cookie. Bans paid-traffic promotion — app link-out is fine. Apply: affiliates.rentcast.io",
@@ -199,8 +205,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
-    ctaLabel: "Analyze this deal in DealCheck",
-    description: "Cash flow, ROI, and offer calculators for any investment property",
+    ctaLabel: "Will this deal make money?",
+    description: "Free calculators for cash flow, profit, and what to offer",
+    shortCta: "Analyze it",
     offerText: "Use code BESTDEAL at checkout",
     notes: "30% recurring + $100/10 users, 90d cookie.",
   },
@@ -216,6 +223,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["investor"],
     stateCoverage: "all",
     network: "direct",
+    ctaLabel: "Find off-market deals",
+    description: "Drive for dollars, skip trace owners, send mail — one app",
+    shortCta: "Find deals",
     notes:
       "20-50% lifetime recurring, apply direct. Requires explicit 'Paid link' disclosure wording per their affiliate ToS.",
   },
@@ -231,6 +241,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["investor"],
     stateCoverage: "all",
     network: "direct",
+    ctaLabel: "Research any property",
+    description: "Owner info, liens, comps, and motivated-seller lists",
+    shortCta: "Research",
     notes: "~30% recurring UNVERIFIED — re-verify after approval.",
   },
 
@@ -250,6 +263,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     stateCoverage: "all",
     stateExclusions: ["MS", "NM", "RI", "UT", "VT"],
     network: "PartnerStack",
+    ctaLabel: "Get a loan for a flip or rental",
+    description: "Fast financing built for real estate investors",
+    shortCta: "Get funded",
     notes:
       "$1,000/closed loan (verified). Lending — needs >=30 investor referrals/yr capability; agents/brokers ineligible (note in application that this is a software tool). Confirm cross-border PartnerStack payout.",
   },
@@ -268,6 +284,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     // isn't wired up in Phase 1, tracked here as a note for the next pass.
     stateCoverage: ["CA", "CO", "FL", "GA", "IL", "NY", "TX", "WA"],
     network: "FlexOffers",
+    ctaLabel: "Lower my property taxes",
+    description: "They appeal your assessment for you — you only pay if you save",
+    shortCta: "Appeal now",
     notes:
       "CPA on completed+paid appeal, months lag, 45d cookie. Two-tier state coverage: full-service in CA/CO/FL/GA/IL/NY/TX/WA; elsewhere Ownwell offers a DIY 'National Appeals Packet' — needs a separate nationwide-DIY CTA variant to route non-covered states, not yet implemented.",
   },
@@ -287,6 +306,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "unconfirmed",
+    ctaLabel: "Compare home insurance quotes",
+    description: "Prices from 100+ insurance companies side by side",
+    shortCta: "Compare",
     notes:
       "Carrier-agnostic insurance comparison — nationwide default insurance CTA when a specific carrier isn't licensed in the property's state. Network unconfirmed (possibly Awin); apply direct.",
   },
@@ -302,6 +324,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "CJ",
+    ctaLabel: "Compare mortgage offers",
+    description: "Up to 5 lender offers from one short form",
+    shortCta: "Compare",
     notes: "$1-70/lead, sub-offers vary. Mortgage CPL via CJ.",
   },
   {
@@ -316,6 +341,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
+    ctaLabel: "Find a top local agent",
+    description: "Free matches with the best-reviewed agents near this home",
+    shortCta: "Find agent",
     notes:
       "Self-serve affiliate arm (affiliate.homelight.com), distinct from the licensed agent-referral network. RESPA-clean as a platform affiliate fee.",
   },
@@ -336,6 +364,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer"],
     stateCoverage: "all",
     network: "Impact",
+    ctaLabel: "Get a home insurance quote",
+    description: "See what it costs to insure this home",
+    shortCta: "Get quote",
     notes:
       "~$5-8/lead PPL (secondary-sourced; verify in Impact dashboard). Impact media-partner application explicitly accepts US/Canada publishers; 2-5 day manual review.",
   },
@@ -351,6 +382,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
+    ctaLabel: "Find cheaper home insurance",
+    description: "Compare quotes from local and national insurers",
+    shortCta: "Compare",
     notes:
       "In-house publisher platform (agents.smartfinancial.com/publishers), self-serve low-barrier approval; up to ~$40/lead claimed (unverified).",
   },
@@ -366,6 +400,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "Impact",
+    ctaLabel: "Compare insurance quotes",
+    description: "Real quotes from 100+ companies in minutes",
+    shortCta: "Compare",
     notes:
       "~$15/lead home (secondary), 30d cookie; licensed all 50 states; apply via Impact or partnerships@insurify.com.",
   },
@@ -381,6 +418,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["investor"],
     stateCoverage: "all",
     network: "direct",
+    ctaLabel: "Get investor financing fast",
+    description: "Hard-money and rental loans with quotes in minutes",
+    shortCta: "Get funded",
     notes:
       "$1,000/closed loan (verified on easystreetcap.com/refer/) — Kiavi payout parity; DSCR/hard money is RESPA-exempt business-purpose credit.",
   },
@@ -396,6 +436,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["investor"],
     stateCoverage: "all",
     network: "direct",
+    ctaLabel: "Finance my next investment",
+    description: "Loans for flips, rentals, and new construction",
+    shortCta: "Get funded",
     notes:
       "0.25-0.50% of funded loan (verified, limaone.com/referral-application/); DSCR/fix-flip/construction.",
   },
@@ -411,6 +454,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer"],
     stateCoverage: "all",
     network: "FlexOffers",
+    ctaLabel: "Get pre-approved for a mortgage",
+    description: "See what you can afford with a fast online pre-approval",
+    shortCta: "Get pre-approved",
     notes:
       "Up to $60/prospect, verified Active on FlexOffers — second reason FlexOffers signup gates revenue.",
   },
@@ -426,14 +472,147 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["investor"],
     stateCoverage: "all",
     network: "direct",
+    ctaLabel: "Banking built for landlords",
+    description: "Free rent collection, bookkeeping, and banking for rentals",
+    shortCta: "Sign up",
     notes:
       "$150-200/referral via Affonso.io, no minimum (verified); landlord banking/finance.",
+  },
+
+  // ---------------------------------------------------------------------
+  // US — CJ live-dashboard inventory (Aug 2026 pass). Inert until applied
+  // for / approved; added now so the vertical-priority fallback engine has
+  // real candidates to slot in as approvals land.
+  // ---------------------------------------------------------------------
+  {
+    id: "mrc",
+    name: "Mortgage Research Center",
+    vertical: "mortgage",
+    country: "US",
+    url: "https://www.mortgageresearch.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 2,
+    audienceMode: ["buyer"],
+    stateCoverage: "all",
+    network: "CJ",
+    ctaLabel: "Compare mortgage lenders",
+    description: "Match with lenders that fit this home and your budget",
+    shortCta: "Compare",
+    notes:
+      "CJ #7647072, Lead 60% revshare, 3mo EPC $207 — lower approval odds, apply with content samples.",
+  },
+  {
+    id: "simplybusiness",
+    name: "Simply Business",
+    vertical: "insurance",
+    country: "US",
+    url: "https://www.simplybusiness.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 2,
+    audienceMode: ["investor"],
+    stateCoverage: "all",
+    network: "CJ",
+    ctaLabel: "Insure my rental property",
+    description: "Landlord insurance quotes from top insurers in minutes",
+    shortCta: "Get quote",
+    notes: "CJ #5808859, $30/lead, 3mo EPC $1,570 — landlord/business insurance.",
+  },
+  {
+    id: "avail",
+    name: "Avail",
+    vertical: "investor-tools",
+    country: "US",
+    url: "https://www.avail.co",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 1,
+    audienceMode: ["investor"],
+    stateCoverage: "all",
+    network: "CJ",
+    ctaLabel: "Manage my rental for free",
+    description: "Free landlord software: leases, tenant screening, rent collection",
+    shortCta: "Sign up",
+    notes: "CJ #7785516, $25/lead, 3mo EPC $143. Realtor.com-owned.",
+  },
+  {
+    id: "choicehomewarranty",
+    name: "Choice Home Warranty",
+    vertical: "home-services",
+    country: "US",
+    url: "https://www.choicehomewarranty.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 1,
+    audienceMode: ["buyer"],
+    stateCoverage: "all",
+    network: "CJ",
+    ctaLabel: "Protect this home's systems",
+    description: "One plan covers repairs to appliances, AC, and plumbing",
+    shortCta: "Get covered",
+    notes: "CJ #4593144, $20/lead, 3mo EPC $64.",
   },
 ];
 
 // ---------------------------------------------------------------------------
 // Resolver
 // ---------------------------------------------------------------------------
+
+/**
+ * Where a CTA cluster is rendered, for vertical-priority ordering — distinct
+ * from `AffiliateSource` (which drives sub_id attribution/tracking). A given
+ * page can map to the same surface across multiple `source` values (e.g.
+ * "assess-result" and "property-page" both feed a buyer-facing result page).
+ */
+export type SurfaceKey =
+  | "result-buyer"
+  | "result-investor"
+  | "county-page"
+  | "calculator"
+  | "email"
+  | "discover"
+  | "state-page";
+
+/**
+ * Per-surface vertical journey order. This is the fallback engine: with
+ * only investor-tools vendors enabled today (rentcast/dealcheck US), every
+ * surface still fills with those two — but as each future vertical gets an
+ * affiliate approval (mortgage, insurance, tax-appeal, ...) it auto-slots
+ * into its correct journey position on every surface with zero further
+ * code changes, since the ordering already exists here.
+ */
+export const SURFACE_VERTICAL_PRIORITY: Record<SurfaceKey, Vertical[]> = {
+  "result-buyer": ["mortgage", "insurance", "investor-tools", "home-services", "agent-referral", "tax-appeal"],
+  "result-investor": ["investor-tools", "insurance", "mortgage", "tax-appeal", "home-services", "agent-referral"],
+  "county-page": ["investor-tools", "insurance", "mortgage", "tax-appeal", "home-services", "agent-referral"],
+  calculator: ["tax-appeal", "mortgage", "insurance", "investor-tools", "home-services", "agent-referral"],
+  email: ["mortgage", "insurance", "investor-tools", "home-services", "agent-referral", "tax-appeal"],
+  discover: ["investor-tools", "insurance", "mortgage", "tax-appeal", "home-services", "agent-referral"],
+  "state-page": ["investor-tools", "insurance", "mortgage", "tax-appeal", "home-services", "agent-referral"],
+};
+
+/**
+ * Shared eligibility filter (enabled + country + audienceMode + state gate)
+ * used by both `getVendorsForRegion` and `getVendorsForSurface` — only the
+ * sort differs between them.
+ */
+function filterEligibleVendors(
+  country: Country,
+  state: string | undefined,
+  mode: AudienceMode
+): AffiliateVendor[] {
+  const upperState = state ? state.toUpperCase() : undefined;
+
+  return AFFILIATE_VENDORS.filter((v) => v.enabled)
+    .filter((v) => v.country === country)
+    .filter((v) => v.audienceMode.includes(mode))
+    .filter((v) => {
+      if (upperState && v.stateExclusions?.includes(upperState)) return false;
+      if (v.stateCoverage === "all") return true;
+      return upperState ? v.stateCoverage.includes(upperState) : true;
+    });
+}
 
 /**
  * Vendors eligible for a given property region + app mode, filtered by
@@ -446,20 +625,36 @@ export function getVendorsForRegion(
   state: string | undefined,
   mode: AudienceMode = "buyer"
 ): AffiliateVendor[] {
-  const upperState = state ? state.toUpperCase() : undefined;
+  return filterEligibleVendors(country, state, mode).sort((a, b) => {
+    if (b.cpaTier !== a.cpaTier) return b.cpaTier - a.cpaTier;
+    return Number(b.affiliateReady) - Number(a.affiliateReady);
+  });
+}
 
-  return AFFILIATE_VENDORS.filter((v) => v.enabled)
-    .filter((v) => v.country === country)
-    .filter((v) => v.audienceMode.includes(mode))
-    .filter((v) => {
-      if (upperState && v.stateExclusions?.includes(upperState)) return false;
-      if (v.stateCoverage === "all") return true;
-      return upperState ? v.stateCoverage.includes(upperState) : true;
-    })
-    .sort((a, b) => {
-      if (b.cpaTier !== a.cpaTier) return b.cpaTier - a.cpaTier;
-      return Number(b.affiliateReady) - Number(a.affiliateReady);
-    });
+/**
+ * Same eligibility rules as `getVendorsForRegion`, but ordered by the
+ * surface's vertical journey priority first (see `SURFACE_VERTICAL_PRIORITY`),
+ * then cpaTier desc, then affiliateReady desc. A vendor whose vertical isn't
+ * listed for the surface sorts last (defensive — every current Vertical is
+ * listed for every SurfaceKey above).
+ */
+export function getVendorsForSurface(
+  country: Country,
+  state: string | undefined,
+  mode: AudienceMode = "buyer",
+  surface: SurfaceKey
+): AffiliateVendor[] {
+  const priority = SURFACE_VERTICAL_PRIORITY[surface];
+
+  return filterEligibleVendors(country, state, mode).sort((a, b) => {
+    const aRank = priority.indexOf(a.vertical);
+    const bRank = priority.indexOf(b.vertical);
+    const aIndex = aRank === -1 ? priority.length : aRank;
+    const bIndex = bRank === -1 ? priority.length : bRank;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    if (b.cpaTier !== a.cpaTier) return b.cpaTier - a.cpaTier;
+    return Number(b.affiliateReady) - Number(a.affiliateReady);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -506,6 +701,10 @@ const ENV_URL_MAP: Record<string, string | undefined> = {
   limaone: process.env.NEXT_PUBLIC_AFFILIATE_URL_LIMAONE,
   newamericanfunding: process.env.NEXT_PUBLIC_AFFILIATE_URL_NEWAMERICANFUNDING,
   baselane: process.env.NEXT_PUBLIC_AFFILIATE_URL_BASELANE,
+  mrc: process.env.NEXT_PUBLIC_AFFILIATE_URL_MRC,
+  simplybusiness: process.env.NEXT_PUBLIC_AFFILIATE_URL_SIMPLYBUSINESS,
+  avail: process.env.NEXT_PUBLIC_AFFILIATE_URL_AVAIL,
+  choicehomewarranty: process.env.NEXT_PUBLIC_AFFILIATE_URL_CHOICEHOMEWARRANTY,
 };
 
 function appendSubId(url: string, source: string): string {

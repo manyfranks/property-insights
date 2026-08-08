@@ -11,6 +11,7 @@ import TierBadge from "@/components/tier-badge";
 import ExpandableSection from "@/components/expandable-section";
 import TrackView from "@/components/track-view";
 import PartnerCta from "@/components/partner-cta";
+import PartnerCtaRow from "@/components/partner-cta-row";
 import { assertAffiliateHealth } from "@/config/affiliate-vendors";
 import { isUSState } from "@/lib/assessment/us";
 import type {
@@ -682,11 +683,12 @@ export default async function PropertyPage({
 
       {/* I. Next Steps */}
       <div className="mb-6">
-        <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
         <PartnerCta
           country="CA"
           state={listing.province}
           source="property-page"
+          surface="result-buyer"
+          heading="Act on this analysis"
           propertySlug={slugify(listing.address)}
           city={listing.city}
         />
@@ -1047,6 +1049,10 @@ function renderUSSparseListing(listing: Listing, slug: string) {
         </div>
       </div>
 
+      <div className="mb-6">
+        <PartnerCtaRow country="US" state={listing.province} source="property-page" surface="result-buyer" propertySlug={slug} city={listing.city} />
+      </div>
+
       <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
         <div className="text-xs uppercase tracking-widest text-muted mb-2">Limited Data</div>
         <p className="text-sm text-foreground leading-relaxed mb-4">
@@ -1064,7 +1070,15 @@ function renderUSSparseListing(listing: Listing, slug: string) {
       </div>
 
       <div className="mb-6">
-        <PartnerCta country="US" state={listing.province} source="property-page" propertySlug={slug} city={listing.city} />
+        <PartnerCta
+          country="US"
+          state={listing.province}
+          source="property-page"
+          surface="result-buyer"
+          heading="Act on this analysis"
+          propertySlug={slug}
+          city={listing.city}
+        />
       </div>
     </main>
   );
@@ -1176,6 +1190,10 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
         )}
       </div>
 
+      <div className="mb-6">
+        <PartnerCtaRow country="US" state={listing.province} source="property-page" surface="result-buyer" propertySlug={slug} city={listing.city} />
+      </div>
+
       {/* THE SIGNAL */}
       <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
         <div className="flex items-center justify-between mb-2">
@@ -1258,8 +1276,15 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
       </div>
 
       <div className="mb-6">
-        <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
-        <PartnerCta country="US" state={listing.province} source="property-page" propertySlug={slug} city={listing.city} />
+        <PartnerCta
+          country="US"
+          state={listing.province}
+          source="property-page"
+          surface="result-buyer"
+          heading="Act on this analysis"
+          propertySlug={slug}
+          city={listing.city}
+        />
       </div>
     </main>
   );

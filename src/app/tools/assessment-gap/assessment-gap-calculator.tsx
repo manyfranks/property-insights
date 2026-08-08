@@ -256,7 +256,13 @@ export default function AssessmentGapCalculator() {
 
       {result && (
         <div className="mt-6">
-          <PartnerCta country={partnerCountry} state={partnerState} source="calculator" />
+          <PartnerCta
+            country={partnerCountry}
+            state={partnerState}
+            source="calculator"
+            surface="calculator"
+            heading="Act on this result"
+          />
         </div>
       )}
 

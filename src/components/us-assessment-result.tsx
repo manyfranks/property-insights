@@ -10,6 +10,7 @@ import type {
 } from "@/lib/pipeline/us-advantage";
 import { fmt, pct } from "@/lib/utils";
 import PartnerCta from "@/components/partner-cta";
+import PartnerCtaRow from "@/components/partner-cta-row";
 import ExpandableSection from "@/components/expandable-section";
 import TierBadge from "@/components/tier-badge";
 
@@ -649,6 +650,10 @@ function UsListedView({ data }: { data: UsListedResult }) {
         )}
       </div>
 
+      <div className="mb-6">
+        <PartnerCtaRow country="US" state={data.state} source="assess-result" surface="result-buyer" city={data.city} />
+      </div>
+
       {/* THE SIGNAL — LLM narrative (src/lib/pipeline/us-narrative.ts), mirrors
           the Canadian /property/[slug] page's "The Signal" section layout. */}
       <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
@@ -869,8 +874,14 @@ function UsListedView({ data }: { data: UsListedResult }) {
       <OverAssessmentCallout overAssessment={overAssessment} />
 
       <div className="mb-6">
-        <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
-        <PartnerCta country="US" state={data.state} source="assess-result" city={data.city} />
+        <PartnerCta
+          country="US"
+          state={data.state}
+          source="assess-result"
+          surface="result-buyer"
+          heading="Act on this analysis"
+          city={data.city}
+        />
       </div>
 
       <div className="mb-2 pt-4 border-t border-border">
@@ -923,6 +934,10 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
         )}
       </div>
 
+      <div className="mb-6">
+        <PartnerCtaRow country="US" state={data.state} source="assess-result" surface="result-investor" city={data.city} />
+      </div>
+
       <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-sm text-amber-800">
         {data.offerUnavailableMessage}
       </div>
@@ -961,8 +976,14 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
       </div>
 
       <div className="mb-6">
-        <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
-        <PartnerCta country="US" state={data.state} source="assess-result" city={data.city} />
+        <PartnerCta
+          country="US"
+          state={data.state}
+          source="assess-result"
+          surface="result-investor"
+          heading="Act on this analysis"
+          city={data.city}
+        />
       </div>
 
       <FooterCredits marketPanel={marketPanel} />
@@ -1004,6 +1025,10 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
         )}
       </div>
 
+      <div className="mb-6">
+        <PartnerCtaRow country="US" state={data.state} source="assess-result" surface="result-buyer" city={data.city} />
+      </div>
+
       <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-sm text-amber-800">
         Offer modeling isn&apos;t available here — it needs a specific listing (asking price, days on market), and
         this is a county-level lookup with no listing attached.
@@ -1012,8 +1037,14 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
       <MarketPanelSection marketPanel={marketPanel} />
 
       <div className="mb-6">
-        <div className="text-xs uppercase tracking-widest text-muted mb-3">Next Steps</div>
-        <PartnerCta country="US" state={data.state} source="assess-result" city={data.city} />
+        <PartnerCta
+          country="US"
+          state={data.state}
+          source="assess-result"
+          surface="result-buyer"
+          heading="Act on this analysis"
+          city={data.city}
+        />
       </div>
 
       <FooterCredits marketPanel={marketPanel} />
