@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getAllListings } from "@/lib/kv/listings";
 import { buildCityMetadata, getCityBySlug } from "@/lib/data/city-metadata";
 import { analyzeListing } from "@/lib/analyze";
+import { isUSState } from "@/lib/assessment/us";
 import { slugify, fmt } from "@/lib/utils";
 import { BASE_URL, SITE_NAME } from "@/lib/seo";
 import { getRelatedPosts } from "@/lib/blog";
@@ -66,7 +67,19 @@ export default async function DiscoverCityPage({
   if (!meta) notFound();
 
   const cityListings = listings.filter((l) => l.city === meta.name);
-  const analyses = cityListings.map((l) => analyzeListing(l));
+  const analyses = cityListings.map((l) => {
+    const a = analyzeListing(l);
+    // US Discover listings (src/lib/pipeline/us-discover.ts) carry a
+    // pre-computed score augmented with county-median-value and
+    // price/sqft-outlier structural signals that scoreV2 alone has no
+    // inputs for — prefer that over analyzeListing()'s plain scoreV2
+    // recompute. No-op for CA listings (their preScore always matches a
+    // fresh scoreV2 call on the same listing).
+    if (l.preScore != null && l.preTier) {
+      return { ...a, score: { ...a.score, total: l.preScore, tier: l.preTier } };
+    }
+    return a;
+  });
 
   // City stats
   const withSavings = analyses.filter((a) => a.offer && (a.offer.savings ?? 0) > 0);
@@ -140,10 +153,21 @@ export default async function DiscoverCityPage({
         {analyses.map((a, i) => {
           const l = a.listing;
           const slug = slugify(l.address);
+          // US listings have no persisted /property/[slug] page yet (no
+          // per-property cache — see us-discover.ts's doc comment: only a
+          // score comes out of the city-wide RentCast call, not a full
+          // assessment bundle). Route them into the on-demand /assess flow
+          // instead, using the same combined "address, city, state" string
+          // convention the site's search bar already sends (see
+          // navbar-search.tsx). CA listings keep the existing property page.
+          const isUS = isUSState(l.province);
+          const href = isUS
+            ? `/assess?address=${encodeURIComponent(`${l.address}, ${l.city}, ${l.province}`)}`
+            : `/property/${slug}`;
           return (
             <Link
               key={`${slug}-${i}`}
-              href={`/property/${slug}`}
+              href={href}
               className="group flex flex-col sm:flex-row sm:items-center gap-3 border border-border rounded-xl p-4 hover:shadow-md hover:-translate-y-0.5 transition-all bg-white"
             >
               <div className="flex-1 min-w-0">

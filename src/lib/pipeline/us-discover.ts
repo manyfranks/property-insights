@@ -1,0 +1,315 @@
+/**
+ * pipeline/us-discover.ts
+ *
+ * US Discover — cached, scored, browsable US listings by metro. The US
+ * analogue of the CA cron pipeline (src/app/api/pipeline/refresh/route.ts),
+ * but shaped around a hard constraint the CA side doesn't have: RentCast's
+ * free tier is 45 requests/month (see src/lib/rentcast.ts's module doc),
+ * where the CA side's Zoocasa searches are free. So instead of "search
+ * every city, detail-fetch every new listing" (the CA pattern), this module
+ * spends exactly ONE RentCast request per city per refresh —
+ * discoverActiveListingsByCity() (already city-wide, already cached +
+ * quota-guarded in rentcast.ts) — and never fans out to per-listing
+ * /properties or /avm/value calls. A 30-listing city batch run through
+ * those per-listing would burn the entire monthly quota refreshing one
+ * city once.
+ *
+ * METRO LIST + CADENCE (the two scaling knobs)
+ * See US_DISCOVER_CITIES in src/lib/data/city-metadata.ts for the metro
+ * list and quota math. Refresh cadence is gated by env var
+ * US_DISCOVER_REFRESH_DAYS (default 3): a city refreshed within that
+ * window is skipped on the next cron tick (last-refresh timestamps live in
+ * KV via getMetaValue/setMetaValue, see kv/listings.ts). At 3 cities every
+ * 3 days that's ~30 requests/month, leaving headroom in the 45/mo cap for
+ * on-demand /assess lookups hitting the same quota counter.
+ * Foundation tier ($74/mo, higher request cap) → US_DISCOVER_REFRESH_DAYS=1
+ * (daily) across 10+ cities, no code change needed here.
+ *
+ * SCORING WITHOUT DESCRIPTIONS
+ * See buildUsListing()'s doc comment in us-assess.ts: RentCast search
+ * results carry no MLS remarks, so every text-keyword signal in scoreV2
+ * (motivated seller, estate sale, "priced to sell", etc.) structurally
+ * can't fire for a US listing — that's an honest gap, not a bug, and this
+ * module doesn't paper over it with fabricated text. What DOES carry over
+ * unchanged from scoreV2: the DOM bracket, priceReduced (derived
+ * structurally from RentCast's price-history event log, not text), and
+ * building-age scoring. On top of that base, this module adds two more
+ * structural signals scoreV2 has no inputs for, both derived from data
+ * already in hand (zero extra requests):
+ *   - County-median discount: listing price vs. the county's ACS median
+ *     home value (regional_econ, Phase 2 ingest) — a coarse "priced well
+ *     under the local market" flag.
+ *   - Price/sqft outlier: listing $/sqft vs. the median $/sqft of the same
+ *     city batch just fetched — computed in-process from the one API
+ *     response, not a second request.
+ * Both are additive on top of scoreV2's total; tier thresholds are
+ * scoreV2's own 45/33 cutoffs, so a US listing's HOT/WARM/WATCH tier means
+ * the same thing a CA listing's tier means.
+ */
+
+import { discoverActiveListingsByCity, getRentcastQuotaStatus, DiscoveredListing } from "../rentcast";
+import { buildUsListing } from "./us-assess";
+import { scoreV2 } from "../scoring";
+import { getAcsCountyMedian } from "../db/regional-econ";
+import { getAllListings, writeAllListings, getMetaValue, setMetaValue } from "../kv/listings";
+import { US_DISCOVER_CITIES, USDiscoverCityConfig } from "../data/city-metadata";
+import { Listing, ScoreResult } from "../types";
+
+// RentCast /listings/sale page size for a single city-wide call. One
+// request regardless of this value (RentCast bills per request, not per
+// record) — set high enough that a metro's whole active-listing pool
+// (rarely >200 for a mid-size city search) comes back in one page.
+const LISTINGS_PER_CITY = 200;
+
+// How many of those (post-scoring) actually get stored/shown per city.
+// RentCast's raw response is the whole active pool for the metro — mostly
+// unremarkable listings, same as any MLS search. Storing all 200 would
+// flood Discover/dashboard with WATCH-tier noise and bloat the sitemap with
+// low-value /property pages. Mirrors the CA cron pipeline's own "top N"
+// stage (see city-run.ts's Stage 6 / the refresh route's CityConfig.target,
+// which is 25 for CA cities) — same curation principle, applied after
+// scoring instead of before, since unlike CA's two-query oldest+cheapest
+// fetch, this is one unfiltered city-wide page.
+const TOP_N_PER_CITY = 50;
+
+function refreshIntervalDays(): number {
+  const n = Number(process.env.US_DISCOVER_REFRESH_DAYS);
+  return Number.isFinite(n) && n > 0 ? n : 3;
+}
+
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+const LAST_REFRESH_PREFIX = "us-discover:last-refresh:";
+
+async function getLastRefresh(slug: string): Promise<number | null> {
+  const raw = await getMetaValue(`${LAST_REFRESH_PREFIX}${slug}`);
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function setLastRefresh(slug: string): Promise<void> {
+  await setMetaValue(`${LAST_REFRESH_PREFIX}${slug}`, String(Date.now()));
+}
+
+// ---------------------------------------------------------------------------
+// Scoring
+// ---------------------------------------------------------------------------
+
+interface USScoreResult extends ScoreResult {
+  signals: string[];
+}
+
+function scoreUSListing(
+  listing: Listing,
+  cityMedianPpsf: number | null,
+  countyMedianValue: number | null
+): USScoreResult {
+  const base = scoreV2(listing);
+  let total = base.total;
+  const breakdown = { ...base.breakdown };
+  const signals: string[] = [];
+
+  if (listing.priceReduced) signals.push("Price reduced");
+  if (listing.dom >= 90) signals.push(`${listing.dom} days on market`);
+
+  if (countyMedianValue && listing.price > 0) {
+    const ratio = listing.price / countyMedianValue;
+    const pctBelow = Math.round((1 - ratio) * 100);
+    if (ratio <= 0.8) {
+      total += 10;
+      breakdown["Below County Median"] = 10;
+      signals.push(`${pctBelow}% below county median value`);
+    } else if (ratio <= 0.9) {
+      total += 5;
+      breakdown["Below County Median"] = 5;
+      signals.push(`${pctBelow}% below county median value`);
+    }
+  }
+
+  const sqft = parseInt(listing.sqft) || 0;
+  if (cityMedianPpsf && listing.price > 0 && sqft > 0) {
+    const ppsf = listing.price / sqft;
+    const ratio = ppsf / cityMedianPpsf;
+    const pctBelow = Math.round((1 - ratio) * 100);
+    if (ratio <= 0.8) {
+      total += 8;
+      breakdown["Price/Sqft Outlier"] = 8;
+      signals.push(`$/sqft ${pctBelow}% below metro median`);
+    } else if (ratio <= 0.9) {
+      total += 4;
+      breakdown["Price/Sqft Outlier"] = 4;
+      signals.push(`$/sqft ${pctBelow}% below metro median`);
+    }
+  }
+
+  total = Math.min(total, 100);
+  const tier: ScoreResult["tier"] = total >= 45 ? "HOT" : total >= 33 ? "WARM" : "WATCH";
+  return { total, tier, breakdown, signals };
+}
+
+// ---------------------------------------------------------------------------
+// Per-city fetch
+// ---------------------------------------------------------------------------
+
+export interface USDiscoverFetchResult {
+  listings: Listing[];
+  fetchedCount: number;
+}
+
+/**
+ * One quota-guarded RentCast /listings/sale call for `cfg.name, cfg.state`
+ * (via discoverActiveListingsByCity — already city-wide, already cached +
+ * quota-guarded, see rentcast.ts's module doc). Maps each raw result
+ * through buildUsListing() (src/lib/pipeline/us-assess.ts) — the SAME
+ * mapper the per-address /assess flow uses, reused here rather than
+ * duplicated — then scores it. Returns [] (not a throw) on a quota-blocked
+ * or empty response, matching discoverActiveListingsByCity's own
+ * degrade-gracefully contract.
+ */
+export async function fetchUSCityListings(cfg: USDiscoverCityConfig): Promise<USDiscoverFetchResult> {
+  const discovered: DiscoveredListing[] = await discoverActiveListingsByCity(
+    cfg.name,
+    cfg.state,
+    LISTINGS_PER_CITY
+  );
+
+  if (discovered.length === 0) return { listings: [], fetchedCount: 0 };
+
+  // Map to Listing shape via the shared us-assess mapper. This is a city
+  // search result, not a per-address bundle, so record/avm/rent are null —
+  // buildUsListing already treats a missing `record` as an honest
+  // empty/undefined field (see its doc comment), not an error.
+  const mapped: Listing[] = discovered.map((d) =>
+    buildUsListing(
+      { record: null, avm: null, rent: null, activeListing: d, meta: { quotaExhausted: false, cacheHits: 0, liveCalls: 0, errors: [] } },
+      cfg.name,
+      cfg.state
+    )
+  );
+
+  // Batch-level $/sqft median — computed in-process from this same
+  // response, zero extra requests.
+  const ppsfSamples = mapped
+    .filter((l) => l.price > 0 && (parseInt(l.sqft) || 0) > 0)
+    .map((l) => l.price / (parseInt(l.sqft) || 1));
+  const cityMedianPpsf = ppsfSamples.length >= 3 ? median(ppsfSamples) : null;
+
+  // County ACS median home value (regional_econ, Phase 2 ingest) — a
+  // Postgres read, not a RentCast call, so it costs zero quota.
+  const countyMedian = await getAcsCountyMedian(cfg.countyFips);
+
+  const now = new Date().toISOString();
+  const scored: Listing[] = mapped.map((listing) => {
+    const result = scoreUSListing(listing, cityMedianPpsf, countyMedian?.value ?? null);
+    return {
+      ...listing,
+      preScore: result.total,
+      preTier: result.tier,
+      preSignals: result.signals,
+      source: "cron",
+      enrichedAt: now,
+    };
+  });
+
+  // Top-N by score — see TOP_N_PER_CITY's doc comment above.
+  scored.sort((a, b) => (b.preScore ?? 0) - (a.preScore ?? 0));
+  const top = scored.slice(0, TOP_N_PER_CITY);
+
+  return { listings: top, fetchedCount: discovered.length };
+}
+
+// ---------------------------------------------------------------------------
+// Full refresh across all configured metros
+// ---------------------------------------------------------------------------
+
+export interface USDiscoverCityRunResult {
+  city: string;
+  state: string;
+  slug: string;
+  skipped: boolean;
+  skipReason?: string;
+  fetched: number;
+  scored: number;
+}
+
+export interface USDiscoverRefreshResult {
+  cities: USDiscoverCityRunResult[];
+  totalListings: number;
+  quotaAfter: Awaited<ReturnType<typeof getRentcastQuotaStatus>>;
+}
+
+/**
+ * Iterate US_DISCOVER_CITIES, skip any city refreshed within
+ * US_DISCOVER_REFRESH_DAYS, fetch+score the rest (1 RentCast call each),
+ * merge into the shared KV listings store (the SAME listings:all key CA
+ * listings live in — see kv/listings.ts's doc comment; US listings carry
+ * province = USPS state code, distinguished from CA province codes via
+ * isUSState() in assessment/us.ts), and stamp each refreshed city's
+ * last-refresh timestamp.
+ */
+export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
+  const results: USDiscoverCityRunResult[] = [];
+  const intervalMs = refreshIntervalDays() * 24 * 60 * 60 * 1000;
+  const allNew: Listing[] = [];
+
+  for (const cfg of US_DISCOVER_CITIES) {
+    const lastRefresh = await getLastRefresh(cfg.slug);
+    if (lastRefresh && Date.now() - lastRefresh < intervalMs) {
+      const ageDays = Math.round((Date.now() - lastRefresh) / 86_400_000);
+      results.push({
+        city: cfg.name,
+        state: cfg.state,
+        slug: cfg.slug,
+        skipped: true,
+        skipReason: `refreshed ${ageDays}d ago (< ${refreshIntervalDays()}d interval)`,
+        fetched: 0,
+        scored: 0,
+      });
+      continue;
+    }
+
+    try {
+      const { listings, fetchedCount } = await fetchUSCityListings(cfg);
+      results.push({
+        city: cfg.name,
+        state: cfg.state,
+        slug: cfg.slug,
+        skipped: false,
+        fetched: fetchedCount,
+        scored: listings.length,
+      });
+      allNew.push(...listings);
+      await setLastRefresh(cfg.slug);
+    } catch (err) {
+      results.push({
+        city: cfg.name,
+        state: cfg.state,
+        slug: cfg.slug,
+        skipped: false,
+        skipReason: `error: ${err instanceof Error ? err.message : String(err)}`,
+        fetched: 0,
+        scored: 0,
+      });
+    }
+  }
+
+  if (allNew.length > 0) {
+    const existing = await getAllListings();
+    const newKeys = new Set(allNew.map((l) => `${l.address}|${l.city}|${l.province}`.toLowerCase()));
+    const kept = existing.filter((l) => !newKeys.has(`${l.address}|${l.city}|${l.province}`.toLowerCase()));
+    await writeAllListings([...kept, ...allNew]);
+  }
+
+  const quotaAfter = await getRentcastQuotaStatus();
+  return {
+    cities: results,
+    totalListings: allNew.length,
+    quotaAfter,
+  };
+}

@@ -289,6 +289,42 @@ export async function purgeStaleSlugKeys(validSlugs: Set<string>): Promise<numbe
   return purged;
 }
 
+// ---------------------------------------------------------------------------
+// Generic metadata key/value helpers
+//
+// Small values outside the listings:* key schema above — used by
+// src/lib/pipeline/us-discover.ts to persist a per-city last-refresh
+// timestamp ("us-discover:last-refresh:{citySlug}") so the cadence gate
+// (US_DISCOVER_REFRESH_DAYS) survives across cron runs / cold starts.
+// Reuses this file's own kvGet/kvSet primitives; falls back to an
+// in-process Map when KV isn't configured — same degrade-not-disable
+// philosophy as rentcast.ts's quota guard (non-persistent locally, real
+// cross-request persistence once KV is linked in Vercel).
+// ---------------------------------------------------------------------------
+
+const memMeta = new Map<string, string>();
+
+export async function getMetaValue(key: string): Promise<string | null> {
+  if (!kvAvailable()) return memMeta.get(key) ?? null;
+
+  try {
+    const raw = await kvGet(key);
+    if (typeof raw === "string") return raw;
+    if (raw != null) return JSON.stringify(raw);
+  } catch {
+    // Fall through
+  }
+  return null;
+}
+
+export async function setMetaValue(key: string, value: string): Promise<void> {
+  if (!kvAvailable()) {
+    memMeta.set(key, value);
+    return;
+  }
+  await kvSet(key, value);
+}
+
 /**
  * Get metadata about stored listings.
  */

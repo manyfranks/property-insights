@@ -154,3 +154,51 @@ export function buildCityMetadata(listings: Listing[]): {
 export function getCityBySlug(slug: string, cities: CityMeta[]): CityMeta | undefined {
   return cities.find((c) => c.slug === slug);
 }
+
+// ---------------------------------------------------------------------------
+// US Discover — cached, scored, browsable US listings by metro (see
+// src/lib/pipeline/us-discover.ts). No separate registry wiring is needed
+// for /discover/{slug} to resolve these: buildCityMetadata() above already
+// derives CityMeta entries dynamically from whatever listings exist in KV
+// (city/province fields), so once US listings land in the shared listings
+// store, "/discover/austin" etc. just work. This config exists purely to
+// drive the *fetch* side (which metros to pull, how often, which county to
+// compare against) — the two knobs that matter for scaling off RentCast's
+// free tier.
+// ---------------------------------------------------------------------------
+
+export interface USDiscoverCityConfig {
+  /** RentCast /listings/sale `city` param. */
+  name: string;
+  /** USPS state code — RentCast `state` param, also Listing.province. */
+  state: string;
+  /** /discover/{slug} route slug. Matches cityToSlug(name) so US and CA
+   * cities share one slug convention (see buildCityMetadata above). */
+  slug: string;
+  /** regional_econ geo_fips ("US-SSCCC") for the county this metro sits
+   * in — used by us-discover.ts's county-median-value scoring signal via
+   * src/lib/db/regional-econ.ts. Hardcoded per metro rather than geocoded
+   * per listing: this list is a small, curated, hand-picked set of metros,
+   * not something derived from arbitrary listing addresses. */
+  countyFips: string;
+}
+
+/**
+ * US Discover metro list — start small to respect RentCast's free-tier
+ * quota (45 req/mo, see src/lib/rentcast.ts's module doc). Each metro costs
+ * exactly ONE /listings/sale request per refresh (one city-wide call, no
+ * per-listing detail fetches — see us-discover.ts's fetchUSCityListings).
+ * At the default US_DISCOVER_REFRESH_DAYS cadence (3 days), 3 metros cost
+ * ~30 requests/month, leaving headroom under the 45/mo cap for on-demand
+ * /assess lookups that hit the same quota counter.
+ *
+ * Foundation tier ($74/mo, materially higher request cap) → drop
+ * US_DISCOVER_REFRESH_DAYS to 1 (daily refresh) and grow this list past
+ * 10 cities. Neither change touches us-discover.ts itself — both knobs
+ * live here (this array) and in the env var.
+ */
+export const US_DISCOVER_CITIES: USDiscoverCityConfig[] = [
+  { name: "Austin", state: "TX", slug: "austin", countyFips: "US-48453" }, // Travis County
+  { name: "Miami", state: "FL", slug: "miami", countyFips: "US-12086" }, // Miami-Dade County
+  { name: "Phoenix", state: "AZ", slug: "phoenix", countyFips: "US-04013" }, // Maricopa County
+];

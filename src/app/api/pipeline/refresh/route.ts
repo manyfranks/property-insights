@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { searchListings, fetchDetail, checkFreshness, fetchSoldListings, ZoocasaSoldRaw } from "@/lib/zoocasa";
 import { getAllListings, writeAllListings, purgeStaleSlugKeys } from "@/lib/kv/listings";
 import { enrichListing } from "@/lib/pipeline/enrich";
+import { refreshUSDiscover } from "@/lib/pipeline/us-discover";
 import { slugify } from "@/lib/utils";
 import { Listing } from "@/lib/types";
 
@@ -416,6 +417,34 @@ export async function GET(request: Request) {
       else bySource.cron++;
     }
 
+    // -----------------------------------------------------------------------
+    // Phase 9: US Discover refresh (RentCast, quota-guarded — see
+    // src/lib/pipeline/us-discover.ts). Runs after the CA refresh has
+    // already written its results to KV so a US failure can never undo or
+    // block the CA update; isolated in its own try/catch for the same
+    // reason — a RentCast outage or quota exhaustion here must not turn
+    // this whole cron run into a 500.
+    // -----------------------------------------------------------------------
+    let usDiscover: Awaited<ReturnType<typeof refreshUSDiscover>> | { error: string } | null = null;
+    try {
+      usDiscover = await refreshUSDiscover();
+      log.push(
+        `[us-discover] ${usDiscover.totalListings} listings across ${usDiscover.cities.length} cities, ` +
+          `quota ${usDiscover.quotaAfter.used}/${usDiscover.quotaAfter.limit} (${elapsed()}ms total)`
+      );
+      for (const c of usDiscover.cities) {
+        log.push(
+          `[us-discover] ${c.city}, ${c.state}: ${
+            c.skipped ? `skipped (${c.skipReason})` : `${c.scored} scored (${c.skipReason ?? "ok"})`
+          }`
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      usDiscover = { error: message };
+      log.push(`[us-discover] failed: ${message}`);
+    }
+
     return NextResponse.json({
       success: true,
       totalListings,
@@ -423,6 +452,7 @@ export async function GET(request: Request) {
       byProvince: Object.fromEntries(byProvince),
       bySource,
       cities: summary,
+      usDiscover,
       log,
     });
   } catch (err) {

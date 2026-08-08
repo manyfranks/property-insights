@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getAllListings } from "@/lib/kv/listings";
 import { analyzeListing } from "@/lib/analyze";
+import { isUSState } from "@/lib/assessment/us";
 import { slugify } from "@/lib/utils";
 import DashboardClient from "@/components/dashboard-client";
 
@@ -11,14 +13,45 @@ export const metadata: Metadata = {
   alternates: { canonical: "/dashboard" },
 };
 
+function pillClass(active: boolean): string {
+  return `px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
+    active ? "bg-foreground text-white" : "border border-border text-muted hover:text-foreground"
+  }`;
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ city?: string }>;
+  searchParams: Promise<{ city?: string; country?: string }>;
 }) {
-  const { city: initialCity } = await searchParams;
+  const { city: initialCity, country } = await searchParams;
   const listings = await getAllListings();
-  const analyses = listings.map((l) => analyzeListing(l));
+
+  // Country filter (CA | US) — DashboardClient's table has a fixed column
+  // set with no province/state column (predates the US expansion), and
+  // it's not in this task's file ownership, so reshaping it is out of
+  // scope. A lightweight server-rendered country toggle is the lower-
+  // surgery way to make US Discover listings (src/lib/pipeline/us-discover.ts)
+  // reachable here without touching that shared component: it filters the
+  // rows passed into DashboardClient, nothing inside DashboardClient changes.
+  const usCount = listings.filter((l) => isUSState(l.province)).length;
+  const caCount = listings.length - usCount;
+  const countryFilter = country === "US" || country === "CA" ? country : null;
+  const scopedListings = countryFilter
+    ? listings.filter((l) => (isUSState(l.province) ? "US" : "CA") === countryFilter)
+    : listings;
+
+  const analyses = scopedListings.map((l) => {
+    const a = analyzeListing(l);
+    // US Discover listings carry a pre-computed score augmented with
+    // county-median-value and price/sqft-outlier structural signals that
+    // scoreV2 alone has no inputs for — prefer that over analyzeListing()'s
+    // plain scoreV2 recompute. No-op for CA listings.
+    if (l.preScore != null && l.preTier) {
+      return { ...a, score: { ...a.score, total: l.preScore, tier: l.preTier } };
+    }
+    return a;
+  });
 
   const rows = analyses.map((a) => ({
     address: a.listing.address,
@@ -46,9 +79,24 @@ export default async function DashboardPage({
   return (
     <main className="max-w-5xl mx-auto px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight mb-1">Discover</h1>
-      <p className="text-sm text-muted mb-8">
+      <p className="text-sm text-muted mb-4">
         {analyses.length} properties analyzed &middot; BC, AB, ON
+        {usCount > 0 && " + US metros"}
       </p>
+
+      {usCount > 0 && (
+        <div className="flex gap-2 mb-6">
+          <Link href="/dashboard" className={pillClass(!countryFilter)}>
+            All ({listings.length})
+          </Link>
+          <Link href="/dashboard?country=CA" className={pillClass(countryFilter === "CA")}>
+            Canada ({caCount})
+          </Link>
+          <Link href="/dashboard?country=US" className={pillClass(countryFilter === "US")}>
+            United States ({usCount})
+          </Link>
+        </div>
+      )}
 
       <DashboardClient
         rows={rows}
