@@ -11,34 +11,47 @@ function fmt(n: number): string {
   return "$" + Math.round(n).toLocaleString();
 }
 
+/** Minimal title-only render that can't itself throw — used both for the
+ * "not found" case and as a last-resort fallback if county lookup throws
+ * unexpectedly, so this route never 500s. */
+function fallbackImage(message: string) {
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#fafafa",
+          fontSize: "32px",
+          color: "#6b7280",
+        }}
+      >
+        {message}
+      </div>
+    ),
+    { ...size }
+  );
+}
+
 export default async function CountyOgImage({
   params,
 }: {
   params: Promise<{ state: string; county: string }>;
 }) {
   const { state: stateSlug, county: countySlug } = await params;
-  const county = getCountyBySlug(stateSlug, countySlug);
+
+  let county;
+  try {
+    county = getCountyBySlug(stateSlug, countySlug);
+  } catch {
+    return fallbackImage("Property Insights");
+  }
 
   if (!county) {
-    return new ImageResponse(
-      (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "#fafafa",
-            fontSize: "32px",
-            color: "#6b7280",
-          }}
-        >
-          County not found
-        </div>
-      ),
-      { ...size }
-    );
+    return fallbackImage("County not found");
   }
 
   const panel = await getCountyMarketPanel(county.fips).catch(() => null);
@@ -106,6 +119,7 @@ export default async function CountyOgImage({
         {/* County name */}
         <div
           style={{
+            display: "flex",
             fontSize: "48px",
             fontWeight: 700,
             color: "#171717",

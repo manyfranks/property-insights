@@ -55,10 +55,9 @@ export default function OgImage() {
         </div>
 
         {/* Subline */}
-        <div style={{ fontSize: "22px", color: "#6b7280", lineHeight: 1.5 }}>
-          See how far asking price sits above or below the
-          <br />
-          government-assessed value — free, no sign-up.
+        <div style={{ display: "flex", flexDirection: "column", fontSize: "22px", color: "#6b7280", lineHeight: 1.5 }}>
+          <span>See how far asking price sits above or below the</span>
+          <span>government-assessed value — free, no sign-up.</span>
         </div>
 
         {/* URL */}

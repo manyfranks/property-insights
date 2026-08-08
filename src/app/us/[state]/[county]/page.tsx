@@ -380,7 +380,7 @@ export default async function CountyPage({
           href="/"
           className="text-xs font-medium text-foreground underline underline-offset-2 hover:text-foreground/70 transition-colors"
         >
-          Get a modeled estimate &rarr;
+          Search any {county.county} address &rarr;
         </Link>
       </div>
 

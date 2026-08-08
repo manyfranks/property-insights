@@ -50,17 +50,15 @@ export default function OgImage() {
         </div>
 
         {/* Headline */}
-        <div style={{ fontSize: "48px", fontWeight: 700, color: "#171717", lineHeight: 1.2, marginBottom: "24px" }}>
-          Know what to offer on
-          <br />
-          any property.
+        <div style={{ display: "flex", flexDirection: "column", fontSize: "48px", fontWeight: 700, color: "#171717", lineHeight: 1.2, marginBottom: "24px" }}>
+          <span>Know what to offer on</span>
+          <span>any property.</span>
         </div>
 
         {/* Subline */}
-        <div style={{ fontSize: "22px", color: "#6b7280", lineHeight: 1.5 }}>
-          Government assessments, seller motivation scoring,
-          <br />
-          and AI-recommended offer prices.
+        <div style={{ display: "flex", flexDirection: "column", fontSize: "22px", color: "#6b7280", lineHeight: 1.5 }}>
+          <span>Government assessments, seller motivation scoring,</span>
+          <span>and AI-recommended offer prices.</span>
         </div>
 
         {/* URL */}

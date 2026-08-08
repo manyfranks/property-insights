@@ -12,59 +12,78 @@ function fmt(n: number): string {
   return "$" + n.toLocaleString();
 }
 
+/** Minimal title-only render that can't itself throw — used both for the
+ * "not found" case and as a last-resort fallback if anything upstream
+ * (KV fetch, stats computation) throws unexpectedly, so this route never 500s. */
+function fallbackImage(message: string) {
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#fafafa",
+          fontSize: "32px",
+          color: "#6b7280",
+        }}
+      >
+        {message}
+      </div>
+    ),
+    { ...size }
+  );
+}
+
 export default async function CityOgImage({
   params,
 }: {
   params: Promise<{ city: string }>;
 }) {
   const { city: slug } = await params;
-  const listings = await getAllListings();
-  const { cities } = buildCityMetadata(listings);
-  const meta = getCityBySlug(slug, cities);
 
-  if (!meta) {
-    return new ImageResponse(
-      (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "#fafafa",
-            fontSize: "32px",
-            color: "#6b7280",
-          }}
-        >
-          City not found
-        </div>
-      ),
-      { ...size }
-    );
+  let meta;
+  let listings;
+  try {
+    listings = await getAllListings();
+    const { cities } = buildCityMetadata(listings);
+    meta = getCityBySlug(slug, cities);
+  } catch {
+    return fallbackImage("Property Insights");
   }
 
-  // Compute stats — mirrors page.tsx logic
-  const cityListings = listings.filter((l) => l.city === meta.name);
-  const analyses = cityListings.map((l) => analyzeListing(l));
+  if (!meta) {
+    return fallbackImage("City not found");
+  }
 
-  const withSavings = analyses.filter((a) => a.offer && (a.offer.savings ?? 0) > 0);
-  const avgSavings =
-    withSavings.length > 0
-      ? Math.round(
-          withSavings.reduce((sum, a) => sum + (a.offer?.savings ?? 0), 0) / withSavings.length
-        )
-      : 0;
-  const avgDom =
-    analyses.length > 0
-      ? Math.round(analyses.reduce((sum, a) => sum + a.listing.dom, 0) / analyses.length)
-      : 0;
+  let stats: { label: string; value: string }[];
+  try {
+    // Compute stats — mirrors page.tsx logic
+    const cityListings = listings.filter((l) => l.city === meta.name);
+    const analyses = cityListings.map((l) => analyzeListing(l));
 
-  const stats = [
-    { label: "Listings", value: String(analyses.length) },
-    { label: "Avg Savings", value: fmt(avgSavings) },
-    { label: "Avg DOM", value: String(avgDom) },
-  ];
+    const withSavings = analyses.filter((a) => a.offer && (a.offer.savings ?? 0) > 0);
+    const avgSavings =
+      withSavings.length > 0
+        ? Math.round(
+            withSavings.reduce((sum, a) => sum + (a.offer?.savings ?? 0), 0) / withSavings.length
+          )
+        : 0;
+    const avgDom =
+      analyses.length > 0
+        ? Math.round(analyses.reduce((sum, a) => sum + a.listing.dom, 0) / analyses.length)
+        : 0;
+
+    stats = [
+      { label: "Listings", value: String(analyses.length) },
+      { label: "Avg Savings", value: fmt(avgSavings) },
+      { label: "Avg DOM", value: String(avgDom) },
+    ];
+  } catch {
+    stats = [];
+  }
 
   return new ImageResponse(
     (
@@ -118,6 +137,7 @@ export default async function CityOgImage({
         {/* City name */}
         <div
           style={{
+            display: "flex",
             fontSize: "52px",
             fontWeight: 700,
             color: "#171717",

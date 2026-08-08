@@ -23,37 +23,55 @@ function fmt(n: number): string {
   return "$" + n.toLocaleString();
 }
 
+/** Minimal title-only render that can't itself throw — used both for the
+ * "not found" case and as a last-resort fallback if anything upstream
+ * (KV fetch, analysis) throws unexpectedly, so this route never 500s. */
+function fallbackImage(message: string) {
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#fafafa",
+          fontSize: "32px",
+          color: "#6b7280",
+        }}
+      >
+        {message}
+      </div>
+    ),
+    { ...size }
+  );
+}
+
 export default async function PropertyOgImage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const listing = await getListingBySlug(slug);
 
-  if (!listing) {
-    return new ImageResponse(
-      (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "#fafafa",
-            fontSize: "32px",
-            color: "#6b7280",
-          }}
-        >
-          Property not found
-        </div>
-      ),
-      { ...size }
-    );
+  let listing;
+  try {
+    listing = await getListingBySlug(slug);
+  } catch {
+    return fallbackImage("Property Insights");
   }
 
-  const analysis = analyzeListing(listing);
+  if (!listing) {
+    return fallbackImage("Property not found");
+  }
+
+  let analysis;
+  try {
+    analysis = analyzeListing(listing);
+  } catch {
+    return fallbackImage("Property Insights");
+  }
   const tier = analysis.score.tier;
   const tierColor = TIER_COLORS[tier] || TIER_COLORS.WATCH;
   const tierLabel = TIER_LABELS[tier] || "Cool";
@@ -120,7 +138,7 @@ export default async function PropertyOgImage({
         <div style={{ fontSize: "42px", fontWeight: 700, color: "#171717", lineHeight: 1.2, marginBottom: "8px" }}>
           {listing.address}
         </div>
-        <div style={{ fontSize: "24px", color: "#6b7280", marginBottom: "48px" }}>
+        <div style={{ display: "flex", fontSize: "24px", color: "#6b7280", marginBottom: "48px" }}>
           {listing.city}, {listing.province}
         </div>
 
