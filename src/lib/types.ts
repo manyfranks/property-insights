@@ -60,6 +60,13 @@ export interface Listing {
   // data this bundle is built from — see us-advantage.ts's module doc).
   preUsAdvantage?: UsAdvantageBundle;
   preUsComparables?: UsCompSupport;
+  // Anchor-plausibility verdict (src/lib/pipeline/us-assess.ts's
+  // assessAnchorPlausibility) — persisted so /property/[slug] and the
+  // narrative can render/explain a demoted assessment without recomputing
+  // it. Set whenever a preAssessment exists; undefined otherwise (nothing
+  // to evaluate) and for pre-existing cached listings from before this
+  // field existed.
+  preAnchorDecision?: AnchorPlausibility;
   // Lifecycle metadata
   source?: "cron" | "user";
   enrichedAt?: string;
@@ -85,6 +92,45 @@ export interface Assessment {
   // engineering) > modeled (statistical estimate, e.g. area median) >
   // proxy (rough stand-in) > missing (no assessment at all).
   evidenceClass?: "observed" | "derived" | "modeled" | "proxy" | "missing";
+}
+
+// ---------------------------------------------------------------------------
+// Anchor plausibility (US-only — see src/lib/pipeline/us-assess.ts's
+// assessAnchorPlausibility). Guards against feeding offer-model.ts an
+// assessed value that's decoupled from market reality (agricultural
+// exemptions, assessment caps, partial-parcel valuations, or a flatly
+// aspirational asking price) as though it were a trustworthy anchor.
+// ---------------------------------------------------------------------------
+
+/** "anchor" = the tax-assessed value is plausible and should drive the
+ * offer model as usual. "context_only" = the assessed value is still shown
+ * (transparency), but demoted out of the offer-anchoring role. */
+export type AnchorVerdict = "anchor" | "context_only";
+
+/** Enumerated, narrative-ready reasons an assessed value got demoted (or,
+ * for "asking_outlier", why the ASKING price is the one flagged instead). */
+export type AnchorDemotionReason =
+  | "possible_exemption_or_cap"
+  | "extreme_delta"
+  | "basis_mismatch"
+  | "asking_outlier";
+
+export interface AnchorPlausibility {
+  verdict: AnchorVerdict;
+  /** assessedValue / askingPrice. Null when there was no asking price or
+   * assessed value to compare (nothing to evaluate). */
+  ratio: number | null;
+  /** Null when verdict is "anchor" and nothing noteworthy triggered the
+   * check (the ordinary in-band case). Non-null on both "context_only" AND
+   * the "asking_outlier" flavor of "anchor" (assessed stays trustworthy,
+   * but the finding is still worth surfacing). */
+  reason: AnchorDemotionReason | null;
+  /** What the offer model actually anchors on given this verdict. */
+  anchorSource: "tax_assessed" | "avm" | "language";
+  confidence: "high" | "medium" | "low";
+  /** One-line, render-safe explanation — used directly by the UI caveat
+   * and fed to the narrative prompt so it can explain the anchor choice. */
+  note: string;
 }
 
 export interface ListingHistory {

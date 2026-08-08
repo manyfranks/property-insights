@@ -45,7 +45,7 @@
  */
 
 import OpenAI from "openai";
-import type { Assessment, Listing, OfferResult } from "../types";
+import type { AnchorPlausibility, Assessment, Listing, OfferResult } from "../types";
 import type { UsCompSupport } from "./us-assess";
 import type { UsAdvantageBundle } from "./us-advantage";
 import type { CountyMarketPanel } from "../db/regional-econ";
@@ -87,6 +87,12 @@ export interface UsNarrativeContext {
   comparables: UsCompSupport;
   advantage: UsAdvantageBundle;
   marketPanel: CountyMarketPanel | null;
+  /** Anchor plausibility verdict (src/lib/pipeline/us-assess.ts's
+   * assessAnchorPlausibility) — undefined when there was no assessed value
+   * to evaluate. When present with verdict "context_only" (or the
+   * "asking_outlier" flavor of "anchor"), both the LLM prompt and the
+   * deterministic fallback explain the anchor choice in one sentence. */
+  anchorDecision?: AnchorPlausibility;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,12 +103,19 @@ export interface UsNarrativeContext {
 // ---------------------------------------------------------------------------
 
 export function deterministicUsNarrative(context: UsNarrativeContext): string {
-  const { listing, offer, advantage } = context;
+  const { listing, offer, advantage, anchorDecision } = context;
   const { triangulation, equitySignal, overAssessment } = advantage;
   const addr = listing.address;
 
   const parts: string[] = [];
   parts.push(`${addr} — listed at ${fmt(listing.price)} in ${listing.city}, ${listing.province}.`);
+
+  // One-sentence explanation of the anchor choice whenever the anchor gate
+  // found something worth flagging — demoted ("context_only") or the
+  // asking-outlier flavor of a confirmed anchor.
+  if (anchorDecision && anchorDecision.reason) {
+    parts.push(anchorDecision.note);
+  }
 
   if (triangulation.triangulatedValue != null) {
     parts.push(
@@ -218,6 +231,17 @@ function buildOverAssessmentBlock(overAssessment: UsAdvantageBundle["overAssessm
   return `Over-assessment flag: ${overAssessment.note}`;
 }
 
+/** Structured anchor-plausibility input (src/lib/pipeline/us-assess.ts's
+ * assessAnchorPlausibility) — empty string when there's nothing to flag
+ * (verdict "anchor" with no reason), matching the other optional blocks'
+ * "omit when not applicable" convention. */
+function buildAnchorDecisionBlock(anchorDecision: AnchorPlausibility | undefined): string {
+  if (!anchorDecision || !anchorDecision.reason) return "";
+  const verdictLabel = anchorDecision.verdict === "context_only" ? "DEMOTED (context only, not used as offer anchor)" : "CONFIRMED (still the anchor)";
+  return `ANCHOR STATUS: ${verdictLabel} — reason: ${anchorDecision.reason}. ${anchorDecision.note}
+INSTRUCTION: Explain this anchor decision in exactly one sentence somewhere in the narrative — why the offer anchors where it does given this finding. Do not treat it as a footnote; it changes what the offer is defensible on.`;
+}
+
 function buildComparablesBlock(comparables: UsCompSupport): string {
   if (comparables.confidence === "none" || comparables.comparables.length === 0) {
     return "Comparables: No usable AVM comparables for this address.";
@@ -282,7 +306,7 @@ Return ONLY valid JSON:
 {"signals": ["signal1"], "confidence": 0.0, "narrative": "Paragraph one.\\n\\nParagraph two.\\n\\nParagraph three."}`;
 
 function buildUserMessage(context: UsNarrativeContext): string {
-  const { listing, assessment, offer, signals, comparables, advantage, marketPanel } = context;
+  const { listing, assessment, offer, signals, comparables, advantage, marketPanel, anchorDecision } = context;
 
   const sqft = listing.sqft ? `${listing.sqft} sqft` : "sqft unknown";
   const year = listing.yearBuilt ? `built ${listing.yearBuilt}` : "year unknown";
@@ -291,6 +315,7 @@ function buildUserMessage(context: UsNarrativeContext): string {
     listing.sqft && parseInt(listing.sqft) > 0 ? `$${Math.round(listing.price / parseInt(listing.sqft))}/sqft` : "price/sqft unknown";
 
   const overAssessmentBlock = buildOverAssessmentBlock(advantage.overAssessment);
+  const anchorDecisionBlock = buildAnchorDecisionBlock(anchorDecision);
 
   return `Property: ${listing.address}, ${listing.city}, ${listing.province}
 Asking price: ${fmt(listing.price)}
@@ -299,7 +324,7 @@ Price per sqft: ${priceSqft}
 Days on market: ${listing.dom ?? 0}
 
 ${buildAssessmentBlock(assessment)}
-
+${anchorDecisionBlock ? "\n" + anchorDecisionBlock + "\n" : ""}
 ${buildTriangulationBlock(advantage.triangulation)}
 
 ${buildEquityBlock(advantage.equitySignal)}

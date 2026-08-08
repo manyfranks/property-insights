@@ -29,9 +29,10 @@
  * honestly-labeled UsCompSupport shape instead of forcing ComparableResult.
  */
 
-import type { Assessment, Listing } from "../types";
+import type { Assessment, AnchorDemotionReason, AnchorPlausibility, Listing } from "../types";
 import type { RentCastAvm, RentCastPropertyRecord, USPropertyBundle } from "../rentcast";
 import { assessmentBasisForState } from "../rentcast";
+import { fmt } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Assessment
@@ -96,6 +97,342 @@ export function buildUsAssessment(
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Anchor plausibility gate
+// ---------------------------------------------------------------------------
+//
+// buildUsAssessment() above answers "do we have an assessed value at all";
+// this answers a separate question offer-model.ts never asks: "is that
+// assessed value even a sane thing to anchor an offer on for THIS listing."
+// County assessors are not a uniform market-value oracle — agricultural
+// exemptions, assessment caps (AZ's Limited Property Value, FL's
+// Save-Our-Homes), and partial-parcel/data-mismatch quirks routinely
+// produce an assessed figure that's nowhere near what the property would
+// transact for. offerModel()'s ratio-vs-asking banding (offer-model.ts) was
+// tuned for ordinary 10-40% over/under pricing, not a 20x gap — feeding it
+// one produces an anchor that LOOKS precise (it's still "3% above assessed")
+// but is actually circular: assessed is wrong, so everything built on top
+// of it is wrong too. This gate runs BEFORE offer-model.ts and decides
+// whether the assessed value is even eligible to be that anchor.
+//
+// Flagship case this exists for: 12400 Cedar St, Austin — $9.9M asking,
+// $452,339 Travis County (TCAD) assessed value. TCAD's own bulk roll data
+// (see ../assessment/us-county/travis.ts) reports the SAME figure as both
+// "assessed" and "market" value for this parcel — consistent with an
+// agricultural-use valuation or a partial-parcel record (a ~2.9-acre lot on
+// Lake Travis carrying an ag exemption, valued at production use rather
+// than market use) rather than a data-entry error. Left unchecked, that
+// $452k fed straight into offerModel() as if it were market-representative
+// produced a $7.72M "recommended offer" justified by circular reasoning:
+// the assessment was never a proxy for what this property is worth.
+//
+// Empirically validated: a data-quality audit (docs/plans/
+// 10-RENTCAST-DATA-QUALITY.md, 36 /properties + 7 /avm/value calls against a
+// second, isolated free-tier key — zero cost to this pipeline's quota)
+// cross-referenced RentCast's tax/AVM fields against county-assessor ground
+// truth on a stratified sample of this seeded pool. Two findings shaped the
+// thresholds and hierarchy below: (1) the [0.4, 2.5] band on its own is a
+// good discriminator — it caught the genuinely-anomalous cases while
+// passing 86% of AVM samples; (2) AVM is the most reliable single dollar
+// signal measured (14% of samples fell outside that band, vs 47% for
+// RentCast's own taxAssessments and 41% for county-assessor values,
+// including two Maricopa county figures wrong by 50-59x) — so this gate
+// treats a materially-disagreeing AVM as authoritative over EITHER
+// tax-based source, not just as a last-resort tiebreaker (see the
+// assessed_ratio AVM-led override below). Both sources get equal suspicion
+// here regardless of `assessment.source` — "county_assessor scraped it" is
+// not automatically more trustworthy than "RentCast reported it" (Phoenix's
+// RentCast taxAssessments ran 5-20x lower than Maricopa's own capped figure
+// on half the audited sample).
+
+/** Plausible band for a basis where assessed value is meant to track market
+ * value fairly closely (assessmentBasis "market_value" — BC-style, or a
+ * RentCast-AVM-as-assessment fallback with no basis quirks). Matches the
+ * general real-estate norm that asking prices run somewhere between "at a
+ * discount for a stale/undesirable listing" and "a premium for a hot one" —
+ * 0.4x-2.5x assessed is generous enough to cover both without flagging
+ * ordinary market variance. */
+const DEFAULT_BAND = { lo: 0.4, hi: 2.5 };
+
+/** Wider band for basis "assessed_ratio" (most US states — AZ's LPV, FL's
+ * SOH-capped AV, and TX's uncapped-but-still-not-always-market assessed
+ * value all fall here): these schemes are BY DESIGN allowed to run below
+ * market for long-tenure/capped owners, so a merely-low ratio isn't
+ * evidence of anything wrong. Widened relative to DEFAULT_BAND and paired
+ * with a lower confidence when nothing corroborates it (see
+ * ASSESSED_RATIO_UNCONFIRMED_CONFIDENCE below). */
+const ASSESSED_RATIO_BAND = { lo: 0.25, hi: 3.0 };
+
+/** When basis is "assessed_ratio" and a second county-native figure is
+ * available (marketValueHint — the assessor's own Full-Cash/Just-Value
+ * figure, distinct from its capped assessed value; see
+ * ../../scripts/enrich-us-from-assessors.ts's CountyAssessorResult.
+ * marketValue), compare THAT against asking instead of the raw assessed
+ * value. If it lands in this band, the low assessed/asking ratio is fully
+ * explained by the state's capping scheme — not a red flag — so the
+ * assessment stays the anchor. Asymmetric on purpose: allows some
+ * cushion for negotiation room on the high side (asking above the
+ * county's own market figure is completely ordinary), tighter on the low
+ * side (the assessor's market figure should rarely run BELOW asking by
+ * much for this check to still mean "confirmed"). */
+const MARKET_HINT_VS_ASKING_BAND = { lo: 0.6, hi: 1.6 };
+
+/** How closely RentCast's AVM has to land next to a value for that value to
+ * count as "independently corroborated" by the AVM tiebreaker — ±30%,
+ * matching the task's own tiebreaker spec (an AVM is itself a modeled
+ * estimate with real error bars; ±30% is generous enough to allow for that
+ * while still meaningfully distinguishing "confirms" from "unrelated"). */
+const AVM_AGREE_PCT = 0.3;
+
+/** When the assessor's own second figure (marketValueHint) agrees with its
+ * assessed value within this band, both of the county's own numbers are
+ * telling the same story (assessed and "market" are the same low figure) —
+ * the textbook signature of an agricultural exemption or partial-parcel
+ * valuation rather than a simple data error. */
+const MARKET_HINT_VS_ASSESSED_AGREE_PCT = 0.25;
+
+/** Below/above these, the assessed/asking gap is large enough that
+ * "extreme_delta" is the honest label regardless of any partial
+ * corroboration — a >6.7x or <0.15x gap is well past what any legitimate
+ * assessment scheme produces even in its most capped form. */
+const EXTREME_RATIO_LOW = 0.15;
+const EXTREME_RATIO_HIGH = 6.0;
+
+/** Acquisition-value states (California's Prop 13) are EXPECTED to diverge
+ * from market by design (see triangulateValuation()'s identical exclusion
+ * in us-advantage.ts) — only demote when the gap is large enough that even
+ * that generous expectation can't explain it. */
+const ACQUISITION_VALUE_LOW_RATIO = 0.35;
+
+function withinPct(a: number, b: number, tolerancePct: number): boolean {
+  if (b === 0) return a === 0;
+  return Math.abs(a - b) / Math.abs(b) <= tolerancePct;
+}
+
+function ratioLabel(ratio: number): string {
+  return `${ratio.toFixed(ratio < 1 ? 3 : 2)}x`;
+}
+
+/** Best-effort recovery of a county assessor's own "market value" figure
+ * (Full-Cash Value, Just Value, etc. — distinct from its capped assessed
+ * value) from the human-readable assessmentNote string that
+ * scripts/enrich-us-from-assessors.ts already writes onto the Listing
+ * (format: "{year}: ${assessed} assessed (${market} market) — county
+ * assessor" — see that script's applyResult()). That script's persisted
+ * Assessment shape doesn't carry marketValue as a structured field, and
+ * this module doesn't own that script, so this is a pragmatic parse of the
+ * one place the figure already survives to KV rather than a fabricated
+ * number — returns null (not a guess) whenever the pattern doesn't match. */
+export function parseMarketValueFromAssessmentNote(note: string | null | undefined): number | null {
+  if (!note) return null;
+  const match = note.match(/\(\$([\d,]+)\s*market\)/i);
+  if (!match) return null;
+  const value = Number(match[1].replace(/,/g, ""));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
+ * Anchor plausibility gate — pure function, no network/KV access. Decides
+ * whether an assessed value is trustworthy enough to drive offer-model.ts's
+ * ratio-vs-asking banding ("anchor"), or should be demoted to display-only
+ * context while the offer re-anchors elsewhere ("context_only"). See the
+ * module doc above for the case this exists to catch.
+ *
+ * `avmValue` is RentCast's automated valuation model estimate for the
+ * SUBJECT property (not to be confused with `marketValueHint`, the county
+ * assessor's own second figure) — used only as a tiebreaker once the
+ * assessed/asking ratio is already outside the plausible band, per the
+ * "asking_outlier" and confirmed-demotion branches below.
+ */
+export function assessAnchorPlausibility(input: {
+  assessedValue: number;
+  assessmentBasis: Assessment["assessmentBasis"] | null | undefined;
+  askingPrice: number | null;
+  avmValue: number | null;
+  marketValueHint: number | null;
+}): AnchorPlausibility {
+  const { assessedValue, assessmentBasis, askingPrice, avmValue, marketValueHint } = input;
+
+  if (!askingPrice || askingPrice <= 0 || !assessedValue || assessedValue <= 0) {
+    return {
+      verdict: "anchor",
+      ratio: null,
+      reason: null,
+      anchorSource: "tax_assessed",
+      confidence: "low",
+      note: "No asking price to compare the assessed value against — anchor plausibility not evaluated.",
+    };
+  }
+
+  const ratio = assessedValue / askingPrice;
+
+  // --- Acquisition-value basis: expected to diverge from market by design.
+  if (assessmentBasis === "acquisition_value") {
+    if (ratio >= ACQUISITION_VALUE_LOW_RATIO) {
+      return {
+        verdict: "anchor",
+        ratio,
+        reason: null,
+        anchorSource: "tax_assessed",
+        confidence: "medium",
+        note: `Acquisition-value basis — assessed value (${fmt(assessedValue)}) tracks purchase price plus a capped annual increase, expected to run below market by design.`,
+      };
+    }
+    const anchorSource = avmValue ? "avm" : "language";
+    return {
+      verdict: "context_only",
+      ratio,
+      reason: "basis_mismatch",
+      anchorSource,
+      confidence: avmValue ? "medium" : "low",
+      note: `Acquisition-value basis assessed at ${fmt(assessedValue)} (${ratioLabel(ratio)} of asking) — even accounting for this state's purchase-price-plus-cap scheme, the gap is too wide to anchor on. Treated as context only.`,
+    };
+  }
+
+  // --- assessed_ratio basis: prefer comparing the assessor's own
+  // market/full-cash figure (when we have one) against asking, instead of
+  // the capped assessed figure — a low assessed/asking ratio is completely
+  // normal for this basis and isn't itself evidence of a problem.
+  if (assessmentBasis === "assessed_ratio" && marketValueHint != null && marketValueHint > 0) {
+    const marketRatio = marketValueHint / askingPrice;
+    if (marketRatio >= MARKET_HINT_VS_ASKING_BAND.lo && marketRatio <= MARKET_HINT_VS_ASKING_BAND.hi) {
+      return {
+        verdict: "anchor",
+        ratio,
+        reason: null,
+        anchorSource: "tax_assessed",
+        confidence: "medium",
+        note: `County full-cash/market value (${fmt(marketValueHint)}) tracks the asking price even though the capped assessed figure (${fmt(assessedValue)}) runs lower — normal for this state's assessment scheme, not a red flag.`,
+      };
+    }
+  }
+
+  // --- assessed_ratio basis: AVM-led override. A live data-quality audit
+  // (docs/plans/10-RENTCAST-DATA-QUALITY.md, run against a second free-tier
+  // key so it cost zero production quota) measured RentCast's AVM as the
+  // single most trustworthy dollar signal available for this pipeline: only
+  // 14% of sampled AVM/asking ratios fell outside [0.4, 2.5], vs 47% for
+  // RentCast's own taxAssessments and 41% for our county-assessor values —
+  // and it directly caught two Maricopa county-assessor values that were
+  // wrong by 50-59x. Phoenix/Maricopa specifically showed RentCast's tax
+  // data running 5-20x lower than even the county's own capped figure. Given
+  // that, a materially-disagreeing AVM should win the anchor role for this
+  // basis outright, not merely tiebreak once the raw ratio already looks
+  // extreme — the ASSESSED_RATIO_BAND below is deliberately wide (assessed
+  // legitimately runs low for this basis by design) and can mask a
+  // genuinely bad assessed figure an available AVM would have caught. This
+  // check applies uniformly regardless of whether the assessed value came
+  // from RentCast's taxAssessments or a county-assessor scrape (see this
+  // function's own doc comment on assessAnchorPlausibility) — the audit's
+  // finding that even primary county sources can carry 50x+ errors means
+  // scraped government data doesn't get a pass here either, though the
+  // marketValueHint corroboration above is checked FIRST and can still
+  // rescue this listing: direct county confirmation (a primary source) is
+  // taken as stronger ground truth than a modeled AVM estimate when both
+  // are available and agree.
+  if (assessmentBasis === "assessed_ratio" && avmValue != null && avmValue > 0) {
+    const avmVsAskingRatio = avmValue / askingPrice;
+    const avmPlausibleVsAsking = avmVsAskingRatio >= DEFAULT_BAND.lo && avmVsAskingRatio <= DEFAULT_BAND.hi;
+    const avmAgreesAssessed = withinPct(avmValue, assessedValue, AVM_AGREE_PCT);
+    if (avmPlausibleVsAsking && !avmAgreesAssessed) {
+      return {
+        verdict: "context_only",
+        ratio,
+        reason: "extreme_delta",
+        anchorSource: "avm",
+        confidence: "high",
+        note: `RentCast's AVM (${fmt(avmValue)}) is the more reliable dollar signal for this state's assessment scheme (audited: tax/county-assessed values run wrong far more often than the AVM) and materially disagrees with the assessed value (${fmt(assessedValue)}) — re-anchored on the AVM.`,
+      };
+    }
+  }
+
+  const band = assessmentBasis === "assessed_ratio" ? ASSESSED_RATIO_BAND : DEFAULT_BAND;
+
+  if (ratio >= band.lo && ratio <= band.hi) {
+    const confidence = assessmentBasis === "assessed_ratio" ? "low" : ratio >= 0.7 && ratio <= 1.3 ? "high" : "medium";
+    return {
+      verdict: "anchor",
+      ratio,
+      reason: null,
+      anchorSource: "tax_assessed",
+      confidence,
+      note: `Assessed value (${fmt(assessedValue)}) sits within a plausible range of the ${fmt(askingPrice)} asking price (${ratioLabel(ratio)}).`,
+    };
+  }
+
+  // --- Outside the plausible band: AVM tiebreaker.
+  if (avmValue != null && avmValue > 0) {
+    const avmAgreesAsking = withinPct(avmValue, askingPrice, AVM_AGREE_PCT);
+    const avmAgreesAssessed = withinPct(avmValue, assessedValue, AVM_AGREE_PCT);
+
+    if (avmAgreesAssessed && !avmAgreesAsking) {
+      // AVM independently corroborates the low assessed figure — the
+      // ASKING price is the one that doesn't line up with anything.
+      return {
+        verdict: "anchor",
+        ratio,
+        reason: "asking_outlier",
+        anchorSource: "tax_assessed",
+        confidence: "high",
+        note: `RentCast's AVM (${fmt(avmValue)}) independently corroborates the ${fmt(assessedValue)} tax-assessed value — the ${fmt(askingPrice)} asking price looks aspirational, not the assessment. Strong footing for a low anchored offer.`,
+      };
+    }
+
+    if (avmAgreesAsking && !avmAgreesAssessed) {
+      // AVM tracks the asking price, not the assessment — confirms the
+      // assessment is the outlier here.
+      return {
+        verdict: "context_only",
+        ratio,
+        reason: "extreme_delta",
+        anchorSource: "avm",
+        confidence: "high",
+        note: `RentCast's AVM (${fmt(avmValue)}) tracks the ${fmt(askingPrice)} asking price, not the ${fmt(assessedValue)} tax-assessed value — the assessment looks decoupled from market value here. Not used as the offer anchor.`,
+      };
+    }
+    // AVM agrees with neither (or with both loosely) — falls through to the
+    // generic demotion below, still using the AVM as the re-anchor target
+    // since it's the best independent read available even if uncorroborated.
+  }
+
+  // --- Generic demotion: determine the most informative reason available.
+  let reason: AnchorDemotionReason;
+  if (marketValueHint != null && withinPct(marketValueHint, assessedValue, MARKET_HINT_VS_ASSESSED_AGREE_PCT)) {
+    // The county's own two figures agree with each other but both diverge
+    // sharply from asking — the textbook exemption/cap/partial-parcel
+    // signature (Cedar St: assessed === marketValueHint === $452,339).
+    reason = "possible_exemption_or_cap";
+  } else if (ratio < EXTREME_RATIO_LOW || ratio > EXTREME_RATIO_HIGH) {
+    reason = "extreme_delta";
+  } else if (ratio < 1) {
+    // Assessed running far below asking with no corroboration is, in
+    // practice, overwhelmingly an exemption/cap/partial-parcel story
+    // rather than a data error running the other direction.
+    reason = "possible_exemption_or_cap";
+  } else {
+    reason = "basis_mismatch";
+  }
+
+  const anchorSource = avmValue != null && avmValue > 0 ? "avm" : "language";
+  const confidence = avmValue != null && avmValue > 0 ? "medium" : "low";
+
+  const reasonNote =
+    reason === "possible_exemption_or_cap"
+      ? `Assessed value (${fmt(assessedValue)}) is ${ratioLabel(1 / ratio)} below the ${fmt(askingPrice)} asking price with no plausible market explanation — common with agricultural exemptions, assessment caps, or partial-parcel valuations.`
+      : reason === "extreme_delta"
+        ? `Assessed value (${fmt(assessedValue)}) diverges from the ${fmt(askingPrice)} asking price by more than any legitimate assessment scheme should produce (${ratioLabel(ratio)}).`
+        : `Assessed value (${fmt(assessedValue)}) and the ${fmt(askingPrice)} asking price diverge more than this state's assessment basis should produce (${ratioLabel(ratio)}).`;
+
+  return {
+    verdict: "context_only",
+    ratio,
+    reason,
+    anchorSource,
+    confidence,
+    note: `${reasonNote} Demoted from anchor to context — not used to drive the offer.`,
+  };
 }
 
 // ---------------------------------------------------------------------------

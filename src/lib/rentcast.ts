@@ -40,12 +40,22 @@ const FETCH_TIMEOUT_MS = 8000;
  * "no record for this query" — a normal, expected outcome, not an error).
  * Callers must not call this directly outside cachedRentcastCall() —
  * bypassing that wrapper bypasses both the cache and the quota guard.
+ *
+ * `apiKeyOverride` is an explicit, opt-in escape hatch for offline
+ * audit/diagnostic scripts that must hit RentCast with a DIFFERENT key than
+ * production (see auditRentcastCall() below for the only sanctioned
+ * caller). No production code path passes this argument, and this function
+ * never reads it from the environment itself — the only way a call reaches
+ * a non-production key is a caller passing one explicitly, one call at a
+ * time. Omitted (the default for every existing call site), behavior is
+ * byte-for-byte identical to before this parameter existed.
  */
 async function rentcastRequest<T>(
   path: string,
-  params: Record<string, string | number | undefined>
+  params: Record<string, string | number | undefined>,
+  apiKeyOverride?: string
 ): Promise<T | null> {
-  const apiKey = process.env.RENTCAST_API_KEY;
+  const apiKey = apiKeyOverride || process.env.RENTCAST_API_KEY;
   if (!apiKey) throw new Error("RENTCAST_API_KEY not set");
 
   const url = new URL(`${RENTCAST_BASE}${path}`);
@@ -140,9 +150,16 @@ async function cacheSet<T>(key: string, value: T | null, ttlSeconds: number): Pr
   memCache.set(key, { value: wrapped, expiresAt: Date.now() + ttlSeconds * 1000 });
 }
 
-function quotaKey(): string {
+/**
+ * `namespace` defaults to "quota" — every existing call site invokes this
+ * with zero arguments and gets the exact same key string as before
+ * (`rentcast:quota:YYYY-MM`, production's counter). The parameter exists
+ * only so auditRentcastCall() below can point at a sibling counter
+ * (`rentcast:quota2:YYYY-MM`) without touching production's key or logic.
+ */
+function quotaKey(namespace: string = "quota"): string {
   const now = new Date();
-  return `rentcast:quota:${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  return `rentcast:${namespace}:${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function monthlyQuotaLimit(): number {
@@ -212,14 +229,24 @@ export interface RentcastQuotaStatus {
   persistedInKv: boolean;
 }
 
-/** Current-month quota usage — for logging/observability and the live test script. */
-export async function getRentcastQuotaStatus(): Promise<RentcastQuotaStatus> {
-  const used = await quotaPeek(quotaKey());
-  const limit = monthlyQuotaLimit();
+/**
+ * Current-month quota usage — for logging/observability and the live test
+ * script. `namespace` defaults to "quota" (production's counter, governed
+ * by RENTCAST_MONTHLY_QUOTA) — every existing call site keeps calling this
+ * with zero arguments and sees identical behavior. Pass "quota2" to read
+ * the sibling counter auditRentcastCall() writes to instead (governed by
+ * RENTCAST_AUDIT_MONTHLY_QUOTA, default 45) — used by
+ * scripts/audit-rentcast-quality.ts for before/after proof that its
+ * key-2 traffic never touches production's counter.
+ */
+export async function getRentcastQuotaStatus(namespace: string = "quota"): Promise<RentcastQuotaStatus> {
+  const used = await quotaPeek(quotaKey(namespace));
+  const limit =
+    namespace === "quota" ? monthlyQuotaLimit() : Number(process.env.RENTCAST_AUDIT_MONTHLY_QUOTA) || 45;
   return { used, limit, exhausted: used >= limit, persistedInKv: kvAvailable() };
 }
 
-interface CachedCallResult<T> {
+export interface CachedCallResult<T> {
   data: T | null;
   cacheHit: boolean;
   quotaBlocked: boolean;
@@ -263,7 +290,96 @@ async function cachedRentcastCall<T>(opts: {
   }
 }
 
-function normalizeAddressKey(address: string, city: string, state: string): string {
+// ---------------------------------------------------------------------------
+// Audit override path — offline diagnostic scripts ONLY
+//
+// Everything above this point is production's only path to RentCast
+// (getUSProperty, getUSPropertyLite, getUSActiveListing,
+// discoverActiveListingsByCity — all funnel through cachedRentcastCall(),
+// which always uses process.env.RENTCAST_API_KEY and always increments
+// the "quota" namespace counter). None of those functions gained a new
+// parameter, so production's call sites (src/app/api/assess/route.ts,
+// src/lib/pipeline/us-enrich.ts, src/lib/pipeline/us-discover.ts) are
+// structurally unable to reach a different key or counter — there is
+// nothing to opt out of.
+//
+// auditRentcastCall() below is a SEPARATE, explicitly-named entry point for
+// offline scripts (e.g. scripts/audit-rentcast-quality.ts) that need to
+// spend requests against a second, independently-provisioned free-tier key
+// (RENTCAST_API_KEY_2 in .env.local) without touching production's 45/mo
+// budget or its tracked usage counter. Every argument that matters —
+// apiKey, cache key, quota counter — is supplied explicitly by the caller;
+// this function reads no ambient env var of its own (not even
+// RENTCAST_API_KEY_2 — the script owns that lookup and passes the string
+// in). That is the whole safety property: reaching a non-production key
+// requires a caller to opt in, by name, on every single call.
+// ---------------------------------------------------------------------------
+
+/**
+ * Same cache-hit/quota-guard/error-handling shape as cachedRentcastCall(),
+ * with two differences that keep this fully quarantined from production:
+ *
+ *   1. `apiKey` is required and passed straight to rentcastRequest() — never
+ *      falls back to process.env.RENTCAST_API_KEY.
+ *   2. The quota counter is hardcoded to the "quota2" namespace
+ *      (`rentcast:quota2:YYYY-MM`), never "quota" — so no caller, however
+ *      it constructs its options, can accidentally decrement production's
+ *      headroom. The limit is RENTCAST_AUDIT_MONTHLY_QUOTA (default 45),
+ *      read independently of RENTCAST_MONTHLY_QUOTA.
+ *
+ * Callers should also pass a `cacheKey` in a namespace that can't collide
+ * with production's (`rentcast:property:*`, `rentcast:avm:*`, etc.) — e.g.
+ * prefixed `rentcast-audit:` — so a key-2-fetched response is never read
+ * back by a production lookup for the same address. Not enforced here
+ * (this function is generic over the cache key string) but documented as
+ * the required convention; see scripts/audit-rentcast-quality.ts.
+ */
+export async function auditRentcastCall<T>(opts: {
+  apiKey: string;
+  cacheKey: string;
+  ttlSeconds: number;
+  path: string;
+  params: Record<string, string | number | undefined>;
+}): Promise<CachedCallResult<T>> {
+  const cached = await cacheGet<T>(opts.cacheKey);
+  if (cached.hit) return { data: cached.value, cacheHit: true, quotaBlocked: false };
+
+  const key = quotaKey("quota2");
+  const limit = Number(process.env.RENTCAST_AUDIT_MONTHLY_QUOTA) || 45;
+  const count = await quotaIncr(key);
+  if (count > limit) {
+    await quotaDecr(key);
+    return { data: null, cacheHit: false, quotaBlocked: true };
+  }
+
+  try {
+    const data = await rentcastRequest<T>(opts.path, opts.params, opts.apiKey);
+    await cacheSet(opts.cacheKey, data, opts.ttlSeconds);
+    return { data, cacheHit: false, quotaBlocked: false };
+  } catch (err) {
+    return {
+      data: null,
+      cacheHit: false,
+      quotaBlocked: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Canonical address → cache-key normalizer. THE single function used by
+ * every RentCast cache-key derivation in this file — getUSProperty(),
+ * getUSActiveListing(), getUSPropertyLite(), discoverActiveListingsByCity()'s
+ * per-address priming, and primeUSPropertyCache() all call this exact
+ * function (not a re-implementation), so a sweep-primed cache entry and a
+ * later user-typed lookup for the same address can never diverge on key
+ * shape — verified against production KV (scripts/diag-cedar.ts): the key
+ * this function computes for "12400 Cedar St"/"Austin"/"TX" byte-for-byte
+ * matches the literal `rentcast:listing:12400-cedar-st|austin|tx` key the
+ * Austin sweep actually wrote. Exported so scripts (diagnostics, reseed
+ * cleanup) can compute/verify the same keys without duplicating this logic.
+ */
+export function normalizeAddressKey(address: string, city: string, state: string): string {
   return `${address}|${city}|${state}`
     .toLowerCase()
     .trim()
@@ -676,11 +792,24 @@ export interface DiscoveredListing extends RentCastActiveListing {
  * call for one of these exact addresses doesn't spend a second identical
  * /listings/sale request — the city-search and address-search endpoints
  * return the same underlying record for a given property.
+ *
+ * `listingTtlSeconds` overrides the per-address priming TTL (default
+ * TTL_LISTING_SECONDS, 24h — right for a genuinely live-fetched one-off
+ * lookup). Callers seeding from a periodic city-wide sweep (us-discover.ts)
+ * should pass their own refresh cadence instead: the sweep only re-visits a
+ * city every US_DISCOVER_REFRESH_DAYS (default 3), so a 24h TTL on the
+ * primed entry expires mid-cycle — a user who assesses a seeded listing on
+ * day 2 gets a cache MISS and pays for a live /listings/sale call the sweep
+ * already answered for free days earlier. Passing a TTL that matches the
+ * sweep's own cadence keeps the primed entry alive until the next sweep
+ * actually refreshes it, so it's always either "answered by the last sweep"
+ * or "about to be re-answered by the next one" — never a gap in between.
  */
 export async function discoverActiveListingsByCity(
   city: string,
   state: string,
-  limit = 5
+  limit = 5,
+  listingTtlSeconds: number = TTL_LISTING_SECONDS
 ): Promise<DiscoveredListing[]> {
   const cacheKey = `rentcast:discover:${city.toLowerCase()}:${state.toLowerCase()}:${limit}`;
   const res = await cachedRentcastCall<RawListing[]>({
@@ -705,7 +834,7 @@ export async function discoverActiveListingsByCity(
     // /listings/sale response shape (an array). Caching the bare object
     // here would silently fail that unwrap and read back as "no listing".
     const addrKey = normalizeAddressKey(addressLine1, raw.city || city, raw.state || state);
-    await cacheSet(`rentcast:listing:${addrKey}`, [raw], TTL_LISTING_SECONDS);
+    await cacheSet(`rentcast:listing:${addrKey}`, [raw], listingTtlSeconds);
   }
   return results;
 }
@@ -748,14 +877,16 @@ export async function primeUSPropertyCache(
   address: string,
   city: string,
   state: string,
-  data: { record?: unknown; avm?: unknown; rent?: unknown; listing?: unknown }
+  data: { record?: unknown; avm?: unknown; rent?: unknown; listing?: unknown },
+  opts?: { listingTtlSeconds?: number }
 ): Promise<void> {
   const addrKey = normalizeAddressKey(address, city, state);
   const writes: Promise<void>[] = [];
   if (data.record !== undefined) writes.push(cacheSet(`rentcast:property:${addrKey}`, data.record, TTL_PROPERTY_SECONDS));
   if (data.avm !== undefined) writes.push(cacheSet(`rentcast:avm:${addrKey}`, data.avm, TTL_AVM_SECONDS));
   if (data.rent !== undefined) writes.push(cacheSet(`rentcast:rent:${addrKey}`, data.rent, TTL_RENT_SECONDS));
-  if (data.listing !== undefined) writes.push(cacheSet(`rentcast:listing:${addrKey}`, data.listing, TTL_LISTING_SECONDS));
+  if (data.listing !== undefined)
+    writes.push(cacheSet(`rentcast:listing:${addrKey}`, data.listing, opts?.listingTtlSeconds ?? TTL_LISTING_SECONDS));
   await Promise.all(writes);
 }
 

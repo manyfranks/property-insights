@@ -1,4 +1,4 @@
-import type { Assessment, Listing, OfferResult, ScoreResult } from "@/lib/types";
+import type { AnchorPlausibility, Assessment, Listing, OfferResult, ScoreResult } from "@/lib/types";
 import type { CountyMarketPanel } from "@/lib/db/regional-econ";
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 import type {
@@ -57,6 +57,10 @@ export interface UsListedResult extends UsResultBase, UsAdvantageFields {
   score: ScoreResult;
   signals: string[];
   offer: OfferResult | null;
+  // Anchor plausibility verdict (src/lib/pipeline/us-assess.ts's
+  // assessAnchorPlausibility) — null when there was no assessed value to
+  // evaluate. Drives the demoted-assessment caveat below.
+  anchorDecision: AnchorPlausibility | null;
   comparables: UsCompSupport;
   // THE SIGNAL — LLM narrative (src/lib/pipeline/us-narrative.ts), generated
   // in handleUSAssessment's listed branch only (route.ts). narrative is
@@ -328,7 +332,7 @@ const TRIANGULATION_CONFIDENCE_BADGE: Record<ValuationTriangulation["confidence"
  * actual offer — this is the confidence check layered on top.
  */
 function TriangulationDetail({ triangulation }: { triangulation: ValuationTriangulation }) {
-  if (triangulation.anchors.length === 0) {
+  if (triangulation.anchors.length === 0 && triangulation.excludedAnchors.length === 0) {
     return <p className="text-sm text-muted">No valuation anchors available for this address.</p>;
   }
 
@@ -347,6 +351,13 @@ function TriangulationDetail({ triangulation }: { triangulation: ValuationTriang
           <div key={a.kind} className="flex items-center justify-between text-sm">
             <span className="text-muted">{a.label}</span>
             <span className="font-mono font-medium">{fmt(a.value)}</span>
+          </div>
+        ))}
+        {triangulation.excludedAnchors.map((a) => (
+          <div key={`excluded-${a.kind}`} className="flex items-center justify-between text-sm text-muted/60">
+            <span className="line-through decoration-muted/50">{a.label}</span>
+            <span className="font-mono line-through decoration-muted/50">{fmt(a.value)}</span>
+            <span className="text-xs ml-2 shrink-0 px-1.5 py-0.5 rounded bg-zinc-100">excluded</span>
           </div>
         ))}
       </div>
@@ -431,6 +442,36 @@ function RiskMomentumCard({ riskMomentum }: { riskMomentum: RiskMomentumContext 
       )}
       <p className="text-xs text-muted leading-relaxed">{riskMomentum.note}</p>
     </div>
+  );
+}
+
+/**
+ * Demoted-assessment caveat (src/lib/pipeline/us-assess.ts's
+ * assessAnchorPlausibility) — short, honest, no scary jargon. Only renders
+ * when the gate actually found something worth flagging: verdict
+ * "context_only" (assessed value demoted, offer re-anchored elsewhere) or
+ * the "asking_outlier" flavor of "anchor" (assessed value confirmed by the
+ * AVM; the asking price is the one that's off).
+ */
+function AnchorCaveat({ anchorDecision }: { anchorDecision: AnchorPlausibility | null }) {
+  if (!anchorDecision || !anchorDecision.reason) return null;
+
+  if (anchorDecision.verdict === "context_only") {
+    return (
+      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 max-w-sm mx-auto">
+        Assessed value appears decoupled from market value — common with agricultural exemptions, assessment caps,
+        or partial parcels. Not used as the offer anchor.
+      </p>
+    );
+  }
+
+  // "anchor" with a reason is the asking_outlier case — assessed value is
+  // fine, the asking price is the outlier.
+  return (
+    <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-4 max-w-sm mx-auto">
+      RentCast&apos;s AVM independently backs up the assessed value — the asking price looks like the outlier here,
+      not the assessment. Strong footing for a low offer.
+    </p>
   );
 }
 
@@ -546,6 +587,7 @@ function UsListedView({ data }: { data: UsListedResult }) {
     overAssessment,
     narrative,
     narrativeConfidence,
+    anchorDecision,
   } = data;
 
   return (
@@ -577,6 +619,7 @@ function UsListedView({ data }: { data: UsListedResult }) {
                 approximate.
               </p>
             )}
+            <AnchorCaveat anchorDecision={anchorDecision} />
             <div className="border-t border-border pt-4 flex justify-center gap-4 sm:gap-8 text-center">
               <div>
                 <div className="text-xs text-muted">List Price</div>
@@ -703,6 +746,12 @@ function UsListedView({ data }: { data: UsListedResult }) {
                 <p className="text-xs text-muted/70 pt-1">
                   Modeled estimate from RentCast&apos;s automated valuation model — not a government-verified
                   assessment.
+                </p>
+              )}
+              {anchorDecision?.verdict === "context_only" && (
+                <p className="text-xs text-amber-700 pt-1">
+                  Assessed value appears decoupled from market value — common with agricultural exemptions,
+                  assessment caps, or partial parcels. Not used as the offer anchor.
                 </p>
               )}
             </div>

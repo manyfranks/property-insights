@@ -79,6 +79,16 @@ function refreshIntervalDays(): number {
   return Number.isFinite(n) && n > 0 ? n : 3;
 }
 
+// Per-address `rentcast:listing:*` cache TTL for sweep-primed entries — see
+// discoverActiveListingsByCity()'s `listingTtlSeconds` param doc in
+// rentcast.ts. Refresh cadence + 1 day buffer so a sweep-primed entry never
+// expires before the next sweep is due to replace it (a user assessing a
+// seeded listing on day 2-3 of a 3-day cycle must still get a cache HIT,
+// not a live re-fetch of data the last sweep already answered for free).
+function listingCacheTtlSeconds(): number {
+  return (refreshIntervalDays() + 1) * 24 * 60 * 60;
+}
+
 function median(nums: number[]): number {
   if (nums.length === 0) return 0;
   const sorted = [...nums].sort((a, b) => a - b);
@@ -156,38 +166,91 @@ function scoreUSListing(
 }
 
 // ---------------------------------------------------------------------------
+// Freshness gate — drop sweep-artifact results before they're scored/stored
+//
+// PHASE 1d FINDING (scripts/diag-staleness.ts, run against the 564
+// rentcast:listing:* cache entries accumulated across the 3 seeded metros):
+// DOM/listedDate age for the high-DOM tail (147/564, 26%) is SMOOTHLY
+// distributed from ~280 to ~420 days — no anomalous spike concentrated at
+// exactly 365 days that would indicate a systemic "1-year placeholder"
+// data-quality artifact in RentCast's feed. Cross-checked against the
+// flagship repro case (12400 Cedar St, Austin — DOM 330, TWO distinct
+// history events including a real $14.95M -> $9.9M price cut dated
+// 2025-09-12) confirms these are genuinely long-on-market real MLS records,
+// not artifacts — exactly the "motivated seller" demographic this product
+// targets. So this gate deliberately does NOT blanket-drop on DOM or age.
+//
+// What it DOES drop — a narrow, specific placeholder signature: listedDate
+// within 1 day of exactly 365 days old AND exactly one price-history entry
+// whose own date equals that listedDate (RentCast has no distinguishable
+// "before" state — the single history point IS the computed listedDate,
+// consistent with a feed defaulting to "today minus 1 year" when the true
+// first-listed date is unknown, not an authentic multi-event MLS history).
+// Every genuine long-tenure listing sampled in Phase 1d carried >= 2
+// distinct history events with independent dates, so this signature is
+// deliberately narrow rather than a broad "old + quiet" filter — a broad
+// filter would have caught 12400 Cedar St itself (no price event in the
+// last 180 days either) and thrown away the exact listing this whole
+// investigation is about.
+//
+// status != "Active" is already excluded upstream: mapActiveListing() in
+// rentcast.ts returns null for any non-Active raw record before a result
+// ever becomes a DiscoveredListing, so there's no separate status check
+// needed here.
+function isLikelyPlaceholderArtifact(l: DiscoveredListing): boolean {
+  if (!l.listedDate) return false;
+  const ageDays = (Date.now() - new Date(l.listedDate).getTime()) / 86_400_000;
+  const isAnniversaryAge = Math.abs(ageDays - 365) <= 1;
+  if (!isAnniversaryAge) return false;
+  if (l.priceHistory.length !== 1) return false;
+  return l.priceHistory[0].date.slice(0, 10) === l.listedDate.slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
 // Per-city fetch
 // ---------------------------------------------------------------------------
 
 export interface USDiscoverFetchResult {
   listings: Listing[];
   fetchedCount: number;
+  /** Sweep-artifact results dropped by isLikelyPlaceholderArtifact() before
+   * scoring/storage — see that function's doc comment. */
+  droppedArtifacts: number;
 }
 
 /**
  * One quota-guarded RentCast /listings/sale call for `cfg.name, cfg.state`
  * (via discoverActiveListingsByCity — already city-wide, already cached +
- * quota-guarded, see rentcast.ts's module doc). Maps each raw result
- * through buildUsListing() (src/lib/pipeline/us-assess.ts) — the SAME
- * mapper the per-address /assess flow uses, reused here rather than
- * duplicated — then scores it. Returns [] (not a throw) on a quota-blocked
- * or empty response, matching discoverActiveListingsByCity's own
- * degrade-gracefully contract.
+ * quota-guarded, see rentcast.ts's module doc). Primes the per-address
+ * listing cache with a TTL matching this pipeline's own refresh cadence
+ * (listingCacheTtlSeconds(), not RentCast's default 24h — see that
+ * function's doc comment) so a seeded listing is a guaranteed cache hit for
+ * on-demand /assess lookups until the next sweep. Filters out sweep
+ * artifacts (isLikelyPlaceholderArtifact()) before mapping. Maps each
+ * surviving result through buildUsListing() (src/lib/pipeline/us-assess.ts)
+ * — the SAME mapper the per-address /assess flow uses, reused here rather
+ * than duplicated — then scores it. Returns [] (not a throw) on a
+ * quota-blocked or empty response, matching discoverActiveListingsByCity's
+ * own degrade-gracefully contract.
  */
 export async function fetchUSCityListings(cfg: USDiscoverCityConfig): Promise<USDiscoverFetchResult> {
   const discovered: DiscoveredListing[] = await discoverActiveListingsByCity(
     cfg.name,
     cfg.state,
-    LISTINGS_PER_CITY
+    LISTINGS_PER_CITY,
+    listingCacheTtlSeconds()
   );
 
-  if (discovered.length === 0) return { listings: [], fetchedCount: 0 };
+  if (discovered.length === 0) return { listings: [], fetchedCount: 0, droppedArtifacts: 0 };
+
+  const filtered = discovered.filter((d) => !isLikelyPlaceholderArtifact(d));
+  const droppedArtifacts = discovered.length - filtered.length;
 
   // Map to Listing shape via the shared us-assess mapper. This is a city
   // search result, not a per-address bundle, so record/avm/rent are null —
   // buildUsListing already treats a missing `record` as an honest
   // empty/undefined field (see its doc comment), not an error.
-  const mapped: Listing[] = discovered.map((d) =>
+  const mapped: Listing[] = filtered.map((d) =>
     buildUsListing(
       { record: null, avm: null, rent: null, activeListing: d, meta: { quotaExhausted: false, cacheHits: 0, liveCalls: 0, errors: [] } },
       cfg.name,
@@ -223,7 +286,7 @@ export async function fetchUSCityListings(cfg: USDiscoverCityConfig): Promise<US
   scored.sort((a, b) => (b.preScore ?? 0) - (a.preScore ?? 0));
   const top = scored.slice(0, TOP_N_PER_CITY);
 
-  return { listings: top, fetchedCount: discovered.length };
+  return { listings: top, fetchedCount: discovered.length, droppedArtifacts };
 }
 
 // ---------------------------------------------------------------------------
@@ -238,6 +301,9 @@ export interface USDiscoverCityRunResult {
   skipReason?: string;
   fetched: number;
   scored: number;
+  // Sweep artifacts dropped by the freshness gate (isLikelyPlaceholderArtifact
+  // in fetchUSCityListings above) — 0 when the city was skipped.
+  droppedArtifacts?: number;
   // Top-N enrichment stats (see enrichUSCityListings in us-enrich.ts) —
   // undefined when the city was skipped (no fetch, nothing to enrich).
   enrichAttempted?: number;
@@ -286,7 +352,7 @@ export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
     }
 
     try {
-      const { listings, fetchedCount } = await fetchUSCityListings(cfg);
+      const { listings, fetchedCount, droppedArtifacts } = await fetchUSCityListings(cfg);
 
       // Enrich the top-N scored listings (default 3 — see
       // usEnrichTopN()'s doc comment in us-enrich.ts) within this same run,
@@ -312,6 +378,7 @@ export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
         skipped: false,
         fetched: fetchedCount,
         scored: enrichedListings.length,
+        droppedArtifacts,
         enrichAttempted,
         enrichSucceeded,
         enrichQuotaStoppedEarly,

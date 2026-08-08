@@ -279,6 +279,13 @@ export interface TriangulationAnchor {
 
 export interface ValuationTriangulation {
   anchors: TriangulationAnchor[];
+  /** Anchors that were computed but deliberately left OUT of the math above
+   * — currently just a demoted tax-assessed value (see
+   * src/lib/pipeline/us-assess.ts's assessAnchorPlausibility). Shown for
+   * transparency ("here's what we have and why we didn't use it"), never
+   * folded into triangulatedValue/spreadPct. Empty when nothing was
+   * excluded. */
+  excludedAnchors: TriangulationAnchor[];
   /** Median of the credible anchors; null when fewer than 2 anchors exist
    * (no meaningful triangulation possible). */
   triangulatedValue: number | null;
@@ -310,6 +317,15 @@ const TRIANGULATION_MEDIUM_CONFIDENCE_SPREAD = 0.25;
  * design. Including it as a market-value anchor there would corrupt the
  * triangulation with a number that's expected to diverge from market, not
  * a soft proxy for it — so it's excluded rather than down-weighted.
+ *
+ * `taxAssessedDemoted` applies the same treatment for a DIFFERENT reason:
+ * src/lib/pipeline/us-assess.ts's assessAnchorPlausibility flagged the
+ * assessed value itself as decoupled from market reality for this specific
+ * listing (agricultural exemption, cap, partial parcel, or a flat data
+ * mismatch) — not a property of the state's assessment scheme in general.
+ * Rather than silently dropping it (a user who knows the county has an
+ * assessed value on file would rightly wonder where it went), it's pushed
+ * into `excludedAnchors` — visible, labeled, just not part of the median.
  */
 export function triangulateValuation(opts: {
   taxAssessedValue: number | null;
@@ -319,11 +335,19 @@ export function triangulateValuation(opts: {
    * the AVM value to `avmValue`, not here, for off-market properties). */
   askingPrice: number | null;
   compImpliedValue: number | null;
+  /** True when assessAnchorPlausibility demoted the tax-assessed value for
+   * THIS listing (verdict "context_only") — excludes it from the
+   * triangulation math while still surfacing it in excludedAnchors.
+   * Default false (existing callers unaffected). */
+  taxAssessedDemoted?: boolean;
 }): ValuationTriangulation {
   const anchors: TriangulationAnchor[] = [];
+  const excludedAnchors: TriangulationAnchor[] = [];
 
   if (opts.taxAssessedValue != null && opts.assessmentBasis !== "acquisition_value") {
-    anchors.push({ label: "Tax-assessed value", value: opts.taxAssessedValue, kind: "tax_assessed" });
+    const anchor: TriangulationAnchor = { label: "Tax-assessed value", value: opts.taxAssessedValue, kind: "tax_assessed" };
+    if (opts.taxAssessedDemoted) excludedAnchors.push(anchor);
+    else anchors.push(anchor);
   }
   if (opts.avmValue != null) anchors.push({ label: "RentCast AVM", value: opts.avmValue, kind: "avm" });
   if (opts.askingPrice != null) anchors.push({ label: "Asking price", value: opts.askingPrice, kind: "asking" });
@@ -334,13 +358,16 @@ export function triangulateValuation(opts: {
   if (anchors.length < 2) {
     return {
       anchors,
+      excludedAnchors,
       triangulatedValue: anchors[0]?.value ?? null,
       spreadPct: null,
       confidence: "insufficient",
       agreementNote:
         anchors.length === 1
           ? "Only one valuation anchor available for this address — no triangulation possible."
-          : "No valuation anchors available for this address.",
+          : excludedAnchors.length > 0
+            ? "No usable valuation anchors for this address — the tax-assessed value was excluded as unreliable (see below)."
+            : "No valuation anchors available for this address.",
     };
   }
 
@@ -354,14 +381,17 @@ export function triangulateValuation(opts: {
   else confidence = "low";
 
   const spreadLabel = `${(spreadPct * 100).toFixed(1)}%`;
-  const agreementNote =
+  let agreementNote =
     confidence === "high"
       ? `${anchors.length} independent value anchors agree within ${spreadLabel} — high-confidence valuation.`
       : confidence === "medium"
         ? `${anchors.length} value anchors span ${spreadLabel} — moderate agreement.`
         : `${anchors.length} value anchors disagree by ${spreadLabel} — treat this valuation as uncertain and weight DOM/equity signals more heavily.`;
+  if (excludedAnchors.length > 0) {
+    agreementNote += ` (Tax-assessed value excluded as unreliable for this listing — see below.)`;
+  }
 
-  return { anchors, triangulatedValue, spreadPct, confidence, agreementNote };
+  return { anchors, excludedAnchors, triangulatedValue, spreadPct, confidence, agreementNote };
 }
 
 // ---------------------------------------------------------------------------
@@ -617,6 +647,14 @@ export function buildUsAdvantageBundle(opts: {
   compImpliedValue: number | null;
   monthlyRent: number | null;
   marketPanel: CountyMarketPanel | null;
+  /** True when src/lib/pipeline/us-assess.ts's assessAnchorPlausibility
+   * demoted the tax-assessed value for THIS listing (verdict
+   * "context_only"). Excludes it from triangulation's median (still shown
+   * in excludedAnchors) and from the over-assessment/tax-appeal flag, which
+   * would otherwise compare a known-unreliable assessed figure against the
+   * market reference and produce a meaningless "appeal opportunity" read.
+   * Default false — existing callers unaffected. */
+  taxAssessedDemoted?: boolean;
 }): UsAdvantageBundle {
   const hpiTrend5y = opts.marketPanel?.hpiTrend5y ?? null;
 
@@ -631,6 +669,7 @@ export function buildUsAdvantageBundle(opts: {
     avmValue: opts.avmValue,
     askingPrice: opts.askingPrice,
     compImpliedValue: opts.compImpliedValue,
+    taxAssessedDemoted: opts.taxAssessedDemoted,
   });
 
   const investorYield = computeInvestorYield({
@@ -646,7 +685,7 @@ export function buildUsAdvantageBundle(opts: {
   });
 
   const overAssessment = computeOverAssessmentFlag({
-    taxAssessedValue: opts.taxAssessedValue,
+    taxAssessedValue: opts.taxAssessedDemoted ? null : opts.taxAssessedValue,
     assessmentBasis: opts.assessmentBasis,
     marketReference: triangulation.triangulatedValue ?? currentValueEstimate,
   });

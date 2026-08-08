@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getListingBySlug } from "@/lib/kv/listings";
 import { analyzeListingAsync } from "@/lib/analyze";
-import { Assessment, Listing, OfferResult, PrecomputedOffer } from "@/lib/types";
+import { AnchorPlausibility, Assessment, Listing, OfferResult, PrecomputedOffer } from "@/lib/types";
 import { cityToSlug, fmt, pct, slugify } from "@/lib/utils";
 import { BASE_URL } from "@/lib/seo";
 import { PropertyJsonLd, BreadcrumbJsonLd } from "@/components/json-ld";
@@ -624,12 +624,22 @@ export default async function PropertyPage({
 
 /** Snake_case PrecomputedOffer (KV-persisted) -> camelCase OfferResult for
  * display — mirrors analyze.ts's preOfferToResult() (not exported there;
- * duplicated here rather than touching that CA-owned file). */
-function usOfferResult(pre: PrecomputedOffer, assessment: Assessment | null): OfferResult {
+ * duplicated here rather than touching that CA-owned file).
+ *
+ * `anchorType` prefers the real anchor-plausibility verdict
+ * (src/lib/pipeline/us-assess.ts's assessAnchorPlausibility, persisted as
+ * listing.preAnchorDecision) when available: a demoted assessment was
+ * re-anchored to the language/DOM model even though `assessment.found` is
+ * still true (the assessed value is still real, just not trustworthy as an
+ * anchor for THIS listing) — falling back to `assessment?.found` alone
+ * would mislabel that offer as assessment-anchored. Older cached listings
+ * without preAnchorDecision keep the original heuristic. */
+function usOfferResult(pre: PrecomputedOffer, assessment: Assessment | null, anchorDecision?: AnchorPlausibility): OfferResult {
+  const isLanguageAnchored = anchorDecision ? anchorDecision.anchorSource === "language" : !assessment?.found;
   return {
     anchor: pre.anchor,
     anchorTag: pre.anchor_tag,
-    anchorType: assessment?.found ? "assessment" : "language",
+    anchorType: isLanguageAnchored ? "language" : "assessment",
     listToAssessedRatio: pre.ratio,
     domAdjusted: pre.dom_adjusted,
     domMultiplier: pre.dom_mult,
@@ -657,7 +667,15 @@ function usAssessmentSourceLabel(assessment: Assessment): string {
   }
 }
 
-function UsAssessmentCard({ assessment, offer }: { assessment: Assessment | null; offer: OfferResult | null }) {
+function UsAssessmentCard({
+  assessment,
+  offer,
+  anchorDecision,
+}: {
+  assessment: Assessment | null;
+  offer: OfferResult | null;
+  anchorDecision?: AnchorPlausibility;
+}) {
   return (
     <div className="border border-border rounded-xl p-4 bg-white">
       <div className="text-xs uppercase tracking-widest text-muted mb-3">Assessment</div>
@@ -690,6 +708,18 @@ function UsAssessmentCard({ assessment, offer }: { assessment: Assessment | null
             <p className="text-xs text-muted/70 pt-1">
               This state assesses on acquisition value (purchase price + a small annual cap), not market
               value — expect it to lag market price by design.
+            </p>
+          )}
+          {anchorDecision?.verdict === "context_only" && (
+            <p className="text-xs text-amber-700 pt-1">
+              Assessed value appears decoupled from market value — common with agricultural exemptions, assessment
+              caps, or partial parcels. Not used as the offer anchor.
+            </p>
+          )}
+          {anchorDecision?.verdict === "anchor" && anchorDecision.reason === "asking_outlier" && (
+            <p className="text-xs text-blue-700 pt-1">
+              RentCast&apos;s AVM independently backs up this assessed value — the asking price looks like the
+              outlier here, not the assessment.
             </p>
           )}
         </div>
@@ -751,7 +781,7 @@ function UsEquityTenureCard({ equitySignal }: { equitySignal: EquityTenureSignal
 }
 
 function UsTriangulationCard({ triangulation }: { triangulation: ValuationTriangulation }) {
-  if (triangulation.anchors.length === 0) return null;
+  if (triangulation.anchors.length === 0 && triangulation.excludedAnchors.length === 0) return null;
   return (
     <div className="border border-border rounded-xl p-4 bg-white">
       <div className="flex items-center justify-between mb-3">
@@ -773,6 +803,13 @@ function UsTriangulationCard({ triangulation }: { triangulation: ValuationTriang
           <div key={a.label} className="flex items-center justify-between text-sm">
             <span className="text-muted">{a.label}</span>
             <span className="font-mono font-medium">{fmt(a.value)}</span>
+          </div>
+        ))}
+        {triangulation.excludedAnchors.map((a) => (
+          <div key={`excluded-${a.label}`} className="flex items-center justify-between text-sm text-muted/60">
+            <span className="line-through decoration-muted/50">{a.label}</span>
+            <span className="font-mono line-through decoration-muted/50">{fmt(a.value)}</span>
+            <span className="text-xs ml-2 shrink-0 px-1.5 py-0.5 rounded bg-zinc-100">excluded</span>
           </div>
         ))}
       </div>
@@ -931,7 +968,8 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
   }
 
   const assessment = listing.preAssessment ?? null;
-  const offer = listing.preOffer ? usOfferResult(listing.preOffer, assessment) : null;
+  const anchorDecision = listing.preAnchorDecision;
+  const offer = listing.preOffer ? usOfferResult(listing.preOffer, assessment, anchorDecision) : null;
   const tier = listing.preTier ?? "WATCH";
   const score = listing.preScore ?? 0;
   const signals = listing.preSignals ?? [];
@@ -988,9 +1026,21 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
             <div className="text-sm text-green-600 mb-4">
               Save {fmt(offer.savings)} &middot; {pct(offer.percentOfList)} of list
             </div>
-            {offer.anchorType === "language" && (
+            {offer.anchorType === "language" && !anchorDecision && (
               <p className="text-xs text-muted mb-4 max-w-sm mx-auto">
                 Based on market duration and structural signals. No assessed value available for this address.
+              </p>
+            )}
+            {anchorDecision?.verdict === "context_only" && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 max-w-sm mx-auto">
+                Assessed value appears decoupled from market value — common with agricultural exemptions, assessment
+                caps, or partial parcels. Not used as the offer anchor.
+              </p>
+            )}
+            {anchorDecision?.verdict === "anchor" && anchorDecision.reason === "asking_outlier" && (
+              <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-4 max-w-sm mx-auto">
+                RentCast&apos;s AVM independently backs up the assessed value — the asking price looks like the
+                outlier here, not the assessment.
               </p>
             )}
             <div className="border-t border-border pt-4 flex justify-center gap-4 sm:gap-8 text-center">
@@ -1056,7 +1106,7 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <UsPropertyFactsCard listing={listing} />
-        <UsAssessmentCard assessment={assessment} offer={offer} />
+        <UsAssessmentCard assessment={assessment} offer={offer} anchorDecision={anchorDecision} />
         {comparables && <UsComparablesCard comparables={comparables} />}
         {advantage && <UsEquityTenureCard equitySignal={advantage.equitySignal} />}
         {advantage && <UsTriangulationCard triangulation={advantage.triangulation} />}

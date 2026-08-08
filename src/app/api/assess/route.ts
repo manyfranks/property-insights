@@ -45,7 +45,12 @@ import { geocodeUSAddress } from "@/lib/geo/census-geocoder";
 import { lookupAssessment } from "@/lib/assessment";
 import { getCountyMarketPanel } from "@/lib/db/regional-econ";
 import { getUSProperty } from "@/lib/rentcast";
-import { buildUsAssessment, buildUsListing, buildUsCompSupport } from "@/lib/pipeline/us-assess";
+import {
+  buildUsAssessment,
+  buildUsListing,
+  buildUsCompSupport,
+  assessAnchorPlausibility,
+} from "@/lib/pipeline/us-assess";
 import { buildUsAdvantageBundle, applyEquitySignalToScore, equitySignalLabel } from "@/lib/pipeline/us-advantage";
 import { generateUsNarrative, deterministicUsNarrative } from "@/lib/pipeline/us-narrative";
 import { getSignals } from "@/lib/signals";
@@ -287,7 +292,11 @@ async function handleUSAssessment({
       : "call failed"
   );
 
-  const hasUsableRentcastData = bundle && (bundle.record || bundle.avm);
+  // activeListing counts as usable on its own: Discover sweeps prime ONLY the
+  // per-address listing cache (they carry no tax/AVM data), so a seeded
+  // listing's first assess may have listing=hit while record/avm are
+  // quota-blocked — that must run the listed flow, not the county fallback.
+  const hasUsableRentcastData = bundle && (bundle.record || bundle.avm || bundle.activeListing);
 
   // Fallback path — quota exhausted, RentCast API down, or genuinely no
   // record for this address. Identical to the original county-median-only
@@ -339,6 +348,28 @@ async function handleUSAssessment({
     const baseScore = scoreV2(listing);
     const comparables = buildUsCompSupport(bundle.avm, parseInt(listing.sqft) || 0);
 
+    // Anchor plausibility gate (src/lib/pipeline/us-assess.ts) — runs BEFORE
+    // offer-model.ts to decide whether the assessed value is even a sane
+    // thing to anchor on for this listing (agricultural exemptions,
+    // assessment caps, partial-parcel records, or a flatly aspirational
+    // asking price all produce a real assessed value that offer-model.ts's
+    // ratio-vs-asking banding was never tuned to handle — see that
+    // function's module doc for the flagship 12400 Cedar St, Austin case).
+    // RentCast's AVM (real here, unlike the free-tier seed-analysis path)
+    // serves as the tiebreaker; RentCast's tax-assessment record has no
+    // separate market-value figure, so marketValueHint is always null on
+    // this path.
+    const anchorDecision = assessment?.found
+      ? assessAnchorPlausibility({
+          assessedValue: assessment.totalValue,
+          assessmentBasis: assessment.assessmentBasis,
+          askingPrice: listing.price || null,
+          avmValue: bundle.avm?.value ?? null,
+          marketValueHint: null,
+        })
+      : undefined;
+    const taxAssessedDemoted = anchorDecision?.verdict === "context_only";
+
     // US Advantage layer (src/lib/pipeline/us-advantage.ts) — equity/tenure,
     // valuation triangulation, investor yield, risk/momentum, and
     // over-assessment, all computed from data already fetched above (zero
@@ -353,13 +384,38 @@ async function handleUSAssessment({
       compImpliedValue: comparables.impliedValue,
       monthlyRent: bundle.rent?.value ?? null,
       marketPanel,
+      taxAssessedDemoted,
     });
 
     const score = applyEquitySignalToScore(baseScore, advantage.equitySignal);
     const equityLabel = equitySignalLabel(advantage.equitySignal);
     const signals = equityLabel ? [...getSignals(listing), equityLabel] : getSignals(listing);
 
-    const offer = assessment?.found ? offerModel(listing, assessment) : offerModelLanguage(listing);
+    // Re-anchoring on demotion: prefer RentCast's AVM (the best independent
+    // market read available) when the gate found one credible; otherwise
+    // fall back to the DOM/language-based model, same as "no assessment at
+    // all." The AVM value is fed through offerModel() itself (not a bespoke
+    // formula) via a synthetic Assessment — this reuses the exact same
+    // trusted ratio-banding logic, just anchored on a modeled market value
+    // instead of a decoupled tax-assessed one.
+    let offer;
+    if (assessment?.found) {
+      if (!taxAssessedDemoted) {
+        offer = offerModel(listing, assessment);
+      } else if (anchorDecision?.anchorSource === "avm" && bundle.avm?.value) {
+        offer = offerModel(listing, {
+          ...assessment,
+          totalValue: bundle.avm.value,
+          source: "avm",
+          evidenceClass: "modeled",
+          assessmentBasis: "market_value",
+        });
+      } else {
+        offer = offerModelLanguage(listing);
+      }
+    } else {
+      offer = offerModelLanguage(listing);
+    }
 
     // THE SIGNAL — LLM narrative (US analogue of the CA pipeline's
     // analyzeAndNarrate/enrichListing; see src/lib/pipeline/us-narrative.ts
@@ -368,7 +424,7 @@ async function handleUSAssessment({
     // maxDuration; falls back to the deterministic template on any
     // failure/timeout so "THE SIGNAL" never renders empty. Off-market
     // properties don't get this — no listing story to tell there.
-    const narrativeContext = { listing, assessment, offer, signals, comparables, advantage, marketPanel };
+    const narrativeContext = { listing, assessment, offer, signals, comparables, advantage, marketPanel, anchorDecision };
     let narrative: string;
     let narrativeSignals: string[] = [];
     let narrativeConfidence = 0;
@@ -402,6 +458,7 @@ async function handleUSAssessment({
       countyName: geo.countyName,
       countyFips,
       assessment,
+      anchorDecision: anchorDecision ?? null,
       marketPanel,
       offerAvailable: true as const,
       listing,
