@@ -21,6 +21,13 @@ import type {
   RiskMomentumContext,
   OverAssessmentFlag,
 } from "@/lib/pipeline/us-advantage";
+// Value (not type-only) import: the CA Investor Yield card below reuses this
+// pure function (gross yield / 1%-rule math has no country-specific logic —
+// it's just price + monthly rent in, a verdict out). us-advantage.ts's own
+// imports are all `import type`, so this pulls in zero RentCast runtime code
+// — safe for the CA path, which must make zero RentCast calls.
+import { computeInvestorYield } from "@/lib/pipeline/us-advantage";
+import { getCmaFipsForCity, getCmaMomentum, getCmaRent, type CmaMomentum } from "@/lib/db/regional-econ";
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 
 // ISR: serve cached page for 10 minutes, revalidate in background
@@ -134,6 +141,81 @@ function domColor(dom: number): string {
   return "bg-green-500";
 }
 
+// ---------------------------------------------------------------------------
+// Canada Advantage — CMHC rent / StatCan NHPI cards (src/lib/db/regional-econ.ts)
+//
+// Mirrors the US Advantage cards' visual style (UsInvestorYieldCard /
+// UsRiskMomentumCard further below) but built on CA's own data: CMHC's
+// Rental Market Survey average rent by bedroom count, and StatCan's New
+// Housing Price Index. Both cards hide gracefully (return null) when the
+// listing's city has no mapped CMA or the CMA has no data on record yet —
+// this is a coverage layer for the 8 CMAs the CA pipeline currently
+// operates in, not a guarantee for every CA listing.
+// ---------------------------------------------------------------------------
+
+/** Nearest CMHC bedroom bucket for a listing's bed count (Listing.beds is a
+ * free-form string, e.g. "3", "3.5") — 0=studio, 3="3 Bedroom +" (CMHC's own
+ * top bucket, see regional-econ.ts's cmaRentMetric). */
+function bedsForCmaRent(beds: string): number {
+  const parsed = Math.round(parseFloat(beds));
+  if (!Number.isFinite(parsed)) return 2; // most-common rental size as a fallback
+  return Math.max(0, Math.min(3, parsed));
+}
+
+function CaInvestorYieldCard({
+  investorYield,
+  cmaName,
+  rentVintage,
+}: {
+  investorYield: InvestorYield | null;
+  cmaName: string;
+  rentVintage: number;
+}) {
+  if (!investorYield) return null;
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="text-xs uppercase tracking-widest text-muted mb-3">Investor Yield</div>
+      <p className="text-sm text-foreground leading-relaxed">{investorYield.verdict}</p>
+      <p className="text-xs text-muted/70 pt-2 mt-2 border-t border-border">
+        Modeled from CMHC&apos;s {rentVintage} Rental Market Survey average rent for the {cmaName} CMA — not
+        property-specific. Treat as an estimate, not a rent guarantee.
+      </p>
+    </div>
+  );
+}
+
+function caMomentumNote(momentum: CmaMomentum, cmaName: string): string {
+  const parts: string[] = [];
+  if (momentum.trend12moPct != null) {
+    const pct = momentum.trend12moPct * 100;
+    const dir = pct > 1 ? "rising" : pct < -1 ? "falling" : "roughly flat";
+    parts.push(
+      `New-construction home prices in the ${cmaName} CMA are ${dir} — ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}% over the past 12 months`
+    );
+  }
+  if (momentum.trend36moPct != null) {
+    const pct36 = momentum.trend36moPct * 100;
+    parts.push(`${pct36 >= 0 ? "+" : ""}${pct36.toFixed(1)}% over the past 3 years`);
+  }
+  if (parts.length === 0) return `No StatCan New Housing Price Index trend available yet for the ${cmaName} CMA.`;
+  return parts.join("; ") + ".";
+}
+
+function CaMarketMomentumCard({ momentum, cmaName }: { momentum: CmaMomentum | null; cmaName: string }) {
+  if (!momentum) return null;
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="text-xs uppercase tracking-widest text-muted mb-3">Market Momentum</div>
+      <p className="text-sm text-foreground leading-relaxed">{caMomentumNote(momentum, cmaName)}</p>
+      <p className="text-xs text-muted/70 pt-2 mt-2 border-t border-border">
+        StatCan New Housing Price Index ({momentum.nhpiVintage.year}-
+        {String(momentum.nhpiVintage.month).padStart(2, "0")}) for the {cmaName} CMA — tracks new-construction
+        pricing, not resale comparables. Directional context only.
+      </p>
+    </div>
+  );
+}
+
 export default async function PropertyPage({
   params,
 }: {
@@ -161,6 +243,20 @@ export default async function PropertyPage({
   const analysis = await analyzeListingAsync(listing);
   const { assessment, score, offer, signals, llmSignals, llmConfidence, narrative } = analysis;
   const listingHistory = analysis.history;
+
+  // Canada Advantage — CMHC rent / StatCan NHPI context for this listing's
+  // CMA, if it's one of the 8 the CA pipeline covers (see
+  // src/lib/db/regional-econ.ts's CA_CMA_TARGETS). Both reads are no-ops
+  // (return null immediately) when DATABASE_URL isn't configured, so this
+  // never blocks rendering — same graceful-degradation shape as the
+  // assessment lookup above.
+  const caCma = getCmaFipsForCity(listing.city);
+  const [caMomentum, caRent] = caCma
+    ? await Promise.all([getCmaMomentum(caCma.fips), getCmaRent(caCma.fips, bedsForCmaRent(listing.beds))])
+    : [null, null];
+  const caInvestorYield = caRent
+    ? computeInvestorYield({ priceForYield: listing.price, monthlyRent: caRent.monthlyRent, countyFmr2br: null })
+    : null;
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
@@ -568,6 +664,12 @@ export default async function PropertyPage({
             );
           })()}
         </div>
+
+        {/* Canada Advantage: Investor Yield + Market Momentum (CMHC rent / StatCan NHPI) */}
+        {caCma && (
+          <CaInvestorYieldCard investorYield={caInvestorYield} cmaName={caCma.cmaName} rentVintage={caRent?.vintage ?? 0} />
+        )}
+        {caCma && <CaMarketMomentumCard momentum={caMomentum} cmaName={caCma.cmaName} />}
       </div>
 
       {/* H. Description */}

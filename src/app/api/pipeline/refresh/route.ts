@@ -42,6 +42,15 @@ const CITIES: CityConfig[] = [
   { city: "Toronto", province: "ON", minPrice: 1000000, maxPrice: 1800000, target: 25 },
   { city: "Hamilton", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 25 },
   { city: "Ottawa", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 25 },
+  // Added 2026-08 — live coverage probe confirmed real Winnipeg inventory
+  // (19 valid house listings on a clean run; Zoocasa returns province="MB"
+  // correctly). Price band set from that probe's observed range (~$250K-
+  // $670K for 3-bed houses). Note: Winnipeg searches intermittently hit the
+  // documented province-wide-fallback regression (see zoocasa.ts's
+  // citiesMatch doc comment) and return 0 candidates on some requests — the
+  // two-search-variant dedup above plus daily reruns already tolerate this
+  // for other cities, so no special-casing needed here.
+  { city: "Winnipeg", province: "MB", minPrice: 300000, maxPrice: 650000, target: 25 },
 ];
 
 // Fields to strip before re-enrichment

@@ -1,9 +1,19 @@
 /**
  * db/regional-econ.ts
  *
- * Reader for US county-level regional economic & housing indicators
- * (regional_econ table), populated by scripts/ingest-us-*.ts (Census ACS,
- * FHFA HPI, HUD FMR, FEMA NRI). Backed by Neon Postgres.
+ * Reader for regional economic & housing indicators (regional_econ table),
+ * backed by Neon Postgres. Two geographies live side by side in the same
+ * table (distinguished by geo_level/geo_fips prefix, never mixed):
+ *
+ *   - US counties (geo_level='county', geo_fips="US-SSCCC"), populated by
+ *     scripts/ingest-us-*.ts (Census ACS, FHFA HPI, HUD FMR, FEMA NRI,
+ *     realtor.com median-DOM via FRED).
+ *   - CA CMAs (geo_level='cma', geo_fips="CA-CMA-{code}", where {code} is
+ *     the Statistics Canada Standard Geographical Classification CMA/CA
+ *     code — the same numbering StatCan's WDS and CMHC's own RMS tables
+ *     use), populated by scripts/ingest-ca-nhpi.ts (StatCan New Housing
+ *     Price Index, monthly) and scripts/ingest-ca-cmhc-rent.ts (CMHC Rental
+ *     Market Survey average rent by bedroom count, annual).
  *
  * Follows db/user-events.ts's conventions: dbAvailable() guard on every
  * export, defensive row typing (no throwing on a missing DATABASE_URL —
@@ -276,4 +286,175 @@ export async function getCountyMedianDom(countyFips: string, month?: number): Pr
   const latest = rows[0];
   if (latest.value == null || latest.month == null) return null;
   return { days: Number(latest.value), year: Number(latest.year), month: Number(latest.month), baseline: "latest" };
+}
+
+// ---------------------------------------------------------------------------
+// CA CMA registry — the "which Census Metropolitan Area does this listing's
+// city belong to" lookup shared by both CA ingest scripts and the property
+// page's Investor Yield / Market Momentum cards. Codes are Statistics
+// Canada's Standard Geographical Classification CMA/CA codes (verified live
+// against the WDS getCubeMetadata response for productId 18100205 — each
+// code below is that response's geography member's classificationCode, not
+// an internal cube memberId, so it's stable across StatCan cubes and matches
+// CMHC's own CMA numbering in its Rental Market Survey tables).
+//
+// Ottawa-Gatineau (505) is a cross-provincial CMA that both StatCan's NHPI
+// cube and CMHC's RMS tables split into "Qué. part" / "Ont. part" rows — our
+// Ottawa listings are all Ontario-side, so both ingest scripts pull the
+// Ontario-part figures but store them under the single unified CMA code 505
+// (the CMA our Ottawa listings actually belong to), not a synthetic
+// province-split code.
+// ---------------------------------------------------------------------------
+
+export interface CaCmaTarget {
+  /** Statistics Canada SGC CMA/CA code, e.g. 935 for Victoria. */
+  code: number;
+  /** Display name used in card copy, e.g. "Victoria" (Ottawa-Gatineau is the
+   * one exception — kept as the full hyphenated CMA name since "Ottawa" on
+   * its own would misrepresent the cross-provincial geography the rent/NHPI
+   * figures actually describe). */
+  name: string;
+  /** Listing.city values (as returned by src/lib/zoocasa.ts) that belong to
+   * this CMA — the namesake city plus any metro-sibling municipality the CA
+   * pipeline currently covers. Narrower than zoocasa.ts's CITY_SIBLINGS
+   * (that list exists for a different purpose — fetch-layer province-wide-
+   * fallback detection — and includes many municipalities this product
+   * doesn't fetch listings for at all). */
+  cities: string[];
+}
+
+export const CA_CMA_TARGETS: CaCmaTarget[] = [
+  { code: 935, name: "Victoria", cities: ["Victoria", "Saanich", "Langford"] },
+  { code: 933, name: "Vancouver", cities: ["Vancouver", "Surrey"] },
+  { code: 825, name: "Calgary", cities: ["Calgary"] },
+  { code: 835, name: "Edmonton", cities: ["Edmonton"] },
+  { code: 535, name: "Toronto", cities: ["Toronto"] },
+  { code: 537, name: "Hamilton", cities: ["Hamilton"] },
+  { code: 505, name: "Ottawa-Gatineau", cities: ["Ottawa"] },
+  { code: 602, name: "Winnipeg", cities: ["Winnipeg"] },
+];
+
+function normalizeCaCmaFips(code: number | string): string {
+  return `CA-CMA-${code}`;
+}
+
+/** metric name for a CMHC average-rent row at a given bedroom count — shared
+ * by scripts/ingest-ca-cmhc-rent.ts (writer) and getCmaRent (reader) so the
+ * two can never drift apart. 0 = studio, 3 = "3 Bedroom +" (CMHC's own top
+ * bucket — there's no separate 4BR+ series in the RMS tables). */
+export function cmaRentMetric(beds: number): string {
+  if (beds <= 0) return "cmhc_rent_studio";
+  if (beds >= 3) return "cmhc_rent_3br";
+  return `cmhc_rent_${beds}br`;
+}
+
+/**
+ * Resolves a CA listing's city to its CMA — the geography key both CA cards
+ * (Investor Yield, Market Momentum) look up market context for. Returns null
+ * for cities outside CA_CMA_TARGETS (no CMA context available; callers
+ * should hide the cards, not show an empty/misleading one).
+ */
+export function getCmaFipsForCity(city: string): { fips: string; cmaName: string; cmaCode: number } | null {
+  const cityLower = city.trim().toLowerCase();
+  for (const target of CA_CMA_TARGETS) {
+    if (target.cities.some((c) => c.toLowerCase() === cityLower)) {
+      return { fips: normalizeCaCmaFips(target.code), cmaName: target.name, cmaCode: target.code };
+    }
+  }
+  return null;
+}
+
+export interface CmaMomentum {
+  cmaFips: string;
+  nhpiLatest: number;
+  /** Calendar month/year the latest NHPI reading is for. */
+  nhpiVintage: { year: number; month: number };
+  /** (latest / value-12-months-earlier) - 1. Null when there's no
+   * observation exactly 12 months before the latest one (a gap in the
+   * ingested series). */
+  trend12moPct: number | null;
+  /** Same as trend12moPct but 36 months back. */
+  trend36moPct: number | null;
+}
+
+/**
+ * CMA-level New Housing Price Index momentum (scripts/ingest-ca-nhpi.ts,
+ * StatCan table 18-10-0205-01 "Total (house and land)" series). NHPI tracks
+ * *new construction* pricing, not resale comparables — the Market Momentum
+ * card's copy is expected to disclose that distinction, not this function.
+ *
+ * Returns null when the DB isn't configured or the CMA has no nhpi rows on
+ * record (no ingest has run for it, or getCmaFipsForCity returned null
+ * upstream).
+ */
+export async function getCmaMomentum(cmaFips: string): Promise<CmaMomentum | null> {
+  if (!dbAvailable()) return null;
+  const db = sql();
+
+  const rows = (await db`
+    SELECT year, month, value
+    FROM regional_econ
+    WHERE geo_fips = ${cmaFips} AND metric = 'nhpi'
+    ORDER BY year DESC, month DESC
+  `) as Row[];
+  if (rows.length === 0) return null;
+
+  const series = rows
+    .filter((r) => r.month != null && r.value != null)
+    .map((r) => {
+      const year = Number(r.year);
+      const month = Number(r.month);
+      return { year, month, value: Number(r.value), key: year * 12 + month };
+    })
+    .sort((a, b) => b.key - a.key);
+  if (series.length === 0) return null;
+
+  const latest = series[0];
+  const findOffset = (months: number) => series.find((p) => p.key === latest.key - months) ?? null;
+  const p12 = findOffset(12);
+  const p36 = findOffset(36);
+
+  return {
+    cmaFips,
+    nhpiLatest: latest.value,
+    nhpiVintage: { year: latest.year, month: latest.month },
+    trend12moPct: p12 && p12.value > 0 ? latest.value / p12.value - 1 : null,
+    trend36moPct: p36 && p36.value > 0 ? latest.value / p36.value - 1 : null,
+  };
+}
+
+export interface CmaRent {
+  monthlyRent: number;
+  /** Survey year the rent figure was published for (CMHC's October RMS). */
+  vintage: number;
+}
+
+/**
+ * CMA-level CMHC average rent for a given bedroom count
+ * (scripts/ingest-ca-cmhc-rent.ts, CMHC Rental Market Survey "Turnover
+ * units" figures — the rent charged when a unit is newly re-rented, i.e.
+ * the closest published proxy for what a new landlord could actually charge
+ * today, as opposed to "Non-turnover units" which reflects sitting tenants'
+ * often below-market rent).
+ *
+ * Returns null when the DB isn't configured or the CMA/bedroom-count
+ * combination has no row on record.
+ */
+export async function getCmaRent(cmaFips: string, beds: number): Promise<CmaRent | null> {
+  if (!dbAvailable()) return null;
+  const db = sql();
+  const metric = cmaRentMetric(beds);
+
+  const rows = (await db`
+    SELECT year, value
+    FROM regional_econ
+    WHERE geo_fips = ${cmaFips} AND metric = ${metric}
+    ORDER BY year DESC
+    LIMIT 1
+  `) as Row[];
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  if (row.value == null) return null;
+
+  return { monthlyRent: Number(row.value), vintage: Number(row.year) };
 }

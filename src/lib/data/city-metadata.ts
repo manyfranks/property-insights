@@ -30,6 +30,7 @@ const CITY_DESCRIPTIONS: Record<string, string> = {
   Toronto: "Canada's largest city, diverse market",
   Hamilton: "Steel city with revitalizing neighborhoods",
   Ottawa: "National capital, stable government market",
+  Winnipeg: "Manitoba's capital, affordable Prairie market",
 };
 
 /**
@@ -101,7 +102,10 @@ export const PROVINCE_GROUPS: { province: string; label: string; active: boolean
   { province: "AB", label: "AB", active: true },
   { province: "ON", label: "ON", active: true },
   { province: "QC", label: "QC", active: false },
-  { province: "MB", label: "MB", active: false },
+  // MB (Winnipeg) activated 2026-08 — real Zoocasa coverage confirmed live
+  // + the MB (City of Winnipeg SODA) assessment adapter already exists and
+  // is golden-tested (src/lib/assessment/mb.ts, scripts/golden-canada.ts).
+  { province: "MB", label: "MB", active: true },
   { province: "SK", label: "SK", active: false },
   { province: "NS", label: "NS", active: false },
   { province: "NB", label: "NB", active: false },
