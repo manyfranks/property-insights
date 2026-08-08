@@ -113,7 +113,7 @@ Notes on ties and fallbacks:
 
 _From the live CJ dashboard inventory, Aug 8 2026. Ranked by journey fit × urgency, not raw EPC — closing the mortgage gap (#1) matters more than any single number below._
 
-1. **Mortgage Research Center** (#7647072) — Lead 60%, 3mo EPC $207, lower approval odds — apply with the strongest content in the application; this is the single highest-priority application on the list because it fills the buyer journey's #1 gap.
+1. **Mortgage Research Center** (#7647072) — Lead 60%, 3mo EPC $207. ❌ **AUTO-DECLINED Aug 8** (programmatic traffic/domain-age screen, consistent with CJ's "lower approval odds" flag). Reapply once GSC shows impressions; CJ lists the program's affiliate contact for a traffic-proof pitch. Mortgage slot now rides on **LendingTree (in review)** → NAF (FlexOffers reapply) as fallbacks.
 2. **Simply Business** (#5808859) — $30/lead, EPC $1,570 — landlord insurance, fills result-investor's insurance slot.
 3. **Avail** (#7785516) — $25/lead, EPC $143 — investor-tools (rental management), fills result-investor's later-priority slot.
 4. **Choice Home Warranty** (#4593144) — $20/lead, EPC $64 — home-services, fills result-buyer's lower-priority slot.
