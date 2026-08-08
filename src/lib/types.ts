@@ -54,7 +54,10 @@ export interface Assessment {
   buildingValue: number;
   assessmentYear: string;
   found: boolean;
-  source?: "government" | "tax_reverse" | "area_median" | "cache";
+  // "avm" = a RentCast automated valuation model estimate, used as the US
+  // assessment anchor when the tax-assessed value is missing or stale (see
+  // src/lib/pipeline/us-assess.ts's buildUsAssessment).
+  source?: "government" | "tax_reverse" | "area_median" | "cache" | "avm";
   // US states vary in how they compute assessed value (some assess below
   // market, some use acquisition-value schemes like California's Prop 13);
   // Canadian provinces are assumed market_value. Optional — unset for

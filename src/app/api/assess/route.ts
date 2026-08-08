@@ -8,12 +8,19 @@
  * response is `{ ok, slug, address, city, emailSent }` — the frontend
  * redirects to /property/[slug] to render the full analysis.
  *
- * US addresses: no listing search exists yet (no Zoocasa equivalent), so
- * this resolves to a county-level assessment + market panel instead —
- * see handleUSAssessment(). The response is rendered inline by the caller
- * (no slug, no redirect): `{ ok, country: "US", address, city, state,
- * countyName, countyFips, assessment, marketPanel, offerAvailable,
- * offerUnavailableReason?, emailSent }`.
+ * US addresses: RentCast (src/lib/rentcast.ts) plays Zoocasa's role — see
+ * handleUSAssessment(). Rendered inline by the caller (no slug, no
+ * redirect; there's no KV-persisted listing to send a /property/[slug] page
+ * to). Three response shapes, all `{ ok, country: "US", address, city,
+ * state, countyName, countyFips, assessment, marketPanel, ... }` plus:
+ *   - Listed (RentCast has an active listing): `offerAvailable: true,
+ *     listing, score, signals, offer, comparables`.
+ *   - Off-market (RentCast has property/AVM data, no active listing):
+ *     `offerAvailable: false, offerUnavailableReason: "not_listed", avm,
+ *     rent`.
+ *   - Fallback (RentCast quota exhausted / API down / no record at all):
+ *     `offerAvailable: false, offerUnavailableReason: "no_listing_data"` —
+ *     the original county-median-only shape, unchanged.
  *
  * Auth required (Clerk).
  * maxDuration: 60s (assessment lookup + LLM call).
@@ -31,6 +38,11 @@ import { slugify } from "@/lib/utils";
 import { geocodeUSAddress } from "@/lib/geo/census-geocoder";
 import { lookupAssessment } from "@/lib/assessment";
 import { getCountyMarketPanel } from "@/lib/db/regional-econ";
+import { getUSProperty } from "@/lib/rentcast";
+import { buildUsAssessment, buildUsListing, buildUsCompSupport } from "@/lib/pipeline/us-assess";
+import { getSignals } from "@/lib/signals";
+import { scoreV2 } from "@/lib/scoring";
+import { offerModel, offerModelLanguage } from "@/lib/offer-model";
 
 const RATE_LIMIT_RESPONSE = (resetMs: number) =>
   NextResponse.json(
@@ -169,12 +181,29 @@ function parseAddress(raw: string): {
 }
 
 /**
- * US assessment flow — county-level, not listing-level. No Zoocasa listing
- * search, no comparables, no HouseSigma, no KV persistence: there is no
- * "listing" to enrich, just a geocoded address resolving to a county market
- * panel. Auth + rate limiting mirror the Canadian path (see POST): the daily
- * cap is pre-checked by the caller before this runs, and consumed here once
- * the address is confirmed real (geocode match), the same checkpoint the CA
+ * US assessment flow. Geocodes the address, then asks RentCast for a
+ * property record + AVM value + rent estimate + active-listing lookup
+ * (src/lib/rentcast.ts's getUSProperty — cached and quota-guarded against
+ * the free-tier 50/month cap). Three outcomes:
+ *
+ *   1. RentCast has an active listing → run the SAME scoring/offer pipeline
+ *      Canada uses (getSignals, scoreV2, offerModel) against a
+ *      Listing-shaped mapping of the RentCast data, plus AVM-derived comp
+ *      support. offerAvailable: true, same shape of fields as the CA
+ *      pipeline produces, with the county marketPanel attached as
+ *      enrichment.
+ *   2. RentCast has property/AVM data but no active listing → off-market
+ *      variant: AVM value + assessed value + rent + county panel,
+ *      offerAvailable: false ("not_listed" — there's no asking price or
+ *      DOM to model an offer against, not a data failure).
+ *   3. RentCast quota exhausted, API error, or genuinely no record for this
+ *      address → falls back to the original county-median-only path
+ *      (unchanged from the pre-RentCast implementation): never fails the
+ *      user's request over a RentCast problem.
+ *
+ * Auth + rate limiting mirror the Canadian path (see POST): the daily cap
+ * is pre-checked by the caller before this runs, and consumed here once the
+ * address is confirmed real (geocode match), the same checkpoint the CA
  * path uses ("listing confirmed on Zoocasa").
  */
 async function handleUSAssessment({
@@ -230,18 +259,61 @@ async function handleUSAssessment({
 
   const countyFips = `US-${geo.stateFips}${geo.countyFips}`;
 
-  // Assessment lookup re-geocodes internally (adapter interface takes an
-  // address, not a precomputed FIPS) — an acceptable duplicate call to the
-  // free Census geocoder in exchange for keeping the adapter interface
-  // uniform across BC/ON/AB/US. Runs alongside the market panel fetch.
-  const [assessment, marketPanel] = await Promise.all([
-    lookupAssessment(street, region, city),
+  const [bundle, marketPanel] = await Promise.all([
+    getUSProperty(street, city, geo.stateUsps).catch((err) => {
+      log("rentcast error", err instanceof Error ? err.message : String(err));
+      return null;
+    }),
     getCountyMarketPanel(countyFips),
   ]);
+
   log(
-    "us data done",
-    `assessment_found=${assessment?.found ?? false} panel=${marketPanel ? "yes" : "no"}`
+    "rentcast done",
+    bundle
+      ? `record=${!!bundle.record} avm=${!!bundle.avm} rent=${!!bundle.rent} listing=${!!bundle.activeListing} ` +
+        `cacheHits=${bundle.meta.cacheHits} liveCalls=${bundle.meta.liveCalls} quotaExhausted=${bundle.meta.quotaExhausted}` +
+        (bundle.meta.errors.length ? ` errors=${bundle.meta.errors.join("; ")}` : "")
+      : "call failed"
   );
+
+  const hasUsableRentcastData = bundle && (bundle.record || bundle.avm);
+
+  // Fallback path — quota exhausted, RentCast API down, or genuinely no
+  // record for this address. Identical to the original county-median-only
+  // behavior.
+  if (!hasUsableRentcastData) {
+    const assessment = await lookupAssessment(street, region, city);
+    log(
+      "us data done (fallback)",
+      `assessment_found=${assessment?.found ?? false} panel=${marketPanel ? "yes" : "no"}`
+    );
+
+    trackEvent(userId, "assessment_request", {
+      address: geo.matchedAddress,
+      city,
+      state: geo.stateUsps,
+      country: "US",
+    }).catch(() => {}); // fire and forget
+
+    log("done (US, fallback)", geo.matchedAddress);
+
+    return NextResponse.json({
+      ok: true,
+      country: "US" as const,
+      address: geo.matchedAddress,
+      city,
+      state: geo.stateUsps,
+      countyName: geo.countyName,
+      countyFips,
+      assessment,
+      marketPanel,
+      offerAvailable: false,
+      offerUnavailableReason: "no_listing_data",
+      emailSent: false,
+    });
+  }
+
+  const assessment = buildUsAssessment(bundle.record, bundle.avm, geo.stateUsps);
 
   trackEvent(userId, "assessment_request", {
     address: geo.matchedAddress,
@@ -250,7 +322,46 @@ async function handleUSAssessment({
     country: "US",
   }).catch(() => {}); // fire and forget
 
-  log("done (US)", geo.matchedAddress);
+  // Listed variant — same pipeline as Canada.
+  if (bundle.activeListing) {
+    const listing = buildUsListing(bundle, city, geo.stateUsps);
+    const signals = getSignals(listing);
+    const score = scoreV2(listing);
+    const offer = assessment?.found ? offerModel(listing, assessment) : offerModelLanguage(listing);
+    const comparables = buildUsCompSupport(bundle.avm, parseInt(listing.sqft) || 0);
+
+    log(
+      "done (US, listed)",
+      `${geo.matchedAddress} tier=${score.tier} offer=${offer?.finalOffer} anchor=${assessment?.source}`
+    );
+
+    return NextResponse.json({
+      ok: true,
+      country: "US" as const,
+      address: geo.matchedAddress,
+      city,
+      state: geo.stateUsps,
+      countyName: geo.countyName,
+      countyFips,
+      assessment,
+      marketPanel,
+      offerAvailable: true as const,
+      listing,
+      score,
+      signals,
+      offer,
+      comparables,
+      emailSent: false,
+    });
+  }
+
+  // Off-market variant — RentCast has data on the property, but it isn't
+  // currently listed for sale. No asking price or DOM to anchor an offer
+  // model against; surface AVM/assessed/rent instead.
+  log(
+    "done (US, off-market)",
+    `${geo.matchedAddress} assessed=${assessment?.totalValue} avm=${bundle.avm?.value} rent=${bundle.rent?.value}`
+  );
 
   return NextResponse.json({
     ok: true,
@@ -261,14 +372,16 @@ async function handleUSAssessment({
     countyName: geo.countyName,
     countyFips,
     assessment,
+    avm: bundle.avm
+      ? { value: bundle.avm.value, rangeLow: bundle.avm.rangeLow, rangeHigh: bundle.avm.rangeHigh }
+      : null,
+    rent: bundle.rent
+      ? { value: bundle.rent.value, rangeLow: bundle.rent.rangeLow, rangeHigh: bundle.rent.rangeHigh }
+      : null,
     marketPanel,
-    // The offer model (src/lib/offer-model.ts) needs an asking price, DOM,
-    // and listing description/notes to anchor on — none of which exist for
-    // a bare county-level assessment. Rather than contort it with fake
-    // inputs, the offer is simply omitted; this flag lets the frontend
-    // render a clean "no offer" state instead of guessing why it's missing.
-    offerAvailable: false,
-    offerUnavailableReason: "no_listing_data",
+    offerAvailable: false as const,
+    offerUnavailableReason: "not_listed",
+    offerUnavailableMessage: "This property is not currently listed for sale.",
     emailSent: false,
   });
 }
