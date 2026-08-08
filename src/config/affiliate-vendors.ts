@@ -53,7 +53,9 @@ export type AffiliateSource =
   | "calculator"
   | "email"
   | "discover"
-  | "county-page";
+  | "county-page"
+  | "rent-page"
+  | "state-page";
 
 export interface AffiliateVendor {
   /** env var key: NEXT_PUBLIC_AFFILIATE_URL_{ID} (uppercased, hyphens -> underscores) */
@@ -572,7 +574,8 @@ export type SurfaceKey =
   | "calculator"
   | "email"
   | "discover"
-  | "state-page";
+  | "state-page"
+  | "rent-page";
 
 /**
  * Per-surface vertical journey order. This is the fallback engine: with
@@ -590,12 +593,21 @@ export const SURFACE_VERTICAL_PRIORITY: Record<SurfaceKey, Vertical[]> = {
   email: ["mortgage", "insurance", "investor-tools", "home-services", "agent-referral", "tax-appeal"],
   discover: ["investor-tools", "insurance", "mortgage", "tax-appeal", "home-services", "agent-referral"],
   "state-page": ["investor-tools", "insurance", "mortgage", "tax-appeal", "home-services", "agent-referral"],
+  "rent-page": ["investor-tools", "insurance", "mortgage", "tax-appeal", "home-services", "agent-referral"],
 };
 
 /**
  * Shared eligibility filter (enabled + country + audienceMode + state gate)
  * used by both `getVendorsForRegion` and `getVendorsForSurface` — only the
  * sort differs between them.
+ *
+ * `state` is optional: pages with no single-property/county context (the
+ * /us hub) call with `state: undefined`. In that case a state-gated vendor
+ * (stateCoverage is an allowlist, e.g. Ownwell's 8 states) can't be verified
+ * eligible, so it's excluded — only `stateCoverage: "all"` vendors pass.
+ * Every currently-`enabled` US vendor happens to be "all"-coverage today, so
+ * this has no effect yet, but it's the correct behavior once a state-gated
+ * vendor goes live and a nationwide surface renders it.
  */
 function filterEligibleVendors(
   country: Country,
@@ -610,7 +622,7 @@ function filterEligibleVendors(
     .filter((v) => {
       if (upperState && v.stateExclusions?.includes(upperState)) return false;
       if (v.stateCoverage === "all") return true;
-      return upperState ? v.stateCoverage.includes(upperState) : true;
+      return upperState ? v.stateCoverage.includes(upperState) : false;
     });
 }
 

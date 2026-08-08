@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { BASE_URL, SITE_NAME } from "@/lib/seo";
 import { BreadcrumbJsonLd, ItemListJsonLd } from "@/components/json-ld";
+import PartnerCta from "@/components/partner-cta";
 import { getAllStatesWithCounties, getCountiesByState } from "@/lib/us-counties";
 
 export const revalidate = 86400; // 24h ISR
@@ -100,6 +101,25 @@ export default async function UsStatePage({
             </div>
           </Link>
         ))}
+      </div>
+
+      <div className="mt-10 mb-6">
+        <PartnerCta
+          country="US"
+          state={state}
+          source="state-page"
+          surface="state-page"
+          heading={`Tools for ${stateName} buyers and investors`}
+        />
+      </div>
+
+      <div className="text-sm">
+        <Link
+          href="/tools/assessment-gap"
+          className="text-foreground hover:underline underline-offset-2 transition-colors"
+        >
+          Try the Assessment Gap Calculator &rarr;
+        </Link>
       </div>
     </main>
   );

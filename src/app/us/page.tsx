@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BASE_URL, SITE_NAME } from "@/lib/seo";
 import { BreadcrumbJsonLd } from "@/components/json-ld";
+import PartnerCta from "@/components/partner-cta";
 import { getAllStatesWithCounties, US_COUNTIES } from "@/lib/us-counties";
 
 export const revalidate = 86400; // 24h ISR — regional_econ data updates infrequently (annual/quarterly sources)
@@ -65,6 +66,15 @@ export default function UsHubPage() {
             </div>
           </Link>
         ))}
+      </div>
+
+      <div className="mt-10">
+        <PartnerCta
+          country="US"
+          source="state-page"
+          surface="state-page"
+          heading="Tools for US buyers and investors"
+        />
       </div>
 
       <div className="border border-border rounded-xl p-6 mt-10 text-center">

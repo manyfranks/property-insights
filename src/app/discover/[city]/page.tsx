@@ -10,6 +10,7 @@ import { BASE_URL, SITE_NAME } from "@/lib/seo";
 import { getRelatedPosts } from "@/lib/blog";
 import { BreadcrumbJsonLd, ItemListJsonLd } from "@/components/json-ld";
 import TierBadge from "@/components/tier-badge";
+import PartnerCta from "@/components/partner-cta";
 
 export const revalidate = 600; // 10 min ISR
 
@@ -197,6 +198,18 @@ export default async function DiscoverCityPage({
             </Link>
           );
         })}
+      </div>
+
+      {/* Act on what you find */}
+      <div className="mt-10">
+        <PartnerCta
+          country={isUSState(meta.province) ? "US" : "CA"}
+          state={meta.province}
+          source="discover"
+          surface="discover"
+          heading="Act on what you find"
+          city={meta.name}
+        />
       </div>
 
       {/* Related reading */}

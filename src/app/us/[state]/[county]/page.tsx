@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BASE_URL, SITE_NAME } from "@/lib/seo";
 import { BreadcrumbJsonLd } from "@/components/json-ld";
 import PartnerCta from "@/components/partner-cta";
+import StatCard from "@/components/stat-card";
 import { assertAffiliateHealth } from "@/config/affiliate-vendors";
 import { fmt, pct } from "@/lib/utils";
 import {
@@ -55,27 +56,6 @@ function femaRiskBand(score: number): { label: string; blurb: string } {
   if (score >= 40) return { label: "Relatively Moderate", blurb: "roughly average composite risk nationally" };
   if (score >= 20) return { label: "Relatively Low", blurb: "lower composite risk than most US counties" };
   return { label: "Very Low", blurb: "among the lowest-risk counties nationally" };
-}
-
-function StatCard({
-  label,
-  value,
-  sub,
-  vintage,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  vintage?: number;
-}) {
-  return (
-    <div className="border border-border rounded-xl p-4 bg-white">
-      <div className="text-xs uppercase tracking-widest text-muted mb-2">{label}</div>
-      <div className="font-mono text-xl font-semibold">{value}</div>
-      {sub && <div className="text-xs text-muted mt-1">{sub}</div>}
-      {vintage && <div className="text-xs text-muted/60 mt-1">{vintage} data</div>}
-    </div>
-  );
 }
 
 function fmrLabel(n: number | null): string {
@@ -353,6 +333,14 @@ export default async function CountyPage({
               <div className="text-muted text-xs">4BR</div>
               <div className="font-mono font-medium">{fmrLabel(panel.fmr4br)}</div>
             </div>
+          </div>
+          <div className="mt-4">
+            <Link
+              href={`/us/${stateSlug}/${countySlug}/rent`}
+              className="text-xs font-medium text-foreground underline underline-offset-2 hover:text-foreground/70 transition-colors"
+            >
+              Full rent breakdown by bedroom &rarr;
+            </Link>
           </div>
         </div>
       )}

@@ -31,6 +31,22 @@ async function main() {
   const listings = await getAllListings();
   const now = new Date().toISOString();
 
+  // Counties with HUD FMR data get a /rent page (fail-soft: no DB at build
+  // time → skip rent URLs rather than failing the whole sitemap).
+  let fmrFips = new Set<string>();
+  try {
+    if (process.env.DATABASE_URL) {
+      const { neon } = await import("@neondatabase/serverless");
+      const sql = neon(process.env.DATABASE_URL);
+      const rows = (await sql`
+        SELECT DISTINCT geo_fips FROM regional_econ WHERE metric = 'fmr_2br'
+      `) as { geo_fips: string }[];
+      fmrFips = new Set(rows.map((r) => r.geo_fips));
+    }
+  } catch (err) {
+    console.error("[sitemap] FMR county query failed — rent URLs skipped:", err);
+  }
+
   const entry = (url: string, lastmod: string, changefreq: string, priority: number) =>
     `<url><loc>${url}</loc><lastmod>${lastmod}</lastmod><changefreq>${changefreq}</changefreq><priority>${priority}</priority></url>`;
 
@@ -57,6 +73,9 @@ async function main() {
     ...getAllStatesWithCounties().map((s) => entry(`${BASE_URL}/us/${s.stateSlug}`, now, "monthly", 0.6)),
     ...US_COUNTIES.map((c) =>
       entry(`${BASE_URL}/us/${c.stateSlug}/${c.countySlug}`, now, "monthly", isTopMetroCounty(c.fips) ? 0.7 : 0.6)
+    ),
+    ...US_COUNTIES.filter((c) => fmrFips.has(`US-${c.fips}`) || fmrFips.has(c.fips)).map((c) =>
+      entry(`${BASE_URL}/us/${c.stateSlug}/${c.countySlug}/rent`, now, "monthly", isTopMetroCounty(c.fips) ? 0.7 : 0.6)
     ),
   ];
 

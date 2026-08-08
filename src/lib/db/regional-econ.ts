@@ -73,6 +73,26 @@ export interface AcsCountyMedian {
   year: number;
 }
 
+/** Lean rent-focused panel for /us/[state]/[county]/rent — see
+ * getCountyRentPanel below. */
+export interface CountyRentPanel {
+  /** normalized "US-SSCCC" form */
+  countyFips: string;
+
+  fmrStudio: number | null;
+  fmr1br: number | null;
+  /** guaranteed non-null — this is the function's data gate (see below) */
+  fmr2br: number;
+  fmr3br: number | null;
+  fmr4br: number | null;
+
+  /** for the gross-yield teaser; null when ACS has no home-value row for the county */
+  medianHomeValue: number | null;
+
+  /** metric name -> year the value shown above was recorded for */
+  vintages: MetricVintages;
+}
+
 export interface CountyMedianDom {
   days: number;
   year: number;
@@ -241,6 +261,100 @@ export async function getAcsCountyMedian(countyFips: string): Promise<AcsCountyM
   if (row.value == null) return null;
 
   return { value: Number(row.value), year: Number(row.year) };
+}
+
+/**
+ * Lean rent-focused panel for /us/[state]/[county]/rent — just the 5 HUD FMR
+ * bedroom-size metrics plus median_home_value (for the gross-yield teaser),
+ * instead of getCountyMarketPanel's full ACS+HPI+FEMA+FMR fetch (which pulls
+ * 20+ FEMA hazard rows and a multi-year HPI series the rent page never
+ * touches).
+ *
+ * Returns null when the DB isn't configured, or the county has no fmr_2br
+ * row on record — fmr_2br is this function's (and the page's) data gate,
+ * the same metric getCountyFipsWithFmr uses for the sitemap. HUD's FMR
+ * ingest writes all 5 bedroom-size metrics together per county (verified:
+ * every one of the 3,077 covered counties has all 5, never a partial set),
+ * so gating on fmr_2br alone is safe.
+ */
+export async function getCountyRentPanel(countyFips: string): Promise<CountyRentPanel | null> {
+  if (!dbAvailable()) return null;
+
+  const geoFips = normalizeCountyFips(countyFips);
+  const db = sql();
+
+  const rows = (await db`
+    SELECT metric, year, value
+    FROM regional_econ
+    WHERE geo_fips = ${geoFips}
+      AND metric IN ('fmr_studio', 'fmr_1br', 'fmr_2br', 'fmr_3br', 'fmr_4br', 'median_home_value')
+    ORDER BY metric, year DESC
+  `) as Row[];
+
+  if (rows.length === 0) return null;
+
+  const byMetric = groupByMetric(
+    rows.map((r) => ({ metric: String(r.metric), year: Number(r.year), value: Number(r.value) }))
+  );
+
+  const fmr2br = latestValue(byMetric, "fmr_2br");
+  if (fmr2br == null) return null; // no FMR data on record for this county — page should 404
+
+  const vintages: MetricVintages = {};
+  for (const [metric, list] of byMetric.entries()) {
+    if (list.length > 0) vintages[metric] = list[0].year;
+  }
+
+  return {
+    countyFips: geoFips,
+    fmrStudio: latestValue(byMetric, "fmr_studio"),
+    fmr1br: latestValue(byMetric, "fmr_1br"),
+    fmr2br,
+    fmr3br: latestValue(byMetric, "fmr_3br"),
+    fmr4br: latestValue(byMetric, "fmr_4br"),
+    medianHomeValue: latestValue(byMetric, "median_home_value"),
+    vintages,
+  };
+}
+
+/**
+ * Distinct county FIPS with a fmr_2br row on record — the exact 3,077-county
+ * set /rent pages are live for. Used by the sitemap route (src/app/api/
+ * sitemap/route.ts), which already runs as a live `force-dynamic` route
+ * handler rather than a build-time script, so a direct DB query is the
+ * natural fit here — no separate static-file generation step, and the
+ * sitemap can never drift out of sync with what getCountyRentPanel actually
+ * gates on.
+ */
+export async function getCountyFipsWithFmr(): Promise<string[]> {
+  if (!dbAvailable()) return [];
+  const db = sql();
+
+  const rows = (await db`
+    SELECT DISTINCT geo_fips FROM regional_econ WHERE metric = 'fmr_2br'
+  `) as Row[];
+
+  return rows.map((r) => String(r.geo_fips));
+}
+
+/**
+ * Same fmr_2br gate as getCountyFipsWithFmr, scoped to a small candidate
+ * list — used by the rent page to filter its "sibling county rent pages"
+ * cross-links down to counties that actually have a live /rent page,
+ * without pulling all 3,077 covered counties on every render.
+ */
+export async function getCountyFipsWithFmrAmong(candidateFips: string[]): Promise<Set<string>> {
+  if (!dbAvailable() || candidateFips.length === 0) return new Set();
+  const db = sql();
+  const normalized = candidateFips.map(normalizeCountyFips);
+
+  const rows = (await db`
+    SELECT DISTINCT geo_fips
+    FROM regional_econ
+    WHERE metric = 'fmr_2br' AND geo_fips = ANY(${normalized})
+  `) as Row[];
+
+  return new Set(rows.map((r) => String(r.geo_fips)));
 }
 
 /**

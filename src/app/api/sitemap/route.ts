@@ -4,6 +4,7 @@ import { BLOG_POSTS } from "@/lib/blog";
 import { slugify } from "@/lib/utils";
 import { BASE_URL } from "@/lib/seo";
 import { US_COUNTIES, getAllStatesWithCounties, isTopMetroCounty } from "@/lib/us-counties";
+import { getCountyFipsWithFmr } from "@/lib/db/regional-econ";
 
 function getAllTagSlugs(): string[] {
   const slugs = new Set<string>();
@@ -24,6 +25,14 @@ function entry(url: string, lastmod: string, changefreq: string, priority: numbe
 export async function GET() {
   const listings = await getAllListings();
   const now = new Date().toISOString();
+
+  // County /rent pages only exist for counties with a HUD fmr_2br row on
+  // record (~3,077 of 3,144) — a live DB query here (this route is already
+  // `force-dynamic`, not a build-time script) so the sitemap can never list
+  // a /rent URL that 404s, and never needs a separate static file to stay
+  // in sync with getCountyRentPanel's own data gate.
+  const fmrFips = new Set(await getCountyFipsWithFmr());
+  const countiesWithFmr = US_COUNTIES.filter((c) => fmrFips.has(c.fips));
 
   const urls: string[] = [
     // Static pages
@@ -81,6 +90,16 @@ export async function GET() {
         now,
         "monthly",
         isTopMetroCounty(c.fips) ? 0.7 : 0.6,
+      )
+    ),
+
+    // US county /rent pages — only counties with HUD FMR data on record
+    ...countiesWithFmr.map((c) =>
+      entry(
+        `${BASE_URL}/us/${c.stateSlug}/${c.countySlug}/rent`,
+        now,
+        "monthly",
+        isTopMetroCounty(c.fips) ? 0.65 : 0.55,
       )
     ),
   ];
