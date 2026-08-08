@@ -9,9 +9,13 @@ const isPublicApi = createRouteMatcher([
   "/api/autocomplete(.*)",
   "/api/search(.*)",
   "/api/discover(.*)",
+  // partner-connect now accepts anonymous clicks too — needs the per-IP
+  // limit since it can no longer rely solely on the per-user one below.
+  "/api/partner-connect(.*)",
 ]);
 
-// Authenticated API routes that get per-user rate limiting
+// Authenticated API routes that get per-user rate limiting (applied in
+// addition to the per-IP limit above when the caller is signed in)
 const isAuthApi = createRouteMatcher([
   "/api/track(.*)",
   "/api/consent(.*)",

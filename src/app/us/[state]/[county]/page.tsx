@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BASE_URL, SITE_NAME } from "@/lib/seo";
 import { BreadcrumbJsonLd } from "@/components/json-ld";
 import PartnerCta from "@/components/partner-cta";
+import { assertAffiliateHealth } from "@/config/affiliate-vendors";
 import { fmt, pct } from "@/lib/utils";
 import {
   getCountyBySlug,
@@ -144,6 +145,8 @@ export default async function CountyPage({
   const { state: stateSlug, county: countySlug } = await params;
   const county = getCountyBySlug(stateSlug, countySlug);
   if (!county) notFound();
+
+  assertAffiliateHealth();
 
   const panel: CountyMarketPanel | null = await getCountyMarketPanel(county.fips);
   // Registry entry exists but no regional_econ rows for it — treat as missing,

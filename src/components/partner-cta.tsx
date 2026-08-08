@@ -104,8 +104,15 @@ export default function PartnerCta({
           }
           className="flex-1 min-w-[220px] basis-full sm:basis-auto border border-border rounded-xl p-5 bg-white hover:border-foreground/20 hover:shadow-sm transition-all group"
         >
-          <div className="text-base font-medium text-foreground mb-1 group-hover:underline">
-            {hero.vendor.ctaLabel ?? hero.vendor.name}
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <div className="text-base font-medium text-foreground group-hover:underline">
+              {hero.vendor.ctaLabel ?? hero.vendor.name}
+            </div>
+            {hero.resolved.isAffiliate && (
+              <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted/70">
+                Sponsored
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted leading-relaxed mb-2">
             {hero.vendor.offerText ?? hero.vendor.description ?? hero.vendor.name}
@@ -134,8 +141,15 @@ export default function PartnerCta({
             }
             className="flex-1 min-w-[140px] border border-border rounded-xl p-4 bg-white hover:border-foreground/20 hover:shadow-sm transition-all group"
           >
-            <div className="text-sm font-medium text-foreground mb-1 group-hover:underline">
-              {vendor.ctaLabel ?? vendor.name}
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <div className="text-sm font-medium text-foreground group-hover:underline">
+                {vendor.ctaLabel ?? vendor.name}
+              </div>
+              {resolved.isAffiliate && (
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted/70">
+                  Sponsored
+                </span>
+              )}
             </div>
             <p className="text-xs text-muted leading-relaxed mb-2">
               {vendor.description ?? vendor.name}

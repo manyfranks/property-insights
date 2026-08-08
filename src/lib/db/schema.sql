@@ -61,3 +61,23 @@ CREATE TABLE IF NOT EXISTS regional_econ (
 
 -- Primary lookup path: "give me metric X for county Y" (reader lib queries).
 CREATE INDEX IF NOT EXISTS idx_regional_econ_fips_metric ON regional_econ (geo_fips, metric);
+
+-- Partner clicks: append-only log of affiliate CTA click-throughs, including
+-- anonymous (signed-out) clicks. Separate from user_events so top-of-funnel
+-- EPC data isn't lost when there's no Clerk session. Deliberately no PI on
+-- anonymous rows — no IP, no user agent.
+CREATE TABLE IF NOT EXISTS partner_clicks (
+  id            BIGSERIAL PRIMARY KEY,
+  vendor        TEXT NOT NULL,
+  vertical      TEXT,
+  state         TEXT,
+  source        TEXT,
+  affiliate     BOOLEAN,
+  property_slug TEXT,
+  city          TEXT,
+  user_id       TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_partner_clicks_vendor ON partner_clicks (vendor);
+CREATE INDEX IF NOT EXISTS idx_partner_clicks_created ON partner_clicks (created_at);

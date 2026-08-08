@@ -8,11 +8,16 @@
 import { Resend } from "resend";
 import { Listing } from "./types";
 import { fmt, pct, slugify } from "./utils";
+import { AFFILIATE_VENDORS, getAffiliateUrl } from "@/config/affiliate-vendors";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const FROM = "Property Insights <insights@mail.propertyinsights.xyz>";
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://www.propertyinsights.xyz";
+
+// Same sentence as src/components/partner-cta.tsx's cluster disclosure.
+const FTC_DISCLOSURE =
+  "We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.";
 
 interface AssessmentEmailData {
   listing: Listing;
@@ -39,7 +44,8 @@ function formatNarrative(narrative: string): string {
 function buildAssessmentHtml(data: AssessmentEmailData): string {
   const { listing, tier, score, narrative, finalOffer, savings, percentOfList } = data;
   const propertyUrl = `${BASE_URL}/property/${slugify(listing.address)}`;
-  const squareOneUrl = process.env.NEXT_PUBLIC_SQUAREONE_URL || "";
+  const squareOneVendor = AFFILIATE_VENDORS.find((v) => v.id === "squareone");
+  const squareOne = getAffiliateUrl("squareone", "email");
 
   const offerSection = finalOffer
     ? `
@@ -128,13 +134,14 @@ function buildAssessmentHtml(data: AssessmentEmailData): string {
       </a>
     </div>
 
-    ${squareOneUrl ? `
+    ${squareOneVendor ? `
     <div style="background:white;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:24px;text-align:center">
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#6b7280;margin-bottom:6px">Next Step</div>
-      <a href="${squareOneUrl}" target="_blank" rel="noopener noreferrer" style="font-size:14px;font-weight:500;color:#111;text-decoration:none">
-        Get a home insurance quote
+      <a href="${squareOne.url}" target="_blank" rel="noopener noreferrer sponsored" style="font-size:14px;font-weight:500;color:#111;text-decoration:none">
+        ${squareOneVendor.ctaLabel ?? squareOneVendor.name}
       </a>
-      <p style="margin:4px 0 0;font-size:12px;color:#6b7280">$20 credit applied automatically &middot; Square One</p>
+      <p style="margin:4px 0 0;font-size:12px;color:#6b7280">${squareOneVendor.offerText ?? squareOneVendor.description ?? squareOneVendor.name} &middot; ${squareOneVendor.name}</p>
+      ${squareOne.isAffiliate ? `<p style="margin:8px 0 0;font-size:11px;color:#9ca3af;line-height:1.4">${FTC_DISCLOSURE}</p>` : ""}
     </div>` : ""}
 
     <div style="text-align:center;font-size:12px;color:#9ca3af">

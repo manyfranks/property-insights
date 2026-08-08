@@ -434,10 +434,16 @@ export function getAffiliateUrl(
 
 /**
  * Vendors where a missing env URL is silent revenue loss, not just a
- * degraded experience. Phase 1: the 3 live CA vendors. Add a US vendor's id
- * here the day it flips to enabled+affiliateReady.
+ * degraded experience. Phase 1: the 3 live CA vendors, plus rentcast and
+ * dealcheck once they flipped to enabled+affiliateReady (US Tier 1).
  */
-export const REVENUE_CRITICAL_IDS: string[] = ["ratehub", "nesto", "squareone"];
+export const REVENUE_CRITICAL_IDS: string[] = [
+  "ratehub",
+  "nesto",
+  "squareone",
+  "rentcast",
+  "dealcheck",
+];
 
 /**
  * Prod-only check: for every revenue-critical vendor that is currently

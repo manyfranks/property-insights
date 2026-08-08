@@ -72,5 +72,23 @@ export async function POST(request: Request) {
 
   await db`CREATE INDEX IF NOT EXISTS idx_regional_econ_fips_metric ON regional_econ (geo_fips, metric)`;
 
+  await db`
+    CREATE TABLE IF NOT EXISTS partner_clicks (
+      id            BIGSERIAL PRIMARY KEY,
+      vendor        TEXT NOT NULL,
+      vertical      TEXT,
+      state         TEXT,
+      source        TEXT,
+      affiliate     BOOLEAN,
+      property_slug TEXT,
+      city          TEXT,
+      user_id       TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await db`CREATE INDEX IF NOT EXISTS idx_partner_clicks_vendor ON partner_clicks (vendor)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_partner_clicks_created ON partner_clicks (created_at)`;
+
   return NextResponse.json({ ok: true, message: "Migration complete" });
 }

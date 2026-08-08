@@ -4,7 +4,10 @@
  * Track affiliate partner click-throughs. No user data is shared with partners;
  * users click through to partner sites and provide their own info there.
  *
- * This endpoint records the click event for internal analytics and lead scoring.
+ * Auth is optional: every click (signed-in or anonymous) is logged to the
+ * append-only partner_clicks table so top-of-funnel EPC data isn't lost for
+ * signed-out visitors. When a Clerk session exists, the click is *also*
+ * mirrored into user_events via trackEvent so intent scoring is unchanged.
  *
  * Payload has two generations that coexist:
  *  - `partnerType` — the original 3-vendor CA field. Still populated (via
@@ -20,6 +23,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { trackEvent } from "@/lib/db/user-events";
+import { trackPartnerClick } from "@/lib/db/partner-clicks";
 
 const VALID_TYPES = ["compare-rates", "pre-approval", "insurance"] as const;
 type PartnerType = (typeof VALID_TYPES)[number];
@@ -48,10 +52,8 @@ type Source = (typeof VALID_SOURCES)[number];
 const MAX_DATA_SIZE = 1024; // bytes
 
 export async function POST(req: Request) {
+  // Optional auth — anonymous clicks are still tracked (see partner_clicks).
   const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Sign in to continue" }, { status: 401 });
-  }
 
   let body: Record<string, unknown>;
   try {
@@ -119,8 +121,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Payload too large" }, { status: 400 });
   }
 
-  // Track the partner click event
-  await trackEvent(userId, "partner_click", data);
+  // Always log the click, signed-in or not (append-only, no PI for anon rows).
+  await trackPartnerClick({
+    vendor: vendor ?? partnerType ?? "unknown",
+    vertical,
+    state,
+    source,
+    affiliate,
+    propertySlug,
+    city,
+    userId,
+  });
+
+  // Signed-in users additionally get the click mirrored into user_events so
+  // the existing intent-score aggregation (src/lib/db/user-events.ts) keeps working.
+  if (userId) {
+    await trackEvent(userId, "partner_click", data);
+  }
 
   return NextResponse.json({ ok: true, vendor: vendor ?? partnerType });
 }

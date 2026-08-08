@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { getStatCanMedian } from "@/lib/data/statcan-chsp";
+import PartnerCta from "@/components/partner-cta";
 
 type Region = "" | "BC" | "AB" | "ON" | UsRegion;
 
@@ -116,6 +117,13 @@ export default function AssessmentGapCalculator() {
   // StatCan CHSP median lookup is Canada-only data (keyed by CSD/city name) —
   // skip it entirely for US regions rather than surfacing a bogus match.
   const isUsRegion = region !== "" && !CA_REGIONS.has(region);
+
+  // Partner CTAs: default to the CA vendor slate (the calculator is CA-focused
+  // today) with no state gate; switch to US + the selected state once the
+  // visitor picks a US region. PartnerCta handles an undefined state fine —
+  // CA vendors are stateCoverage: "all".
+  const partnerCountry = isUsRegion ? "US" : "CA";
+  const partnerState = region || undefined;
 
   const cityMedian = useMemo(() => {
     if (!city.trim() || isUsRegion) return null;
@@ -243,6 +251,12 @@ export default function AssessmentGapCalculator() {
       ) : (
         <div className="mt-6 text-center text-xs text-muted">
           Enter an assessed value and asking price above to see the gap.
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-6">
+          <PartnerCta country={partnerCountry} state={partnerState} source="calculator" />
         </div>
       )}
 
