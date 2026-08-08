@@ -47,6 +47,7 @@ import { getCountyMarketPanel } from "@/lib/db/regional-econ";
 import { getUSProperty } from "@/lib/rentcast";
 import { buildUsAssessment, buildUsListing, buildUsCompSupport } from "@/lib/pipeline/us-assess";
 import { buildUsAdvantageBundle, applyEquitySignalToScore, equitySignalLabel } from "@/lib/pipeline/us-advantage";
+import { generateUsNarrative, deterministicUsNarrative } from "@/lib/pipeline/us-narrative";
 import { getSignals } from "@/lib/signals";
 import { scoreV2 } from "@/lib/scoring";
 import { offerModel, offerModelLanguage } from "@/lib/offer-model";
@@ -360,10 +361,36 @@ async function handleUSAssessment({
 
     const offer = assessment?.found ? offerModel(listing, assessment) : offerModelLanguage(listing);
 
+    // THE SIGNAL — LLM narrative (US analogue of the CA pipeline's
+    // analyzeAndNarrate/enrichListing; see src/lib/pipeline/us-narrative.ts
+    // for why the US prompt differs). Time-boxed internally (~12s) so a
+    // slow/hung OpenRouter call can't eat into this route's 60s
+    // maxDuration; falls back to the deterministic template on any
+    // failure/timeout so "THE SIGNAL" never renders empty. Off-market
+    // properties don't get this — no listing story to tell there.
+    const narrativeContext = { listing, assessment, offer, signals, comparables, advantage, marketPanel };
+    let narrative: string;
+    let narrativeSignals: string[] = [];
+    let narrativeConfidence = 0;
+    try {
+      const llmResult = await generateUsNarrative(narrativeContext);
+      if (llmResult.narrative) {
+        narrative = llmResult.narrative;
+        narrativeSignals = llmResult.signals;
+        narrativeConfidence = llmResult.confidence;
+      } else {
+        narrative = deterministicUsNarrative(narrativeContext);
+      }
+    } catch (err) {
+      log("narrative error", err instanceof Error ? err.message : String(err));
+      narrative = deterministicUsNarrative(narrativeContext);
+    }
+
     log(
       "done (US, listed)",
       `${geo.matchedAddress} tier=${score.tier} offer=${offer?.finalOffer} anchor=${assessment?.source} ` +
-        `equity=${advantage.equitySignal?.tier ?? "none"} triangulation=${advantage.triangulation.confidence}`
+        `equity=${advantage.equitySignal?.tier ?? "none"} triangulation=${advantage.triangulation.confidence} ` +
+        `narrative=${narrative.length}chars`
     );
 
     return NextResponse.json({
@@ -387,6 +414,9 @@ async function handleUSAssessment({
       investorYield: advantage.investorYield,
       riskMomentum: advantage.riskMomentum,
       overAssessment: advantage.overAssessment,
+      narrative,
+      narrativeSignals,
+      narrativeConfidence,
       emailSent: false,
     });
   }

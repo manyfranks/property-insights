@@ -58,6 +58,13 @@ export interface UsListedResult extends UsResultBase, UsAdvantageFields {
   signals: string[];
   offer: OfferResult | null;
   comparables: UsCompSupport;
+  // THE SIGNAL — LLM narrative (src/lib/pipeline/us-narrative.ts), generated
+  // in handleUSAssessment's listed branch only (route.ts). narrative is
+  // always populated (LLM or the deterministic fallback); narrativeSignals/
+  // narrativeConfidence are LLM-only and empty/0 when the fallback fired.
+  narrative: string;
+  narrativeSignals: string[];
+  narrativeConfidence: number;
 }
 
 export interface UsOffMarketResult extends UsResultBase, UsAdvantageFields {
@@ -537,6 +544,8 @@ function UsListedView({ data }: { data: UsListedResult }) {
     investorYield,
     riskMomentum,
     overAssessment,
+    narrative,
+    narrativeConfidence,
   } = data;
 
   return (
@@ -588,6 +597,28 @@ function UsListedView({ data }: { data: UsListedResult }) {
             <div className="text-xs uppercase tracking-widest text-muted mb-2">List Price</div>
             <div className="font-mono text-4xl sm:text-5xl font-bold mb-3">{fmt(listing.price)}</div>
           </div>
+        )}
+      </div>
+
+      {/* THE SIGNAL — LLM narrative (src/lib/pipeline/us-narrative.ts), mirrors
+          the Canadian /property/[slug] page's "The Signal" section layout. */}
+      <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs uppercase tracking-widest text-muted">The Signal</div>
+          {narrativeConfidence != null && narrativeConfidence > 0 && (
+            <span className="text-xs text-muted font-mono">{Math.round(narrativeConfidence * 100)}% confidence</span>
+          )}
+        </div>
+        {narrative ? (
+          <div className="space-y-3">
+            {narrative.split(/\n\n+/).map((para, i) => (
+              <p key={i} className="text-sm text-foreground leading-relaxed">
+                {para.trim()}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-foreground leading-relaxed">Generating analysis — check back shortly.</p>
         )}
       </div>
 
