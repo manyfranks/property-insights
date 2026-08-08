@@ -1,5 +1,21 @@
 # DRAFT — NOT LEGAL ADVICE — FOR COUNSEL REVIEW
 
+**Status update (August 7, 2026): the copy proposed in this draft has now been
+implemented on the live pages** — `src/app/privacy/page.tsx` (new "United
+States State Privacy Rights" section, reworded "What We Don't Do", updated
+Cookies/Affiliate Links sections), `src/app/terms/page.tsx` (governing-law
+consumer carve-out), and `src/app/data-usage/page.tsx` (reworded "What We Do
+Not Sell", updated "Legal Framework"). This was an owner-directed decision to
+publish ahead of formal counsel review, to save on hourly legal fees; counsel
+is expected to review the live pages and comment/redline from there. This
+document now serves as **counsel's review companion and rationale record**
+for that published copy — the open questions, caveats, and "needs counsel
+confirmation" notes below are still live and unresolved even though the
+copy itself has shipped. The rest of this document is otherwise unchanged
+from the original draft.
+
+---
+
 Proposed copy and structural notes for a new "US State Privacy Rights" section
 of the Property Insights privacy policy, prepared as engineering input ahead
 of counsel review. Nothing in this document should be published or relied on

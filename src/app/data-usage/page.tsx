@@ -11,7 +11,7 @@ export default function DataUsagePage() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-8 sm:py-16">
       <h1 className="text-2xl font-semibold tracking-tight mb-2">Data Usage Policy</h1>
-      <p className="text-sm text-muted mb-10">Last updated: March 8, 2026</p>
+      <p className="text-sm text-muted mb-10">Last updated: August 7, 2026</p>
 
       <div className="space-y-8 text-sm text-muted leading-relaxed">
         <section>
@@ -102,7 +102,7 @@ export default function DataUsagePage() {
         <section>
           <h2 className="text-base font-medium text-foreground mb-2">What We Do Not Sell</h2>
           <p className="mb-3">
-            We want to be explicit about what we will never do with your data:
+            We want to be explicit about what we do and do not do with your data:
           </p>
           <ul className="list-disc list-inside space-y-1.5">
             <li>
@@ -120,6 +120,21 @@ export default function DataUsagePage() {
               affiliate link takes you to a third-party site where you interact directly with them.
             </li>
           </ul>
+          <p className="mt-3">
+            We do not sell personal information for money. That said, some US states define
+            &quot;sale&quot; and &quot;sharing&quot; broadly enough that attributing an affiliate
+            link click back to a visitor could qualify, even though no personal information is
+            transferred to the partner beyond the click itself. We treat this attribution as a
+            share and give you a way to opt out of it at{" "}
+            <a href="/privacy-choices" className="text-foreground hover:underline">
+              Your Privacy Choices
+            </a>
+            . See the United States State Privacy Rights section of our{" "}
+            <a href="/privacy" className="text-foreground hover:underline">
+              Privacy Policy
+            </a>{" "}
+            for the full explanation.
+          </p>
         </section>
 
         <section>
@@ -146,7 +161,16 @@ export default function DataUsagePage() {
             stated purposes, and protect it with appropriate safeguards.
           </p>
           <p className="mt-3">
-            We take these obligations seriously. If Canadian privacy law changes or new provincial
+            For US residents, applicable state privacy laws (such as the California Consumer
+            Privacy Act and comparable laws in other states) also apply. See the{" "}
+            <a href="/privacy" className="text-foreground hover:underline">
+              United States State Privacy Rights
+            </a>{" "}
+            section of our Privacy Policy for the rights and choices available to you under those
+            laws.
+          </p>
+          <p className="mt-3">
+            We take these obligations seriously. If Canadian or US privacy law changes or new
             legislation is introduced, we will update our practices and this policy accordingly.
           </p>
         </section>

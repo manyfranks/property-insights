@@ -11,7 +11,7 @@ export default function TermsPage() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-8 sm:py-16">
       <h1 className="text-2xl font-semibold tracking-tight mb-2">Terms of Service</h1>
-      <p className="text-sm text-muted mb-10">Last updated: March 8, 2026</p>
+      <p className="text-sm text-muted mb-10">Last updated: August 7, 2026</p>
 
       <div className="space-y-8 text-sm text-muted leading-relaxed">
         <section>
@@ -155,6 +155,11 @@ export default function TermsPage() {
           <p>
             These terms are governed by the laws of British Columbia, Canada. Any disputes will be
             resolved in the courts of British Columbia.
+          </p>
+          <p className="mt-3">
+            If you reside in the United States, nothing in these terms deprives you of any
+            mandatory consumer-protection or privacy rights you have under the laws of your state
+            of residence.
           </p>
         </section>
 
