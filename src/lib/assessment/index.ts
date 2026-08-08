@@ -2,6 +2,7 @@ import { Assessment } from "../types";
 import { lookupBC, lookupBCSync } from "./bc";
 import { lookupON, lookupONSync } from "./on";
 import { lookupAB, lookupABSync } from "./ab";
+import { lookupMB, lookupMBSync } from "./mb";
 import { lookupUS, lookupUSSync, isUSState } from "./us";
 import { getStatCanMedian } from "../data/statcan-chsp";
 import { AssessmentAdapter, AssessmentLookupInput } from "./types";
@@ -29,6 +30,11 @@ const abAdapter: AssessmentAdapter = {
   lookupSync: (input) => lookupABSync(input.address, input.unit),
 };
 
+const mbAdapter: AssessmentAdapter = {
+  lookup: (input) => lookupMB(input.address, input.unit, input.city),
+  lookupSync: (input) => lookupMBSync(input.address, input.unit),
+};
+
 // One shared adapter for all 50 US states + DC — see isUSState() in ./us
 // for why this is a dispatch check rather than 51 registry entries.
 const usAdapter: AssessmentAdapter = {
@@ -40,6 +46,7 @@ const ADAPTERS: Record<string, AssessmentAdapter> = {
   BC: bcAdapter,
   ON: onAdapter,
   AB: abAdapter,
+  MB: mbAdapter,
 };
 
 /** Look up the adapter for a region code, routing every US state/DC code

@@ -4,6 +4,10 @@
  * Golden-address health check for the Canadian pipeline (BC / AB / ON):
  * Zoocasa scrape -> assessment adapters -> local scoring/offer pipeline.
  *
+ * MB (Manitoba / City of Winnipeg) is checked separately, further down —
+ * lighter-weight (no cache, no Zoocasa pipeline run): 3 live SODA lookups
+ * against known-good Winnipeg addresses + 1 bogus-address null check.
+ *
  * For each province:
  *   1. Assessment cache lookup (sync + async paths) on 3-4 known-good
  *      addresses pulled from src/lib/data/assessments.ts.
@@ -32,6 +36,7 @@ import {
 import { lookupBC, lookupBCSync } from "../src/lib/assessment/bc";
 import { lookupAB, lookupABSync } from "../src/lib/assessment/ab";
 import { lookupON, lookupONSync } from "../src/lib/assessment/on";
+import { lookupMB, lookupMBSync } from "../src/lib/assessment/mb";
 import { searchListings, findAndFetchDetail, ZoocasaNotFoundError } from "../src/lib/zoocasa";
 import { enrichListing } from "../src/lib/pipeline/enrich";
 import type { Assessment, Listing } from "../src/lib/types";
@@ -169,6 +174,63 @@ const PROVINCES: ProvinceConfig[] = [
 // across the whole run regardless of cache hits/misses actually observed.
 const BC_LIVE_SCRAPE_BUDGET = 2;
 let bcLiveScrapesUsed = 0;
+
+// ---------------------------------------------------------------------------
+// MB (Manitoba / City of Winnipeg) — additive section.
+//
+// MB has no assessment cache yet (unlike BC/AB/ON), so there's no
+// cache-sync/cache-async pair to exercise and lookupMBSync() is expected to
+// always return null (documented behavior — see src/lib/assessment/mb.ts).
+// This section is a lighter-weight check than the full ProvinceConfig/
+// runProvince() pipeline above (which assumes cache addresses + Zoocasa
+// search): it exercises the live SODA lookup (src/lib/assessment/mb.ts)
+// directly against 3 real Winnipeg addresses confirmed via a live data probe
+// against data.winnipeg.ca (resource d4mq-wa44), plus one bogus address to
+// confirm a clean null (not a thrown/malformed result) on a genuine miss.
+// No BC-style live-call budget applies here — the Winnipeg SODA endpoint is
+// a free, uncapped HTTP API (same category as AB's Calgary/Edmonton calls).
+// ---------------------------------------------------------------------------
+
+const MB_GOLDEN_ADDRESSES: { address: string; expectedTotal: number }[] = [
+  { address: "1636 McCreary Road", expectedTotal: 893_000 },
+  { address: "2424 Wilkes Avenue", expectedTotal: 2_113_000 },
+  { address: "6 Riverside Drive E", expectedTotal: 624_000 },
+];
+
+const MB_BOGUS_ADDRESS = "99999 Fakestreet Lane";
+
+async function runMB() {
+  console.log(`\n=== MB ===`);
+
+  await safeCheck("MB", "cache-sync sanity (no MB cache expected)", async () => {
+    const a = lookupMBSync(MB_GOLDEN_ADDRESSES[0].address);
+    return a === null
+      ? { ok: true, detail: "lookupMBSync returned null as expected (no MB cache exists yet)" }
+      : { ok: false, detail: `expected null (no cache), got ${JSON.stringify(a)}` };
+  });
+
+  for (const { address, expectedTotal } of MB_GOLDEN_ADDRESSES) {
+    await safeCheck("MB", `live-lookup "${address}"`, async () => {
+      const a = await lookupMB(address);
+      const shape = assertAssessment(a, address);
+      if (!shape.ok) return shape;
+      if (a!.totalValue !== expectedTotal) {
+        return {
+          ok: false,
+          detail: `${address}: totalValue=${a!.totalValue} did not match probe-verified expected=${expectedTotal}`,
+        };
+      }
+      return { ok: true, detail: `${address}: totalValue=${a!.totalValue} (matches live-probe baseline) year=${a!.assessmentYear} source=${a!.source}` };
+    });
+  }
+
+  await safeCheck("MB", `bogus address "${MB_BOGUS_ADDRESS}" returns null`, async () => {
+    const a = await lookupMB(MB_BOGUS_ADDRESS);
+    return a === null
+      ? { ok: true, detail: "clean null on genuine miss, as expected" }
+      : { ok: false, detail: `expected null, got ${JSON.stringify(a)}` };
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Per-province run
@@ -335,7 +397,7 @@ function sanityCheckCaches() {
 
 function printHealthTable() {
   console.log("\n\n=== Province Health Table ===\n");
-  const provinces = ["setup", "BC", "AB", "ON"];
+  const provinces = ["setup", "BC", "AB", "ON", "MB"];
   for (const p of provinces) {
     const rows = results.filter((r) => r.province === p);
     if (rows.length === 0) continue;
@@ -367,6 +429,8 @@ async function main() {
   for (const cfg of PROVINCES) {
     await runProvince(cfg);
   }
+
+  await runMB();
 
   printHealthTable();
 
