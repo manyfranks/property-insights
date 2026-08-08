@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
+import { isOptedOutClient } from "@/lib/privacy";
 
 /**
  * Client component that fires a property_view tracking event.
@@ -21,6 +22,7 @@ export default function TrackView({
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
+    if (isOptedOutClient()) return;
 
     // Detect return visits via localStorage
     const viewedKey = `pi:viewed:${slug}`;

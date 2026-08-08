@@ -38,6 +38,9 @@ export default function Footer() {
               <Link href="/data-usage" className="block text-muted hover:text-foreground transition-colors">
                 Data Usage
               </Link>
+              <Link href="/privacy-choices" className="block text-muted hover:text-foreground transition-colors">
+                Do Not Sell or Share My Personal Information
+              </Link>
             </div>
           </div>
 

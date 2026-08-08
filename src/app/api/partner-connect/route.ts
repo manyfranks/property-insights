@@ -24,6 +24,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { trackEvent } from "@/lib/db/user-events";
 import { trackPartnerClick } from "@/lib/db/partner-clicks";
+import { isOptedOutRequest } from "@/lib/privacy";
 
 const VALID_TYPES = ["compare-rates", "pre-approval", "insurance"] as const;
 type PartnerType = (typeof VALID_TYPES)[number];
@@ -53,8 +54,14 @@ const MAX_DATA_SIZE = 1024; // bytes
 
 export async function POST(req: Request) {
   // Optional auth — anonymous clicks are still tracked (see partner_clicks).
-  const { userId } = await auth();
+  const { userId: authUserId } = await auth();
 
+  // Do Not Sell/Share: honor either an explicit client-reported opt-out
+  // (the visitor had already opted out before this click) or a live
+  // server-observed signal (Sec-GPC header / pi_dns cookie on the request
+  // itself). When opted out, the click is still logged to the no-PI
+  // partner_clicks table for aggregate EPC, but with no user_id, and it is
+  // never mirrored into user_events (which would tie it to the account).
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -91,6 +98,11 @@ export async function POST(req: Request) {
       : undefined;
 
   const affiliate = typeof body.affiliate === "boolean" ? body.affiliate : undefined;
+
+  const clientOptOut = body.optOut === true;
+  const isOptedOut = clientOptOut || isOptedOutRequest(req);
+  // Never attribute a click to a signed-in account once opted out.
+  const userId = isOptedOut ? null : authUserId;
 
   // Sanitize optional string fields
   const state =
@@ -134,7 +146,9 @@ export async function POST(req: Request) {
   });
 
   // Signed-in users additionally get the click mirrored into user_events so
-  // the existing intent-score aggregation (src/lib/db/user-events.ts) keeps working.
+  // the existing intent-score aggregation (src/lib/db/user-events.ts) keeps
+  // working — but never when opted out of sale/share, even if the request
+  // is otherwise authenticated.
   if (userId) {
     await trackEvent(userId, "partner_click", data);
   }

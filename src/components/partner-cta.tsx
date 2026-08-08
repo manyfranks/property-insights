@@ -15,8 +15,15 @@
  * PARTNER_CONFIG — just laid out as hero + pills instead of 3 equal cards.
  */
 
-import type { AffiliateSource, AudienceMode, Country } from "@/config/affiliate-vendors";
-import { getAffiliateUrl, getVendorsForRegion } from "@/config/affiliate-vendors";
+import type {
+  AffiliateSource,
+  AudienceMode,
+  Country,
+  ResolvedAffiliateUrl,
+} from "@/config/affiliate-vendors";
+import { AFFILIATE_VENDORS, getAffiliateUrl, getVendorsForRegion } from "@/config/affiliate-vendors";
+import { isOptedOutClient } from "@/lib/privacy";
+import { useEffect, useState } from "react";
 
 interface PartnerCtaBlockProps {
   /** property country — "CA" for all current listings (BC/ON/AB) */
@@ -40,6 +47,7 @@ function trackClick(opts: {
   affiliate: boolean;
   propertySlug?: string;
   city?: string;
+  optOut: boolean;
 }) {
   fetch("/api/partner-connect", {
     method: "POST",
@@ -53,8 +61,24 @@ function trackClick(opts: {
       affiliate: opts.affiliate,
       ...(opts.propertySlug && { propertySlug: opts.propertySlug }),
       ...(opts.city && { city: opts.city }),
+      optOut: opts.optOut,
     }),
   }).catch(() => {}); // fire and forget
+}
+
+/**
+ * Resolves a vendor's outbound URL, honoring the visitor's Do Not Sell/Share
+ * opt-out: when opted out, always use the vendor's plain (non-affiliate,
+ * non-sub_id-tagged) URL so no click attribution occurs. isAffiliate is
+ * forced false, which also suppresses the "Sponsored" tag and FTC
+ * disclosure naturally, since they're derived from isAffiliate.
+ */
+function resolveUrl(vendorId: string, source: AffiliateSource, optedOut: boolean): ResolvedAffiliateUrl {
+  if (optedOut) {
+    const vendor = AFFILIATE_VENDORS.find((v) => v.id === vendorId);
+    return { url: vendor?.url ?? "", isAffiliate: false };
+  }
+  return getAffiliateUrl(vendorId, source);
 }
 
 const FTC_DISCLOSURE =
@@ -68,16 +92,25 @@ export default function PartnerCta({
   propertySlug,
   city,
 }: PartnerCtaBlockProps) {
+  const [optedOut, setOptedOut] = useState(false);
+  useEffect(() => {
+    // Deferred via setTimeout (not called synchronously in the effect body)
+    // per this repo's react-hooks/set-state-in-effect lint rule — same
+    // pattern consent-banner.tsx uses for its mount-time state sync.
+    const timer = setTimeout(() => setOptedOut(isOptedOutClient()), 0);
+    return () => clearTimeout(timer);
+  }, []);
+
   const vendors = getVendorsForRegion(country, state, mode);
   if (vendors.length === 0) return null;
 
   const [heroVendor, ...rest] = vendors;
   const pillVendors = rest.slice(0, 2);
 
-  const hero = { vendor: heroVendor, resolved: getAffiliateUrl(heroVendor.id, source) };
+  const hero = { vendor: heroVendor, resolved: resolveUrl(heroVendor.id, source, optedOut) };
   const pills = pillVendors.map((vendor) => ({
     vendor,
-    resolved: getAffiliateUrl(vendor.id, source),
+    resolved: resolveUrl(vendor.id, source, optedOut),
   }));
 
   const hasAnyAffiliate = [hero, ...pills].some((c) => c.resolved.isAffiliate);
@@ -100,6 +133,7 @@ export default function PartnerCta({
               affiliate: hero.resolved.isAffiliate,
               propertySlug,
               city,
+              optOut: optedOut,
             })
           }
           className="flex-1 min-w-[220px] basis-full sm:basis-auto border border-border rounded-xl p-5 bg-white hover:border-foreground/20 hover:shadow-sm transition-all group"
@@ -137,6 +171,7 @@ export default function PartnerCta({
                 affiliate: resolved.isAffiliate,
                 propertySlug,
                 city,
+                optOut: optedOut,
               })
             }
             className="flex-1 min-w-[140px] border border-border rounded-xl p-4 bg-white hover:border-foreground/20 hover:shadow-sm transition-all group"

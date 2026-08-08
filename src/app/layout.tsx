@@ -10,6 +10,7 @@ import MobileNav from "@/components/mobile-nav";
 import { OrganizationJsonLd, OrganizationEntityJsonLd } from "@/components/json-ld";
 import Footer from "@/components/footer";
 import ConsentBanner from "@/components/consent-banner";
+import GpcHonor from "@/components/gpc-honor";
 import { BASE_URL, SITE_NAME, SITE_DESCRIPTION, SITE_LOCALE } from "@/lib/seo";
 import "./globals.css";
 
@@ -126,6 +127,7 @@ export default function RootLayout({
           {children}
           <Footer />
           <ConsentBanner />
+          <GpcHonor />
         </ClerkProvider>
         <Analytics />
       </body>

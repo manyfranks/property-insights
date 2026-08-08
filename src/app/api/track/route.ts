@@ -9,6 +9,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { trackEvent, EventType } from "@/lib/db/user-events";
 import { hasAnalyticsConsent } from "@/lib/consent";
+import { isOptedOutRequest } from "@/lib/privacy";
 
 const VALID_TYPES: EventType[] = [
   "property_view",
@@ -57,6 +58,12 @@ function validateData(
 }
 
 export async function POST(req: Request) {
+  // Do Not Sell/Share: short-circuit before auth/consent checks so an
+  // opted-out browser is never recorded, signed in or not.
+  if (isOptedOutRequest(req)) {
+    return NextResponse.json({ ok: true, tracked: false });
+  }
+
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ ok: false }, { status: 401 });
