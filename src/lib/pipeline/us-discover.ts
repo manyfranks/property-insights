@@ -31,20 +31,28 @@
  * (motivated seller, estate sale, "priced to sell", etc.) structurally
  * can't fire for a US listing — that's an honest gap, not a bug, and this
  * module doesn't paper over it with fabricated text. What DOES carry over
- * unchanged from scoreV2: the DOM bracket, priceReduced (derived
- * structurally from RentCast's price-history event log, not text), and
- * building-age scoring. On top of that base, this module adds two more
- * structural signals scoreV2 has no inputs for, both derived from data
- * already in hand (zero extra requests):
+ * unchanged from scoreV2: priceReduced (derived structurally from
+ * RentCast's price-history event log, not text) and building-age scoring.
+ * scoreV2's DOM bracket does NOT carry over unchanged — see "RELATIVE DOM"
+ * below. On top of that base, this module adds structural signals scoreV2
+ * has no inputs for, all derived from data already in hand (zero extra
+ * RentCast requests, Postgres reads only):
+ *   - Relative DOM: listing DOM vs. the COUNTY's own realtor.com/FRED
+ *     median DOM for the month (regional_econ, this ingest) — replaces
+ *     scoreV2's fixed nationwide DOM bracket one-for-one. See
+ *     scoreUSListing's "Relative DOM" doc comment below for the full
+ *     rationale and band thresholds.
  *   - County-median discount: listing price vs. the county's ACS median
  *     home value (regional_econ, Phase 2 ingest) — a coarse "priced well
  *     under the local market" flag.
  *   - Price/sqft outlier: listing $/sqft vs. the median $/sqft of the same
  *     city batch just fetched — computed in-process from the one API
  *     response, not a second request.
- * Both are additive on top of scoreV2's total; tier thresholds are
- * scoreV2's own 45/33 cutoffs, so a US listing's HOT/WARM/WATCH tier means
- * the same thing a CA listing's tier means.
+ * County-median discount and price/sqft outlier are additive on top of the
+ * total; relative DOM REPLACES scoreV2's own DOM component (same max
+ * weight, not stacked). Tier thresholds are scoreV2's own 45/33 cutoffs, so
+ * a US listing's HOT/WARM/WATCH tier means the same thing a CA listing's
+ * tier means.
  */
 
 import { discoverActiveListingsByCity, getRentcastQuotaStatus, DiscoveredListing } from "../rentcast";
@@ -52,10 +60,10 @@ import { buildUsListingDedupKey } from "./dedup";
 import { buildUsListing } from "./us-assess";
 import { enrichUSCityListings } from "./us-enrich";
 import { scoreV2 } from "../scoring";
-import { getAcsCountyMedian } from "../db/regional-econ";
+import { getAcsCountyMedian, getCountyMedianDom, CountyMedianDom } from "../db/regional-econ";
 import { getAllListings, writeAllListings, getMetaValue, setMetaValue } from "../kv/listings";
 import { US_DISCOVER_CITIES, USDiscoverCityConfig } from "../data/city-metadata";
-import { Listing, ScoreResult } from "../types";
+import { Listing, ScoreResult, RelativeDom, RelativeDomBand } from "../types";
 
 // RentCast /listings/sale page size for a single city-wide call. One
 // request regardless of this value (RentCast bills per request, not per
@@ -115,20 +123,126 @@ async function setLastRefresh(slug: string): Promise<void> {
 
 interface USScoreResult extends ScoreResult {
   signals: string[];
+  relativeDom: RelativeDom;
 }
 
-function scoreUSListing(
+// ---------------------------------------------------------------------------
+// Relative DOM — replaces scoreV2's fixed nationwide DOM brackets (45/60/75/
+// 90/100/120/150 days, calibrated for Victoria BC) with a county-relative
+// signal for US listings: a listing's own DOM divided by its county's
+// realtor.com/FRED median DOM for the same calendar month (getCountyMedianDom
+// in db/regional-econ.ts — same_month baseline preferred for seasonality,
+// see that function's doc comment). DOM norms vary enormously by metro (a
+// 70-day-on-market Miami listing is unremarkable; a 70-day Austin listing in
+// a market that clears in ~50 is a real signal) — a fixed nationwide
+// bracket structurally can't tell those apart.
+//
+// LUXURY-POOL NOISE GUARD: above-median-price listings (price > 2x the
+// county's ACS median home value) get a widened "extended" band — luxury
+// inventory sits on market longer than the broader county median as a
+// simple function of a thinner buyer pool, not seller motivation, so the
+// ordinary 1.5x stale threshold would false-positive on unremarkable luxury
+// listings. Distressed stays at the same >2.5x threshold either way —
+// genuinely stale luxury inventory (agents relisting, price fatigue) is
+// still worth flagging at the same severity.
+// ---------------------------------------------------------------------------
+
+function relativeDomBand(relativeDom: number, absDom: number, isAboveMedianPrice: boolean): RelativeDomBand {
+  if (isAboveMedianPrice) {
+    if (relativeDom <= 1.0) return "normal";
+    if (relativeDom <= 2.0) return "extended";
+    if (relativeDom <= 2.5) return "stale";
+    return absDom >= 90 ? "distressed" : "stale";
+  }
+  if (relativeDom <= 1.0) return "normal";
+  if (relativeDom <= 1.5) return "extended";
+  if (relativeDom <= 2.5) return "stale";
+  return absDom >= 90 ? "distressed" : "stale";
+}
+
+/** County not covered by FRED's MEDDAYONMAR series (see
+ * scripts/ingest-us-dom.ts's hit-rate report — not universal, though 100%
+ * of TOP_METRO_FIPS + Discover's 3 metros hit). Approximates the same 4
+ * bands from scoreV2's OWN already-established absolute cutoffs — its
+ * dom>=90 signal threshold and its dom>=150 top scoring bracket — so a
+ * fallback county's persisted band stays roughly legible against a
+ * relative-baseline county's, instead of inventing new unrelated cutoffs. */
+function fallbackAbsoluteDomBand(absDom: number): RelativeDomBand {
+  if (absDom < 45) return "normal";
+  if (absDom < 90) return "extended";
+  if (absDom < 150) return "stale";
+  return "distressed";
+}
+
+// Point values for the relative-band DOM contribution, replacing scoreV2's
+// absolute domPts (which ranges 2-30 across its 8 brackets, top bracket 30
+// at dom>=150) one-for-one in the score total. Roughly matches scoreV2's
+// own scale — distressed (28) sits just under its top bracket (30), extended
+// (8) sits near its dom 45-59 bracket (5) / dom 75-89 bracket (16)
+// midpoint — while collapsing 8 absolute brackets down to the 4 bands this
+// signal actually distinguishes.
+const RELATIVE_DOM_BAND_POINTS: Record<RelativeDomBand, number> = {
+  normal: 0,
+  extended: 8,
+  stale: 18,
+  distressed: 28,
+};
+
+/** Batch-level $/sqft median for a set of listings — same computation
+ * fetchUSCityListings runs on a freshly-fetched RentCast batch, factored
+ * out so a rescoring pass (e.g. scripts/rescore-us-relative-dom.ts, run
+ * after this signal shipped, against listings already in KV with no new
+ * RentCast call) can reproduce the identical baseline instead of
+ * duplicating the logic. */
+export function computeCityMedianPpsf(listings: Listing[]): number | null {
+  const ppsfSamples = listings
+    .filter((l) => l.price > 0 && (parseInt(l.sqft) || 0) > 0)
+    .map((l) => l.price / (parseInt(l.sqft) || 1));
+  return ppsfSamples.length >= 3 ? median(ppsfSamples) : null;
+}
+
+export function scoreUSListing(
   listing: Listing,
   cityMedianPpsf: number | null,
-  countyMedianValue: number | null
+  countyMedianValue: number | null,
+  domBaseline: CountyMedianDom | null
 ): USScoreResult {
   const base = scoreV2(listing);
   let total = base.total;
   const breakdown = { ...base.breakdown };
   const signals: string[] = [];
 
+  // scoreV2 always sets breakdown["DOM"] to its absolute-bracket points —
+  // that's the component this signal replaces (not adds on top of) for US
+  // listings with a FRED baseline, so the total keeps the same max weight
+  // scoreV2 gave DOM rather than double-counting it.
+  const absoluteDomPts = base.breakdown["DOM"] ?? 0;
+
+  const isAboveMedianPrice = countyMedianValue != null && countyMedianValue > 0 && listing.price > 2 * countyMedianValue;
+
+  let relativeDom: RelativeDom;
+  if (domBaseline && domBaseline.days > 0) {
+    const ratio = listing.dom / domBaseline.days;
+    const band = relativeDomBand(ratio, listing.dom, isAboveMedianPrice);
+    relativeDom = { relativeDom: ratio, band, baseline: domBaseline.baseline, baselineDays: domBaseline.days };
+
+    const bandPts = RELATIVE_DOM_BAND_POINTS[band];
+    total = total - absoluteDomPts + bandPts;
+    breakdown["DOM"] = bandPts;
+
+    if (band === "stale" || band === "distressed") {
+      const pct = Math.round(ratio * 100);
+      signals.push(`${listing.dom} days on market — ${pct}% of county's typical ${domBaseline.days}d (${band})`);
+    }
+  } else {
+    // No FRED baseline for this county — keep scoreV2's original absolute
+    // DOM contribution untouched (breakdown/total already reflect it via
+    // `base`), just record the coarse fallback band for consistency.
+    relativeDom = { relativeDom: null, band: fallbackAbsoluteDomBand(listing.dom), baseline: "fallback_absolute", baselineDays: null };
+    if (listing.dom >= 90) signals.push(`${listing.dom} days on market`);
+  }
+
   if (listing.priceReduced) signals.push("Price reduced");
-  if (listing.dom >= 90) signals.push(`${listing.dom} days on market`);
 
   if (countyMedianValue && listing.price > 0) {
     const ratio = listing.price / countyMedianValue;
@@ -160,9 +274,9 @@ function scoreUSListing(
     }
   }
 
-  total = Math.min(total, 100);
+  total = Math.min(Math.max(total, 0), 100);
   const tier: ScoreResult["tier"] = total >= 45 ? "HOT" : total >= 33 ? "WARM" : "WATCH";
-  return { total, tier, breakdown, signals };
+  return { total, tier, breakdown, signals, relativeDom };
 }
 
 // ---------------------------------------------------------------------------
@@ -260,23 +374,32 @@ export async function fetchUSCityListings(cfg: USDiscoverCityConfig): Promise<US
 
   // Batch-level $/sqft median — computed in-process from this same
   // response, zero extra requests.
-  const ppsfSamples = mapped
-    .filter((l) => l.price > 0 && (parseInt(l.sqft) || 0) > 0)
-    .map((l) => l.price / (parseInt(l.sqft) || 1));
-  const cityMedianPpsf = ppsfSamples.length >= 3 ? median(ppsfSamples) : null;
+  const cityMedianPpsf = computeCityMedianPpsf(mapped);
 
   // County ACS median home value (regional_econ, Phase 2 ingest) — a
   // Postgres read, not a RentCast call, so it costs zero quota.
   const countyMedian = await getAcsCountyMedian(cfg.countyFips);
 
+  // County median DOM (realtor.com via FRED, scripts/ingest-us-dom.ts) —
+  // also a Postgres read, zero quota. Fetched ONCE per city (like
+  // countyMedian above), not per listing — every listing in a city batch
+  // shares the same county, so the baseline is identical for all of them.
+  // Current calendar month, not the listing's own listedDate: the question
+  // this signal answers is "how does this listing's DOM compare to what's
+  // typical right now", so getCountyMedianDom's same-month-last-year
+  // preference should anchor on today's month.
+  const currentMonth = new Date().getMonth() + 1;
+  const domBaseline = await getCountyMedianDom(cfg.countyFips, currentMonth);
+
   const now = new Date().toISOString();
   const scored: Listing[] = mapped.map((listing) => {
-    const result = scoreUSListing(listing, cityMedianPpsf, countyMedian?.value ?? null);
+    const result = scoreUSListing(listing, cityMedianPpsf, countyMedian?.value ?? null, domBaseline);
     return {
       ...listing,
       preScore: result.total,
       preTier: result.tier,
       preSignals: result.signals,
+      preRelativeDom: result.relativeDom,
       source: "cron",
       enrichedAt: now,
     };

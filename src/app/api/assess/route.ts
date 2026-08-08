@@ -53,6 +53,7 @@ import {
 } from "@/lib/pipeline/us-assess";
 import { buildUsAdvantageBundle, applyEquitySignalToScore, equitySignalLabel } from "@/lib/pipeline/us-advantage";
 import { generateUsNarrative, deterministicUsNarrative } from "@/lib/pipeline/us-narrative";
+import { lintUsNarrative, logNarrativeLint } from "@/lib/pipeline/narrative-lint";
 import { getSignals } from "@/lib/signals";
 import { scoreV2 } from "@/lib/scoring";
 import { offerModel, offerModelLanguage } from "@/lib/offer-model";
@@ -280,7 +281,12 @@ async function handleUSAssessment({
       log("rentcast error", err instanceof Error ? err.message : String(err));
       return null;
     }),
-    getCountyMarketPanel(countyFips),
+    // Neon-unreachable must degrade (panel absent), never 500 the request —
+    // this is the fallback tier's own fallback (RUNBOOK gap #1).
+    getCountyMarketPanel(countyFips).catch((err) => {
+      log("market panel error", err instanceof Error ? err.message : String(err));
+      return null;
+    }),
   ]);
 
   log(
@@ -441,6 +447,12 @@ async function handleUSAssessment({
       log("narrative error", err instanceof Error ? err.message : String(err));
       narrative = deterministicUsNarrative(narrativeContext);
     }
+
+    // LOG-ONLY narrative QA (src/lib/pipeline/narrative-lint.ts, voice guide
+    // section 6) — never blocks or retries this response; this route has no
+    // KV-persisted listing to attach the result to (see module doc), so it
+    // just logs for monitoring.
+    logNarrativeLint(`${geo.matchedAddress}, ${city}`, lintUsNarrative(narrative, narrativeContext));
 
     log(
       "done (US, listed)",

@@ -361,9 +361,21 @@ async function lookupLethbridgeArcGIS(
     if (!res.ok) return null;
 
     const data = await res.json();
+    // Shape drift check (RUNBOOK gap #12): ArcGIS layer responses can change
+    // schema silently — distinguish "no match" (normal) from "response no
+    // longer looks like this layer" (drift), mirroring SodaShapeError's
+    // loud-log convention.
+    if (!data || (typeof data === "object" && !("features" in data))) {
+      console.error("[lethbridge-shape] response missing features array — ArcGIS layer schema may have changed");
+      return null;
+    }
     const features = data.features;
     if (!features?.length) return null;
 
+    if (features[0].attributes === undefined || !("CurrGrossAssess" in (features[0].attributes ?? {}))) {
+      console.error("[lethbridge-shape] feature missing CurrGrossAssess attribute — field mapping drift");
+      return null;
+    }
     const value = features[0].attributes?.CurrGrossAssess;
     if (!value || value <= 0) return null;
 

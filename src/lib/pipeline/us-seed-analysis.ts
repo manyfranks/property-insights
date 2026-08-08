@@ -68,12 +68,13 @@
  *     real, current, county-specific data, not an invented figure.
  */
 
-import type { AnchorPlausibility, Assessment, Listing, OfferResult } from "../types";
+import type { AnchorPlausibility, Assessment, Listing, OfferResult, PrecomputedOffer } from "../types";
 import type { CountyMarketPanel } from "../db/regional-econ";
 import { offerModel, offerModelLanguage } from "../offer-model";
 import { buildUsCompSupport, assessAnchorPlausibility, parseMarketValueFromAssessmentNote, type UsCompSupport } from "./us-assess";
 import { buildUsAdvantageBundle, type UsAdvantageBundle } from "./us-advantage";
 import { generateUsNarrative, deterministicUsNarrative, type UsNarrativeContext } from "./us-narrative";
+import { lintUsNarrative, logNarrativeLint } from "./narrative-lint";
 import { offerToPrecomputed } from "./enrich";
 import { fmt } from "../utils";
 
@@ -214,6 +215,12 @@ export async function analyzeSeedListing(
     narrative = deterministicUsNarrative(narrativeContext);
   }
 
+  // LOG-ONLY narrative QA (narrative-lint.ts, voice guide section 6) — never
+  // blocks or retries, just logs + persists a small monitoring baseline
+  // alongside the narrative it describes.
+  const narrativeLint = lintUsNarrative(narrative, narrativeContext);
+  logNarrativeLint(`${listing.address}, ${listing.city}, ${listing.province}`, narrativeLint);
+
   const enrichedListing: Listing = {
     ...listing,
     preOffer: offerToPrecomputed(offer),
@@ -222,6 +229,7 @@ export async function analyzeSeedListing(
     preAnchorDecision: anchorDecision,
     preNarrative: narrative,
     preNarrativeConfidence: narrativeConfidence,
+    preNarrativeLint: narrativeLint,
     assessmentNote:
       listing.assessmentNote ??
       (assessment
@@ -235,6 +243,121 @@ export async function analyzeSeedListing(
   return {
     listing: enrichedListing,
     anchorType: offer.anchorType,
+    narrativeSource,
+    narrativeConfidence,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Narrative-only regen (voice guide rollout —
+// docs/plans/11-NARRATIVE-VOICE-GUIDE.md, "This is a voice change, not a
+// data change.")
+// ---------------------------------------------------------------------------
+
+/** Reconstructs enough of an OfferResult to feed generateUsNarrative()'s
+ * buildOfferBlock() from a listing's already-PERSISTED PrecomputedOffer —
+ * the inverse of enrich.ts's offerToPrecomputed(). `domAdjusted`/
+ * `signalAdjusted`/`inTargetRange` aren't read by either the narrative
+ * prompt or narrative-lint.ts, so they're reconstructed on a best-effort
+ * basis rather than recomputed; every field the narrative or the lint
+ * actually consumes (anchor, anchorTag, listToAssessedRatio, domTag,
+ * domMultiplier, signalTags, finalOffer, percentOfList, savings) round-trips
+ * exactly. */
+function precomputedToOfferResult(p: PrecomputedOffer, anchorType: "assessment" | "language"): OfferResult {
+  return {
+    anchor: p.anchor,
+    anchorTag: p.anchor_tag,
+    anchorType,
+    listToAssessedRatio: p.ratio,
+    domAdjusted: p.dom_adjusted,
+    domMultiplier: p.dom_mult,
+    domTag: p.dom_tag,
+    signalAdjusted: p.signal_adjusted,
+    signalTags: p.signal_tags,
+    finalOffer: p.final_offer,
+    percentOfList: p.pct_of_list,
+    savings: p.savings,
+    inTargetRange: !p.floor_applied,
+  };
+}
+
+/**
+ * Narrative-only regen path (scripts/analyze-us-seeds.ts's
+ * --regen-narratives) — reuses a listing's ALREADY-PERSISTED offer/
+ * advantage/comparables/anchor-decision fields verbatim (zero recompute of
+ * any of them) and regenerates ONLY preNarrative/preNarrativeConfidence/
+ * preNarrativeLint against the current SYSTEM_PROMPT. This is what makes
+ * the voice guide's framing — "this is a voice change, not a data change" —
+ * literally true for a re-run: nothing about signals, the offer number, or
+ * the tier can move, because none of it is recomputed.
+ *
+ * Requires the listing to already have preOffer + preUsAdvantage +
+ * preUsComparables (i.e. already been through analyzeSeedListing() at least
+ * once) — returns the listing unchanged (narrativeSource: "deterministic",
+ * confidence 0, anchorType inferred as best-effort) when one is missing,
+ * since there's nothing persisted to reuse; callers should filter these out
+ * before calling rather than relying on this no-op fallback.
+ */
+export async function regenerateSeedNarrative(
+  listing: Listing,
+  marketPanel: CountyMarketPanel | null
+): Promise<SeedAnalysisResult> {
+  if (!listing.preOffer || !listing.preUsAdvantage || !listing.preUsComparables) {
+    return {
+      listing,
+      anchorType: listing.preAssessment?.found ? "assessment" : "language",
+      narrativeSource: "deterministic",
+      narrativeConfidence: 0,
+    };
+  }
+
+  const assessment: Assessment | null = listing.preAssessment?.found ? listing.preAssessment : null;
+  const anchorDecision = listing.preAnchorDecision;
+  const anchorType: "assessment" | "language" =
+    assessment && anchorDecision?.verdict !== "context_only" ? "assessment" : "language";
+  const offer = precomputedToOfferResult(listing.preOffer, anchorType);
+
+  const narrativeContext: UsNarrativeContext = {
+    listing,
+    assessment,
+    offer,
+    signals: listing.preSignals ?? [],
+    comparables: listing.preUsComparables,
+    advantage: listing.preUsAdvantage,
+    marketPanel,
+    anchorDecision,
+  };
+
+  let narrative: string;
+  let narrativeConfidence = 0;
+  let narrativeSource: "llm" | "deterministic" = "deterministic";
+  try {
+    const llmResult = await generateUsNarrative(narrativeContext);
+    if (llmResult.narrative) {
+      narrative = llmResult.narrative;
+      narrativeConfidence = llmResult.confidence;
+      narrativeSource = "llm";
+    } else {
+      narrative = deterministicUsNarrative(narrativeContext);
+    }
+  } catch {
+    narrative = deterministicUsNarrative(narrativeContext);
+  }
+
+  const narrativeLint = lintUsNarrative(narrative, narrativeContext);
+  logNarrativeLint(`${listing.address}, ${listing.city}, ${listing.province}`, narrativeLint);
+
+  const enrichedListing: Listing = {
+    ...listing,
+    preNarrative: narrative,
+    preNarrativeConfidence: narrativeConfidence,
+    preNarrativeLint: narrativeLint,
+    enrichedAt: new Date().toISOString(),
+  };
+
+  return {
+    listing: enrichedListing,
+    anchorType,
     narrativeSource,
     narrativeConfidence,
   };

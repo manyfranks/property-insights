@@ -3,6 +3,7 @@
 // Assessment/ScoreResult/Listing back from this file.
 import type { UsAdvantageBundle } from "./pipeline/us-advantage";
 import type { UsCompSupport } from "./pipeline/us-assess";
+import type { NarrativeLintResult } from "./pipeline/narrative-lint";
 
 export interface PrecomputedOffer {
   anchor: number;
@@ -67,9 +68,52 @@ export interface Listing {
   // to evaluate) and for pre-existing cached listings from before this
   // field existed.
   preAnchorDecision?: AnchorPlausibility;
+  // LOG-ONLY narrative QA baseline (src/lib/pipeline/narrative-lint.ts,
+  // docs/plans/11-NARRATIVE-VOICE-GUIDE.md section 6) — number-tracing +
+  // banned-word-stem counts for the persisted preNarrative, for monitoring
+  // only. Never used to block/reject a narrative; undefined for listings
+  // enriched before this field existed.
+  preNarrativeLint?: NarrativeLintResult;
   // Lifecycle metadata
   source?: "cron" | "user";
   enrichedAt?: string;
+  // US-only: relative-DOM signal (src/lib/pipeline/us-discover.ts's
+  // scoreUSListing, baseline from src/lib/db/regional-econ.ts's
+  // getCountyMedianDom). Persisted so /property/[slug] and the narrative
+  // pipeline can explain the DOM band without recomputing it. Undefined for
+  // CA listings (untouched this pass) and for US listings scored before
+  // this field existed.
+  preRelativeDom?: RelativeDom;
+}
+
+// ---------------------------------------------------------------------------
+// Relative DOM (US-only — src/lib/pipeline/us-discover.ts's scoreUSListing).
+// A listing's own days-on-market divided by its county's realtor.com/FRED
+// median DOM for the same (or nearest) calendar month, instead of scoreV2's
+// fixed nationwide brackets (45/60/75/90/100/120/150 days) — DOM norms vary
+// hugely by metro (Miami routinely runs 80+ days median; Austin's cooled
+// off from its pandemic-era sub-30-day norm), so a fixed bracket flags an
+// unremarkable Miami listing as "stale" while missing a genuinely slow
+// Austin one. See scoreUSListing's doc comment for the band thresholds and
+// the luxury-listing price guard.
+// ---------------------------------------------------------------------------
+
+export type RelativeDomBand = "normal" | "extended" | "stale" | "distressed";
+
+export interface RelativeDom {
+  /** listing.dom / baselineDays. Null when baseline is "fallback_absolute"
+   * (county not covered by FRED's MEDDAYONMAR series — nothing to divide
+   * by). */
+  relativeDom: number | null;
+  band: RelativeDomBand;
+  /** "same_month" / "latest" mirror getCountyMedianDom's baseline field
+   * (seasonality-correct vs. most-recent-available). "fallback_absolute"
+   * means no FRED median_dom data exists for the county at all, and the
+   * band was assigned by scoreV2's original fixed DOM brackets instead. */
+  baseline: "same_month" | "latest" | "fallback_absolute";
+  /** The county median DOM (days) the ratio was computed against. Null
+   * under "fallback_absolute". */
+  baselineDays: number | null;
 }
 
 export interface Assessment {

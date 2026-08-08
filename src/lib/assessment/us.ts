@@ -52,7 +52,15 @@ export async function lookupUS(
   if (!geo) return null;
 
   const fips = `US-${geo.stateFips}${geo.countyFips}`;
-  const median = await getAcsCountyMedian(fips);
+  // Neon-unreachable degrades to "no assessment" rather than throwing into
+  // the caller's flow (RUNBOOK gap #2).
+  let median;
+  try {
+    median = await getAcsCountyMedian(fips);
+  } catch (err) {
+    console.error("[us-assessment] county median lookup failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
   if (!median) return null;
 
   return {

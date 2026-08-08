@@ -65,9 +65,28 @@ export async function POST(request: Request) {
       value         DOUBLE PRECISION,
       unit          TEXT,
       source        TEXT,
-      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (geo_level, geo_fips, metric, year)
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `;
+
+  // --- Relative-DOM (median_dom, monthly-grain) migration ---
+  // Deployments created before this pass have a table with no `month`
+  // column and a plain UNIQUE(geo_level, geo_fips, metric, year) constraint
+  // that would reject a second row for the same year (e.g. two different
+  // months of median_dom). This block is idempotent and purely additive:
+  // - ADD COLUMN IF NOT EXISTS is a no-op on a table that already has it.
+  // - DROP CONSTRAINT IF EXISTS is a no-op on a table that never had it
+  //   (fresh installs) or already had it dropped by a prior run.
+  // - The new expression index is equivalent to the old constraint for
+  //   every pre-existing row (month IS NULL everywhere until this ingest),
+  //   so nothing that used to be rejected as a duplicate becomes
+  //   accepted, and nothing that used to be accepted becomes rejected —
+  //   it only WIDENS the key for rows that now carry a real month.
+  await db`ALTER TABLE regional_econ ADD COLUMN IF NOT EXISTS month SMALLINT`;
+  await db`ALTER TABLE regional_econ DROP CONSTRAINT IF EXISTS regional_econ_geo_level_geo_fips_metric_year_key`;
+  await db`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_regional_econ_natural_key
+      ON regional_econ (geo_level, geo_fips, metric, year, COALESCE(month, 0))
   `;
 
   await db`CREATE INDEX IF NOT EXISTS idx_regional_econ_fips_metric ON regional_econ (geo_fips, metric)`;

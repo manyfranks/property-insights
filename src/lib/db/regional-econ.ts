@@ -63,6 +63,19 @@ export interface AcsCountyMedian {
   year: number;
 }
 
+export interface CountyMedianDom {
+  days: number;
+  year: number;
+  month: number;
+  /** "same_month" = the requested calendar month's most recent occurrence
+   * (seasonality-correct — DOM has a strong seasonal pattern, so "July last
+   * year" is a better baseline for a listing seen in July than whatever the
+   * single most-recent data point happens to be). "latest" = no same-month
+   * observation existed, fell back to the most recent month on record for
+   * the county regardless of calendar alignment. */
+  baseline: "same_month" | "latest";
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -218,4 +231,49 @@ export async function getAcsCountyMedian(countyFips: string): Promise<AcsCountyM
   if (row.value == null) return null;
 
   return { value: Number(row.value), year: Number(row.year) };
+}
+
+/**
+ * County median days-on-market (realtor.com via FRED, scripts/ingest-us-dom.ts)
+ * — the baseline the relative-DOM signal (src/lib/pipeline/us-discover.ts's
+ * scoreUSListing) divides a listing's own DOM by.
+ *
+ * `month` (1-12, calendar month) is optional context for which baseline to
+ * prefer: given a month, this looks for that same calendar month's most
+ * recent year on record first (baseline: "same_month") — DOM is seasonal
+ * (slower in winter, faster in spring/summer), so "this same month last
+ * year" is a materially better comparison than an arbitrary "most recent
+ * data point" which could be 6 months off-season. Falls back to the single
+ * latest month on record (baseline: "latest") if no same-month row exists,
+ * or if `month` wasn't passed at all. Returns null if the DB isn't
+ * configured or the county has no median_dom rows (county not covered by
+ * FRED's MEDDAYONMAR series — not every county has one, see
+ * scripts/ingest-us-dom.ts's hit-rate report).
+ */
+export async function getCountyMedianDom(countyFips: string, month?: number): Promise<CountyMedianDom | null> {
+  if (!dbAvailable()) return null;
+
+  const geoFips = normalizeCountyFips(countyFips);
+  const db = sql();
+
+  const rows = (await db`
+    SELECT year, month, value
+    FROM regional_econ
+    WHERE geo_fips = ${geoFips}
+      AND metric = 'median_dom'
+    ORDER BY year DESC, month DESC
+  `) as Row[];
+
+  if (rows.length === 0) return null;
+
+  if (month != null) {
+    const sameMonth = rows.find((r) => Number(r.month) === month);
+    if (sameMonth && sameMonth.value != null) {
+      return { days: Number(sameMonth.value), year: Number(sameMonth.year), month: Number(sameMonth.month), baseline: "same_month" };
+    }
+  }
+
+  const latest = rows[0];
+  if (latest.value == null || latest.month == null) return null;
+  return { days: Number(latest.value), year: Number(latest.year), month: Number(latest.month), baseline: "latest" };
 }

@@ -87,6 +87,13 @@ export interface RegionalEconRow {
   geo_name: string;
   metric: string;
   year: number;
+  /** 1-12 for monthly-grain metrics (median_dom); omitted/null for the
+   * pre-existing annual-grain metrics (ACS, FHFA, HUD, FEMA). See
+   * src/lib/db/schema.sql's regional_econ doc comment — the natural-key
+   * unique index treats a missing month as COALESCE(month,0), so leaving
+   * this unset reproduces the exact one-row-per-year behavior every other
+   * ingest script already relies on. */
+  month?: number | null;
   value: number;
   unit: string;
   source: string;
@@ -98,8 +105,15 @@ export interface RegionalEconRow {
  * @neondatabase/serverless, matching src/lib/db/index.ts's connection
  * pattern (neon(DATABASE_URL) tagged-template client, no separate Pool).
  *
- * NOT exercised in this task — DATABASE_URL isn't set locally, and every
- * ingest script here defaults to dry-run. Written correctly for when it is.
+ * Conflict target is the expression index idx_regional_econ_natural_key
+ * (geo_level, geo_fips, metric, year, COALESCE(month, 0)) rather than the
+ * table's old plain UNIQUE(geo_level, geo_fips, metric, year) — the
+ * relative-DOM migration (src/app/api/db/migrate/route.ts) drops that old
+ * constraint and replaces it with this index specifically so a single
+ * metric/year can hold up to 12 monthly rows. For every caller that never
+ * sets `month` (ACS/FHFA/HUD/FEMA), this is a no-op behavior change: NULL
+ * month always collapses to the same COALESCE(...,0) bucket, so the
+ * one-row-per-year guarantee those scripts depend on is unchanged.
  */
 export async function upsertRegionalEcon(rows: RegionalEconRow[]): Promise<number> {
   const url = process.env.DATABASE_URL;
@@ -114,21 +128,23 @@ export async function upsertRegionalEcon(rows: RegionalEconRow[]): Promise<numbe
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH);
     await sql`
-      INSERT INTO regional_econ (geo_level, geo_fips, geo_name, metric, year, value, unit, source, updated_at)
-      SELECT 'county', t.fips, t.name, t.metric, t.year, t.value, t.unit, t.source, NOW()
+      INSERT INTO regional_econ (geo_level, geo_fips, geo_name, metric, year, month, value, unit, source, updated_at)
+      SELECT 'county', t.fips, t.name, t.metric, t.year, t.month, t.value, t.unit, t.source, NOW()
       FROM UNNEST(
         ${batch.map((r) => r.geo_fips)}::text[],
         ${batch.map((r) => r.geo_name)}::text[],
         ${batch.map((r) => r.metric)}::text[],
         ${batch.map((r) => r.year)}::int[],
+        ${batch.map((r) => (r.month ?? null))}::smallint[],
         ${batch.map((r) => r.value)}::double precision[],
         ${batch.map((r) => r.unit)}::text[],
         ${batch.map((r) => r.source)}::text[]
-      ) AS t(fips, name, metric, year, value, unit, source)
-      ON CONFLICT (geo_level, geo_fips, metric, year)
+      ) AS t(fips, name, metric, year, month, value, unit, source)
+      ON CONFLICT (geo_level, geo_fips, metric, year, (COALESCE(month, 0)))
       DO UPDATE SET
         value = EXCLUDED.value,
         geo_name = EXCLUDED.geo_name,
+        month = EXCLUDED.month,
         unit = EXCLUDED.unit,
         source = EXCLUDED.source,
         updated_at = NOW()

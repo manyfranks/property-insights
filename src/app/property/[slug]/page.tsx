@@ -781,7 +781,13 @@ function UsEquityTenureCard({ equitySignal }: { equitySignal: EquityTenureSignal
 }
 
 function UsTriangulationCard({ triangulation }: { triangulation: ValuationTriangulation }) {
-  if (triangulation.anchors.length === 0 && triangulation.excludedAnchors.length === 0) return null;
+  // excludedAnchors was added to ValuationTriangulation after some
+  // already-persisted KV listings were seeded — their cached
+  // preUsAdvantage.triangulation blob predates the field entirely, so guard
+  // rather than assume it's always an array (matches narrative-lint.ts's
+  // same defensive treatment of this exact field).
+  const excludedAnchors = triangulation.excludedAnchors ?? [];
+  if (triangulation.anchors.length === 0 && excludedAnchors.length === 0) return null;
   return (
     <div className="border border-border rounded-xl p-4 bg-white">
       <div className="flex items-center justify-between mb-3">
@@ -805,7 +811,7 @@ function UsTriangulationCard({ triangulation }: { triangulation: ValuationTriang
             <span className="font-mono font-medium">{fmt(a.value)}</span>
           </div>
         ))}
-        {triangulation.excludedAnchors.map((a) => (
+        {excludedAnchors.map((a) => (
           <div key={`excluded-${a.label}`} className="flex items-center justify-between text-sm text-muted/60">
             <span className="line-through decoration-muted/50">{a.label}</span>
             <span className="font-mono line-through decoration-muted/50">{fmt(a.value)}</span>

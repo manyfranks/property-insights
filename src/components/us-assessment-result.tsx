@@ -332,7 +332,13 @@ const TRIANGULATION_CONFIDENCE_BADGE: Record<ValuationTriangulation["confidence"
  * actual offer — this is the confidence check layered on top.
  */
 function TriangulationDetail({ triangulation }: { triangulation: ValuationTriangulation }) {
-  if (triangulation.anchors.length === 0 && triangulation.excludedAnchors.length === 0) {
+  // excludedAnchors was added to ValuationTriangulation after some
+  // already-persisted KV listings were seeded — their cached
+  // preUsAdvantage.triangulation blob predates the field entirely, so guard
+  // rather than assume it's always an array (matches narrative-lint.ts's
+  // same defensive treatment of this exact field).
+  const excludedAnchors = triangulation.excludedAnchors ?? [];
+  if (triangulation.anchors.length === 0 && excludedAnchors.length === 0) {
     return <p className="text-sm text-muted">No valuation anchors available for this address.</p>;
   }
 
@@ -353,7 +359,7 @@ function TriangulationDetail({ triangulation }: { triangulation: ValuationTriang
             <span className="font-mono font-medium">{fmt(a.value)}</span>
           </div>
         ))}
-        {triangulation.excludedAnchors.map((a) => (
+        {excludedAnchors.map((a) => (
           <div key={`excluded-${a.kind}`} className="flex items-center justify-between text-sm text-muted/60">
             <span className="line-through decoration-muted/50">{a.label}</span>
             <span className="font-mono line-through decoration-muted/50">{fmt(a.value)}</span>

@@ -45,6 +45,18 @@
  *     # doing anything else, so a dry run alone answers "how many of the
  *     # pool does this change." Existing correctly-anchored listings are
  *     # left untouched — zero wasted LLM spend.
+ *   npx tsx scripts/analyze-us-seeds.ts --commit --regen-narratives
+ *     # Narrative-voice rollout mode (docs/plans/11-NARRATIVE-VOICE-GUIDE.md,
+ *     # src/lib/pipeline/us-seed-analysis.ts's regenerateSeedNarrative()).
+ *     # "This is a voice change, not a data change" — restricts eligibility
+ *     # to already-processed listings (preOffer + preUsAdvantage +
+ *     # preUsComparables already on record) and reuses every one of those
+ *     # fields VERBATIM, recomputing ONLY preNarrative/
+ *     # preNarrativeConfidence/preNarrativeLint against the current
+ *     # SYSTEM_PROMPT. Ignores --only-missing/--only-changed (a full
+ *     # narrative regen is the point of this mode). Offer numbers, tiers,
+ *     # and signals are provably unaffected — see regenerateSeedNarrative()'s
+ *     # doc comment.
  */
 
 import { loadEnvLocal, COMMIT } from "./lib/ingest-shared";
@@ -55,12 +67,18 @@ import { isUSState } from "../src/lib/assessment/us";
 import { US_DISCOVER_CITIES } from "../src/lib/data/city-metadata";
 import { getCountyMarketPanel, type CountyMarketPanel } from "../src/lib/db/regional-econ";
 import { getRentcastQuotaStatus } from "../src/lib/rentcast";
-import { analyzeSeedListing, isRentcastEnriched, type SeedAnalysisResult } from "../src/lib/pipeline/us-seed-analysis";
+import {
+  analyzeSeedListing,
+  regenerateSeedNarrative,
+  isRentcastEnriched,
+  type SeedAnalysisResult,
+} from "../src/lib/pipeline/us-seed-analysis";
 import { assessAnchorPlausibility, parseMarketValueFromAssessmentNote } from "../src/lib/pipeline/us-assess";
 import type { Listing } from "../src/lib/types";
 
 const ONLY_MISSING = process.argv.includes("--only-missing");
 const ONLY_CHANGED = process.argv.includes("--only-changed");
+const REGEN_NARRATIVES = process.argv.includes("--regen-narratives");
 const CONCURRENCY = 8;
 
 /** Cheap (no LLM, no narrative recompute) check: would this listing's
@@ -115,7 +133,10 @@ interface CityStats {
 }
 
 async function main() {
-  console.log(`Mode: ${COMMIT ? "COMMIT (writing to KV)" : "DRY RUN (pass --commit to write)"}${ONLY_MISSING ? ", --only-missing" : ""}\n`);
+  console.log(
+    `Mode: ${COMMIT ? "COMMIT (writing to KV)" : "DRY RUN (pass --commit to write)"}` +
+      `${ONLY_MISSING ? ", --only-missing" : ""}${ONLY_CHANGED ? ", --only-changed" : ""}${REGEN_NARRATIVES ? ", --regen-narratives" : ""}\n`
+  );
 
   const quotaBefore = await getRentcastQuotaStatus();
   console.log(`RentCast quota BEFORE: ${quotaBefore.used}/${quotaBefore.limit} (persistedInKv=${quotaBefore.persistedInKv})`);
@@ -173,6 +194,18 @@ async function main() {
       s.alreadyRentcastEnriched++;
       continue;
     }
+    if (REGEN_NARRATIVES) {
+      // Narrative-voice regen only ever targets listings that already went
+      // through analyzeSeedListing() — nothing to reuse otherwise. Ignores
+      // --only-missing (a full regen across every already-seeded listing is
+      // the entire point of this mode).
+      if (!l.preOffer || !l.preUsAdvantage || !l.preUsComparables) {
+        s.skippedOnlyMissing++;
+        continue;
+      }
+      toProcess.push(l);
+      continue;
+    }
     if (ONLY_MISSING && l.preNarrative) {
       s.skippedOnlyMissing++;
       continue;
@@ -212,7 +245,9 @@ async function main() {
     const s = statFor(listing);
     try {
       const panel = await panelFor(listing);
-      const result = await analyzeSeedListing(listing, panel);
+      const result = REGEN_NARRATIVES
+        ? await regenerateSeedNarrative(listing, panel)
+        : await analyzeSeedListing(listing, panel);
       s.processed++;
       if (result.anchorType === "assessment") s.assessmentAnchored++;
       else s.languageAnchored++;

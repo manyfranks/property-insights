@@ -42,22 +42,40 @@ CREATE INDEX IF NOT EXISTS idx_profiles_consent ON user_profiles (partner_consen
 -- This is handled in application code, not a DB trigger.
 
 -- Regional economic & housing indicators, US county-level.
--- Populated by scripts/ingest-us-*.ts (Census ACS, FHFA HPI, HUD FMR, FEMA NRI).
+-- Populated by scripts/ingest-us-*.ts (Census ACS, FHFA HPI, HUD FMR, FEMA NRI,
+-- realtor.com median-DOM via FRED — scripts/ingest-us-dom.ts).
 -- geo_fips uses "US-SSCCC" (state+county FIPS) for US counties, so it can
 -- eventually sit alongside non-US geographies without a format collision.
+--
+-- `month` is nullable: every metric before median_dom is annual-grain (one
+-- row per geo_fips/metric/year) and leaves it NULL. median_dom is
+-- monthly-grain (realtor.com/FRED publishes MEDDAYONMAR{fips} once a month),
+-- so it needs a real month value to avoid one row per year clobbering the
+-- other eleven. The natural-key uniqueness below is expressed with
+-- COALESCE(month, 0) rather than a second UNIQUE(...,year) constraint so
+-- existing annual rows (month IS NULL) keep exactly the same one-row-per-year
+-- guarantee they always had (COALESCE(NULL,0) collapses to a constant, same
+-- as before month existed), while monthly rows get a distinct key per month.
 CREATE TABLE IF NOT EXISTS regional_econ (
   id            BIGSERIAL PRIMARY KEY,
   geo_level     TEXT NOT NULL,             -- 'county' (only level ingested so far)
   geo_fips      VARCHAR(12) NOT NULL,      -- e.g. 'US-06075' (San Francisco County, CA)
   geo_name      TEXT,
-  metric        TEXT NOT NULL,             -- median_home_value, fmr_2br, hpi, fema_risk_score, ...
+  metric        TEXT NOT NULL,             -- median_home_value, fmr_2br, hpi, fema_risk_score, median_dom, ...
   year          INTEGER NOT NULL,
+  month         SMALLINT,                  -- 1-12, monthly-grain metrics only (median_dom); NULL for annual metrics
   value         DOUBLE PRECISION,
-  unit          TEXT,                      -- USD | ratio | index | years
-  source        TEXT,                      -- census_acs | fhfa | hud | fema
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (geo_level, geo_fips, metric, year)
+  unit          TEXT,                      -- USD | ratio | index | years | days
+  source        TEXT,                      -- census_acs | fhfa | hud | fema | realtor_com_via_fred
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Natural-key uniqueness (superseded the old plain UNIQUE(geo_level,
+-- geo_fips, metric, year) constraint — see migrate route for the idempotent
+-- ALTER path on deployments created before `month` existed). Doubles as the
+-- ON CONFLICT arbiter for scripts/lib/ingest-shared.ts's upsertRegionalEcon().
+CREATE UNIQUE INDEX IF NOT EXISTS idx_regional_econ_natural_key
+  ON regional_econ (geo_level, geo_fips, metric, year, COALESCE(month, 0));
 
 -- Primary lookup path: "give me metric X for county Y" (reader lib queries).
 CREATE INDEX IF NOT EXISTS idx_regional_econ_fips_metric ON regional_econ (geo_fips, metric);
