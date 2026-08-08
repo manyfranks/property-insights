@@ -40,7 +40,10 @@ If a field asks "traffic incentive status" or similar (Yes/No) — answer **No**
 ### Tax / payout block
 - **Entity type**: Sole proprietor, individual (not a corporation)
 - **Country**: Canada
-- **Tax form**: W-8BEN (individual) — not W-8BEN-E — claiming Canada–US tax treaty benefits (reduced/zero withholding on royalties per Article XII where applicable to the payout type)
+- **Tax form**: W-8BEN (individual) — not W-8BEN-E — claiming Canada–US treaty benefits. Affiliate commissions are **business profits for services performed in Canada** (Article VII), not royalties — foreign-source, so line 10 is normally left blank. _(General info, not tax advice — accountant to bless.)_
+- **W-8BEN line 10, when a network's form REQUIRES it** (reuse verbatim):
+  - Article and paragraph: `VII(1)` · Rate: `0` · Type of income: `Business profits — affiliate/referral commissions for advertising services performed outside the United States; beneficial owner has no U.S. permanent establishment`
+  - "Explain the additional conditions" field: `The beneficial owner is an individual resident of Canada within the meaning of Article IV of the Canada–U.S. income tax convention and is the beneficial owner of the income. The income consists of business profits — affiliate/referral commissions for advertising and referral services performed entirely outside the United States. Under Article VII(1), such profits are taxable only in Canada because the beneficial owner does not carry on business in the United States through a permanent establishment as defined in Article V: no office or fixed place of business in the United States, and no dependent agent acting there on the beneficial owner's behalf. As an individual resident of Canada, the beneficial owner is a qualifying person under the Limitation on Benefits article (Article XXIX-A). A 0% rate of withholding therefore applies.`
 - **Payout preference**: PayPal preferred; wire transfer as fallback if PayPal is unsupported
 - **Name/address/phone/email fields**: use placeholders `[FULL LEGAL NAME]`, `[FULL ADDRESS]`, `[PHONE]`, `[EMAIL]` — Matt fills in at submission time
 - **Owner**: Matt Francis, Canadian sole proprietor
