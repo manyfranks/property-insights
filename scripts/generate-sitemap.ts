@@ -34,6 +34,7 @@ async function main() {
   // Counties with HUD FMR data get a /rent page (fail-soft: no DB at build
   // time → skip rent URLs rather than failing the whole sitemap).
   let fmrFips = new Set<string>();
+  let taxFips = new Set<string>();
   try {
     if (process.env.DATABASE_URL) {
       const { neon } = await import("@neondatabase/serverless");
@@ -42,9 +43,16 @@ async function main() {
         SELECT DISTINCT geo_fips FROM regional_econ WHERE metric = 'fmr_2br'
       `) as { geo_fips: string }[];
       fmrFips = new Set(rows.map((r) => r.geo_fips));
+      // Property-tax pages gate on taxes AND home value both present.
+      const taxRows = (await sql`
+        SELECT geo_fips FROM regional_econ
+        WHERE metric IN ('median_re_taxes_paid', 'median_home_value')
+        GROUP BY geo_fips HAVING count(DISTINCT metric) = 2
+      `) as { geo_fips: string }[];
+      taxFips = new Set(taxRows.map((r) => r.geo_fips));
     }
   } catch (err) {
-    console.error("[sitemap] FMR county query failed — rent URLs skipped:", err);
+    console.error("[sitemap] county tool queries failed — tool URLs skipped:", err);
   }
 
   const entry = (url: string, lastmod: string, changefreq: string, priority: number) =>
@@ -77,6 +85,16 @@ async function main() {
     ...US_COUNTIES.filter((c) => fmrFips.has(`US-${c.fips}`) || fmrFips.has(c.fips)).map((c) =>
       entry(`${BASE_URL}/us/${c.stateSlug}/${c.countySlug}/rent`, now, "monthly", isTopMetroCounty(c.fips) ? 0.7 : 0.6)
     ),
+    ...US_COUNTIES.filter((c) => taxFips.has(`US-${c.fips}`) || taxFips.has(c.fips)).map((c) =>
+      entry(`${BASE_URL}/us/${c.stateSlug}/${c.countySlug}/property-tax`, now, "monthly", isTopMetroCounty(c.fips) ? 0.7 : 0.6)
+    ),
+    entry(`${BASE_URL}/tools/appeal-checker`, now, "monthly", 0.7),
+    entry(`${BASE_URL}/us/rankings/investment`, now, "weekly", 0.8),
+    entry(`${BASE_URL}/us/rankings/rent-to-price`, now, "weekly", 0.8),
+    ...getAllStatesWithCounties().flatMap((s) => [
+      entry(`${BASE_URL}/us/rankings/investment/${s.stateSlug}`, now, "monthly", 0.6),
+      entry(`${BASE_URL}/us/rankings/rent-to-price/${s.stateSlug}`, now, "monthly", 0.6),
+    ]),
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;

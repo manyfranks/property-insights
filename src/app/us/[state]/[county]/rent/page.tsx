@@ -305,12 +305,18 @@ export default async function CountyRentPage({
       </div>
 
       {/* Cross-links */}
-      <div className="mb-8">
+      <div className="mb-8 flex flex-wrap gap-x-6 gap-y-2">
         <Link
           href={`/us/${stateSlug}/${countySlug}`}
           className="text-sm text-foreground hover:underline underline-offset-2 transition-colors"
         >
           Full {county.county} market data &rarr;
+        </Link>
+        <Link
+          href={`/us/rankings/rent-to-price/${stateSlug}`}
+          className="text-sm text-foreground hover:underline underline-offset-2 transition-colors"
+        >
+          Which {county.stateName} counties pass the 1% rule &rarr;
         </Link>
       </div>
 

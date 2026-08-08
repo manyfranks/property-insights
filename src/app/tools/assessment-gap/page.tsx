@@ -85,6 +85,19 @@ export default function AssessmentGapPage() {
         </div>
       </div>
 
+      <div className="mb-10 border border-border rounded-xl p-5 bg-white">
+        <p className="text-sm text-foreground font-medium mb-1">
+          Think your assessment is too high?
+        </p>
+        <p className="text-sm text-muted">
+          Our free{" "}
+          <a href="/tools/appeal-checker" className="text-foreground underline underline-offset-2 hover:text-foreground/70 transition-colors">
+            Property Tax Appeal Checker
+          </a>{" "}
+          tells you in 30 seconds whether an appeal could save you money.
+        </p>
+      </div>
+
       <FaqJsonLd questions={FAQ_ITEMS} />
       <BreadcrumbJsonLd
         items={[

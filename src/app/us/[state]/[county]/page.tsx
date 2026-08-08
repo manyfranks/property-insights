@@ -14,6 +14,7 @@ import {
   TOP_METRO_FIPS,
 } from "@/lib/us-counties";
 import { getCountyMarketPanel, type CountyMarketPanel } from "@/lib/db/regional-econ";
+import { getCountyFipsWithPropertyTaxAmong } from "@/lib/db/property-tax";
 
 export const revalidate = 86400; // 24h ISR
 export const dynamicParams = true; // any county not in generateStaticParams renders on-demand
@@ -133,6 +134,8 @@ export default async function CountyPage({
   // not a broken page (shouldn't normally happen since the registry is built
   // from regional_econ itself, but guards against a stale JSON file).
   if (!panel) notFound();
+
+  const hasPropertyTaxPage = (await getCountyFipsWithPropertyTaxAmong([county.fips])).size > 0;
 
   const siblings = getCountiesByState(stateSlug)
     .filter((c) => c.fips !== county.fips)
@@ -334,13 +337,21 @@ export default async function CountyPage({
               <div className="font-mono font-medium">{fmrLabel(panel.fmr4br)}</div>
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-4 flex flex-wrap gap-4">
             <Link
               href={`/us/${stateSlug}/${countySlug}/rent`}
               className="text-xs font-medium text-foreground underline underline-offset-2 hover:text-foreground/70 transition-colors"
             >
               Full rent breakdown by bedroom &rarr;
             </Link>
+            {hasPropertyTaxPage && (
+              <Link
+                href={`/us/${stateSlug}/${countySlug}/property-tax`}
+                className="text-xs font-medium text-foreground underline underline-offset-2 hover:text-foreground/70 transition-colors"
+              >
+                Property taxes in {county.county} &rarr;
+              </Link>
+            )}
           </div>
         </div>
       )}
