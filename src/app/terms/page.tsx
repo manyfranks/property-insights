@@ -62,7 +62,7 @@ export default function TermsPage() {
         <section>
           <h2 className="text-base font-medium text-foreground mb-2">User Accounts</h2>
           <p>
-            Some features require a free account through our authentication provider (Clerk). You are
+            Some features require a free account through our authentication provider. You are
             responsible for maintaining the security of your account credentials. You agree not to
             share your account or use the Service for any unlawful purpose.
           </p>

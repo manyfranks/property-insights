@@ -40,7 +40,8 @@ export default function PrivacyPage() {
             </li>
             <li>
               <span className="text-foreground font-medium">Usage data</span> such as pages visited,
-              properties viewed, and time on site, collected through Vercel Analytics.
+              properties viewed, and time on site, collected through a cookieless, privacy-focused
+              analytics service.
             </li>
           </ul>
           <p className="mt-3">
@@ -192,9 +193,9 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-base font-medium text-foreground mb-2">Cookies</h2>
           <p>
-            We use only essential cookies required for authentication (provided by Clerk). We do not
-            use advertising cookies, tracking pixels, or third-party analytics cookies. Vercel
-            Analytics operates without cookies.
+            We use only essential cookies required for authentication, provided by our
+            authentication provider. We do not use advertising cookies, tracking pixels, or
+            third-party analytics cookies. Our analytics service operates without cookies.
           </p>
         </section>
 
