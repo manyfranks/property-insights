@@ -68,6 +68,25 @@ interface ApiResult {
   gid: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Shape assertion for the BC Assessment GetByAddress REST response. The old
+// behavior treated ANY unexpected shape (non-array body, missing
+// label/value fields on an otherwise-real hit) identically to a genuine
+// "No results" miss — `!data?.length` is truthy for both `[]` and `undefined`
+// alike — which hides real endpoint drift as if every address simply had no
+// match, and could return `{ id: undefined, label: undefined }` into
+// scrapeValues(), navigating Puppeteer to `/Property/Info/undefined`. Log
+// loudly and treat only genuine misses (empty array, explicit "No results")
+// as silent; anything else is drift worth surfacing.
+// ---------------------------------------------------------------------------
+
+export class BcAssessmentShapeError extends Error {
+  constructor(context: string) {
+    super(`[bc-assessment-shape] ${context}`);
+    this.name = "BcAssessmentShapeError";
+  }
+}
+
 /**
  * Use BC Assessment's autocomplete REST API to find a property ID.
  * Fast (~200ms), no browser required.
@@ -88,8 +107,26 @@ async function findPropertyId(
       });
       if (!res.ok) continue;
 
-      const data = (await res.json()) as ApiResult[];
-      if (!data?.length || data[0].label === "No results") continue;
+      const rawData: unknown = await res.json();
+      if (!Array.isArray(rawData)) {
+        console.error(
+          `[bc-assessment-shape] GetByAddress("${query}"): response was not an array — got ${typeof rawData}. Endpoint shape may have changed.`
+        );
+        continue;
+      }
+      const data = rawData as ApiResult[];
+      if (!data.length || data[0].label === "No results") continue;
+
+      if (typeof data[0].label !== "string") {
+        console.error(
+          `[bc-assessment-shape] GetByAddress("${query}"): first result missing a string "label" field — keys present: [${Object.keys(data[0] || {}).join(", ")}]`
+        );
+        continue;
+      }
+      // Note: data[0].value can legitimately be empty/"0" for a multi-unit
+      // header row (see the "select to see all units" branch below, which
+      // has its own non-empty-value search) — only the single-unit return
+      // path at the bottom of this loop needs a non-empty value.
 
       // Multi-unit: try to find specific unit
       if (data[0].label.includes("select to see all units")) {
@@ -132,6 +169,13 @@ async function findPropertyId(
         // Fall back to first non-header result
         const first = data.find((d) => d.value && d.value !== "" && d.value !== "0");
         if (first) return { id: first.value, label: first.label };
+        continue;
+      }
+
+      if (typeof data[0].value !== "string" || data[0].value === "") {
+        console.error(
+          `[bc-assessment-shape] GetByAddress("${query}"): matched "${data[0].label}" but "value" (property id) is missing/empty — cannot proceed to scrape.`
+        );
         continue;
       }
 

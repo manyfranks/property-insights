@@ -14,12 +14,19 @@
     },
     "src/app/api/pipeline/refresh/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/canary/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/pipeline/refresh",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/canary",
+      "schedule": "0 19 * * *"
     }
   ]
 }

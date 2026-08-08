@@ -1,6 +1,41 @@
 import { Assessment } from "../types";
 import { AB_ASSESSMENT_CACHE } from "../data/assessments";
 
+// ---------------------------------------------------------------------------
+// SODA response shape assertion — distinguishes "no matching parcel" (a
+// normal, expected outcome — `data.length === 0`) from "found a record but
+// the field we depend on is missing/non-numeric" (real API drift, e.g.
+// Calgary/Edmonton renaming or dropping `assessed_value`). The old behavior
+// silently coerced a missing/malformed value through
+// parseFloat(undefined) -> NaN -> `!value` -> null, indistinguishable from
+// a genuine miss. Throw loud instead so drift doesn't hide as "no result".
+// ---------------------------------------------------------------------------
+
+export class SodaShapeError extends Error {
+  constructor(dataset: string, context: string) {
+    super(`[soda-shape] ${dataset}: record found but assessed_value missing/invalid (${context})`);
+    this.name = "SodaShapeError";
+  }
+}
+
+function extractAssessedValue(record: Record<string, unknown>, dataset: string): number | null {
+  const raw = record.assessed_value;
+  if (raw === undefined || raw === null || raw === "") {
+    console.error(`[soda-shape] ${dataset}: record has no assessed_value field — API shape may have changed. Keys present: [${Object.keys(record).join(", ")}]`);
+    throw new SodaShapeError(dataset, "field absent");
+  }
+  const value = Math.round(parseFloat(String(raw)));
+  if (!Number.isFinite(value)) {
+    console.error(`[soda-shape] ${dataset}: assessed_value="${raw}" did not parse to a finite number`);
+    throw new SodaShapeError(dataset, `unparseable value "${raw}"`);
+  }
+  // A record with assessed_value <= 0 is a legitimate (if unusual) data
+  // point, not a shape violation — treat as "no usable assessment" rather
+  // than an error.
+  if (value <= 0) return null;
+  return value;
+}
+
 // Street type abbreviations: our listings use mixed formats, SODA APIs use specific ones
 const CALGARY_ABBREVS: [RegExp, string][] = [
   [/\bStreet\b/gi, "ST"],
@@ -142,6 +177,31 @@ async function lookupCalgarySODA(address: string, _unit?: string): Promise<Asses
   }
 }
 
+/**
+ * Minimal health probe for the Calgary SODA endpoint — used by
+ * GET /api/canary. Deliberately queries broadly (any residential record,
+ * no address filter) rather than a specific hard-coded address, so the
+ * result reflects dataset/schema health (is `assessed_value` still there
+ * and numeric?) instead of whether one particular address still exists in
+ * the roll. Reuses queryCalgary()'s SodaShapeError path, so real drift
+ * (renamed/dropped field, non-array response) surfaces as a thrown error
+ * here rather than a silent false negative.
+ */
+export async function calgarySodaHealthCheck(): Promise<{ ok: boolean; detail: string }> {
+  try {
+    const result = await queryCalgary("assessment_class='RE'");
+    if (result && result.totalValue > 0) {
+      return { ok: true, detail: `totalValue=${result.totalValue} year=${result.assessmentYear}` };
+    }
+    return { ok: false, detail: "query returned no usable record (dataset may be empty or filter no longer matches)" };
+  } catch (err) {
+    return {
+      ok: false,
+      detail: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+    };
+  }
+}
+
 async function queryCalgary(where: string): Promise<Assessment | null> {
   const url = new URL("https://data.calgary.ca/resource/4bsw-nn7w.json");
   url.searchParams.set("$where", where);
@@ -154,10 +214,14 @@ async function queryCalgary(where: string): Promise<Assessment | null> {
   if (!res.ok) return null;
 
   const data = await res.json();
-  if (!data?.length) return null;
+  if (!Array.isArray(data)) {
+    console.error(`[soda-shape] calgary 4bsw-nn7w: response was not an array — got ${typeof data}. API shape may have changed.`);
+    throw new SodaShapeError("calgary 4bsw-nn7w", `response type ${typeof data}`);
+  }
+  if (!data.length) return null;
 
-  const value = Math.round(parseFloat(data[0].assessed_value));
-  if (!value || value <= 0) return null;
+  const value = extractAssessedValue(data[0], "calgary 4bsw-nn7w");
+  if (value === null) return null;
 
   return {
     totalValue: value,
@@ -248,10 +312,14 @@ async function queryEdmonton(
   if (!res.ok) return null;
 
   const data = await res.json();
-  if (!data?.length) return null;
+  if (!Array.isArray(data)) {
+    console.error(`[soda-shape] edmonton q7d6-ambg: response was not an array — got ${typeof data}. API shape may have changed.`);
+    throw new SodaShapeError("edmonton q7d6-ambg", `response type ${typeof data}`);
+  }
+  if (!data.length) return null;
 
-  const value = parseInt(data[0].assessed_value, 10);
-  if (!value || value <= 0) return null;
+  const value = extractAssessedValue(data[0], "edmonton q7d6-ambg");
+  if (value === null) return null;
 
   return {
     totalValue: value,

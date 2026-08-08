@@ -433,7 +433,7 @@ function mapDetailListing(
 
   const sqft = r.squareFootage?.max || 0;
 
-  return {
+  const listing: Listing = {
     address,
     ...(unit ? { unit } : {}),
     city: r.city || city,
@@ -461,6 +461,22 @@ function mapDetailListing(
     url,
     mlsNumber: r.mlsNum,
   };
+
+  // Single-listing extraction boundary: a malformed detail page (missing
+  // price/address/city, or a dom that failed to compute) is exactly the
+  // kind of Zoocasa drift the pipeline can't safely proceed on — throw
+  // instead of letting the || 0 / "" defaults above silently flow into
+  // scoring/offer math. Callers (fetchDetail, tryFetchByCitySlug via its
+  // existing .catch(() => null), fetchDetailByUrl) already handle thrown
+  // errors per-listing without crashing the wider batch.
+  const issues = listingShapeIssues(listing);
+  if (issues.length > 0) {
+    const context = `detail listing "${listing.address || address || "(no address)"}" (${city}, ${province})`;
+    console.error(`[zoocasa-shape] ${context}: missing/invalid fields [${issues.join(", ")}]`);
+    throw new ZoocasaShapeError(context, issues);
+  }
+
+  return listing;
 }
 
 // ---------------------------------------------------------------------------
@@ -503,6 +519,35 @@ export class ZoocasaNotFoundError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Shape assertions — the extraction boundary (extractNextData + the
+// mapSearchListing/mapDetailListing mappers below) is where Zoocasa's raw
+// JSON crosses into our Listing type. If Zoocasa changes/drops a field we
+// depend on, the old behavior was to silently coerce it to a falsy default
+// (price: r.price || 0, address: "", ...) and let the bad value propagate
+// into scoring/offer math downstream. Fail loud here instead.
+//
+// Note: Listing has no discrete "status" field (see src/lib/types.ts) — dom
+// (days-on-market, derived from addedAt/history) is the closest available
+// liveness/activity signal, so it stands in for "status" below.
+// ---------------------------------------------------------------------------
+
+export class ZoocasaShapeError extends Error {
+  constructor(context: string, missingFields: string[]) {
+    super(`[zoocasa-shape] ${context}: missing/invalid fields [${missingFields.join(", ")}]`);
+    this.name = "ZoocasaShapeError";
+  }
+}
+
+function listingShapeIssues(l: Pick<Listing, "address" | "city" | "price" | "dom">): string[] {
+  const issues: string[] = [];
+  if (!l.address || typeof l.address !== "string") issues.push("address");
+  if (!l.city || typeof l.city !== "string") issues.push("city");
+  if (typeof l.price !== "number" || !(l.price > 0)) issues.push("price");
+  if (typeof l.dom !== "number" || Number.isNaN(l.dom)) issues.push("dom(status)");
+  return issues;
+}
+
+// ---------------------------------------------------------------------------
 // Public API: Search
 // ---------------------------------------------------------------------------
 
@@ -531,7 +576,36 @@ export async function searchListings(
   const innerProps = pageProps?.props as Record<string, unknown> | undefined;
   const listings = (innerProps?.listings || []) as ZoocasaSearchResult[];
 
-  return listings.map((r) => mapSearchListing(r, city, province));
+  const mapped = listings.map((r) => mapSearchListing(r, city, province));
+
+  // Search results are a batch — an individual malformed listing shouldn't
+  // sink the whole page, so (unlike mapDetailListing) we filter + log loudly
+  // rather than throw.
+  const shapeValid = mapped.filter((l) => {
+    const issues = listingShapeIssues(l);
+    if (issues.length > 0) {
+      console.error(
+        `[zoocasa-shape] searchListings("${city}", "${province}"): dropping listing "${l.address}" — missing/invalid fields [${issues.join(", ")}]`
+      );
+      return false;
+    }
+    return true;
+  });
+
+  // Defend against the province-wide-fallback regression documented on
+  // citiesMatch() above: drop listings whose returned city doesn't plausibly
+  // match what was requested rather than silently mixing another city's
+  // inventory into this one.
+  const scoped = shapeValid.filter((l) => citiesMatch(l.city, city));
+  if (scoped.length < shapeValid.length) {
+    const dropped = shapeValid.length - scoped.length;
+    const droppedPct = Math.round((dropped / shapeValid.length) * 100);
+    console.error(
+      `[zoocasa-scope] searchListings("${city}", "${province}"): dropped ${dropped}/${shapeValid.length} (${droppedPct}%) listings whose city didn't match the request — Zoocasa's subdivision scoping may be degraded (province-wide feed suspected).`
+    );
+  }
+
+  return scoped;
 }
 
 // ---------------------------------------------------------------------------
@@ -726,6 +800,33 @@ function siblingsFor(city: string): string[] {
 }
 
 /**
+ * True if `returnedCity` is a plausible match for `requestedCity` — either
+ * the same city, or a known metro sibling in either direction (requested
+ * city's spoke list contains returned, or returned city's spoke list
+ * contains requested — CITY_SIBLINGS is keyed by hub only, so both
+ * directions have to be checked).
+ *
+ * Used to defend against a live Zoocasa regression (observed 2026-08):
+ * subdivision-scoped search/sold URLs (e.g. /edmonton-ab-real-estate,
+ * /hamilton-on-real-estate) intermittently resolve their internal
+ * "electedAddress" to the PROVINCE rather than the requested city, silently
+ * widening results to a province-wide "-date" feed instead of the
+ * requested city's listings. Confirmed externally (varying headers/
+ * referer/cache-busting params/trailing slash all reproduce it identically)
+ * — this is Zoocasa server-side behavior, not something a request-shape
+ * change on our end can fix. See searchListings()/fetchSoldListings() below.
+ */
+function citiesMatch(returnedCity: string, requestedCity: string): boolean {
+  const r = returnedCity.trim().toLowerCase();
+  const q = requestedCity.trim().toLowerCase();
+  if (!r || !q) return false;
+  if (r === q) return true;
+  if (siblingsFor(requestedCity).some((s) => s.toLowerCase() === r)) return true;
+  if (siblingsFor(returnedCity).some((s) => s.toLowerCase() === q)) return true;
+  return false;
+}
+
+/**
  * Try to fetch the detail page directly via flat-URL slug construction.
  * Returns null on 404 / missingAddress so callers can fan out to siblings.
  * Other errors propagate.
@@ -905,7 +1006,21 @@ export async function fetchSoldListings(
   const listings = (innerProps?.listings || []) as ZoocasaSoldRaw[];
 
   // Only return listings with sold data
-  return listings.filter((l) => l.sold_price > 0 && l.sold_at);
+  const sold = listings.filter((l) => l.sold_price > 0 && l.sold_at);
+
+  // Same province-wide-fallback defense as searchListings() — see
+  // citiesMatch() for why this is necessary (Zoocasa's /sold pages hit the
+  // identical electedAddress regression as the main search pages).
+  const scoped = sold.filter((l) => citiesMatch(l.sub_division || "", city));
+  if (scoped.length < sold.length) {
+    const dropped = sold.length - scoped.length;
+    const droppedPct = Math.round((dropped / sold.length) * 100);
+    console.error(
+      `[zoocasa-scope] fetchSoldListings("${city}", "${province}"): dropped ${dropped}/${sold.length} (${droppedPct}%) sold comps whose city didn't match the request — Zoocasa's subdivision scoping may be degraded (province-wide feed suspected).`
+    );
+  }
+
+  return scoped;
 }
 
 /**
