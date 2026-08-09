@@ -136,6 +136,19 @@ export interface Assessment {
   // engineering) > modeled (statistical estimate, e.g. area median) >
   // proxy (rough stand-in) > missing (no assessment at all).
   evidenceClass?: "observed" | "derived" | "modeled" | "proxy" | "missing";
+  // US-only: true when this Assessment was built from a LIVE per-request
+  // county-assessor lookup (src/lib/assessment/us-county's
+  // lookupCountyLive(), wired into src/lib/pipeline/us-assess.ts's
+  // buildUsAssessment) rather than RentCast's `taxAssessments` field.
+  // Both cases set source:"government"/evidenceClass:"observed" — this
+  // flag is the only signal that distinguishes a real-time county-scraper
+  // hit (per docs/plans/10-RENTCAST-DATA-QUALITY.md, the trustworthy case)
+  // from RentCast's own tax-assessed figure (audit-documented as the
+  // weakest field: 59% coverage, and measurably wrong for Phoenix
+  // specifically). Undefined/false for every pre-existing Assessment
+  // (RentCast-tax-sourced, AVM, area-median, or any CA adapter) — UI source
+  // labels use it to render "(live)" only when true.
+  liveCountySource?: boolean;
 }
 
 // ---------------------------------------------------------------------------

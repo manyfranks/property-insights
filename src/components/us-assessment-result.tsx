@@ -117,6 +117,11 @@ function fmrLabel(n: number | null): string {
 }
 
 function assessmentSourceLabel(assessment: Assessment): string {
+  // liveCountySource: real-time county-assessor lookup (src/lib/assessment/
+  // us-county's lookupCountyLive, wired into src/lib/pipeline/us-assess.ts's
+  // buildUsAssessment) rather than RentCast's taxAssessments field — see
+  // Assessment.liveCountySource's doc comment (src/lib/types.ts).
+  if (assessment.liveCountySource) return "County tax assessment (live)";
   switch (assessment.source) {
     case "government":
       return "County tax assessment";

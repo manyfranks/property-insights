@@ -758,6 +758,13 @@ function usOfferResult(pre: PrecomputedOffer, assessment: Assessment | null, anc
 }
 
 function usAssessmentSourceLabel(assessment: Assessment): string {
+  // liveCountySource: this assessment came from a real-time county-assessor
+  // lookup (src/lib/assessment/us-county's lookupCountyLive, wired into
+  // src/lib/pipeline/us-assess.ts's buildUsAssessment), not RentCast's
+  // taxAssessments field — see Assessment.liveCountySource's doc comment
+  // (src/lib/types.ts) for why the two share source:"government" but
+  // aren't equally trustworthy (docs/plans/10-RENTCAST-DATA-QUALITY.md).
+  if (assessment.liveCountySource) return "County tax assessment (live)";
   switch (assessment.source) {
     case "government":
     case "cache":

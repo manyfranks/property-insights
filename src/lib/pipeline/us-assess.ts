@@ -31,6 +31,7 @@
 
 import type { Assessment, AnchorDemotionReason, AnchorPlausibility, Listing } from "../types";
 import type { RentCastAvm, RentCastPropertyRecord, USPropertyBundle } from "../rentcast";
+import type { CountyAssessorResult } from "../assessment/us-county";
 import { assessmentBasisForState } from "../rentcast";
 import { fmt } from "../utils";
 
@@ -42,15 +43,119 @@ import { fmt } from "../utils";
 const STALE_ASSESSMENT_YEARS = 3;
 
 /**
- * Anchor priority: tax-assessed value (observed, government-sourced) when
- * recent; RentCast's AVM (modeled) when the tax record is missing or stale.
- * Returns null only when RentCast had neither for this address.
+ * Maps a live county adapter's own `assessmentBasis` (src/lib/assessment/
+ * us-county/types.ts's CountyAssessorResult — "assessed_ratio" |
+ * "full_value", verified per-county by whoever wrote that adapter) onto
+ * Assessment.assessmentBasis (this file's broader "market_value" |
+ * "assessed_ratio" | "acquisition_value", also used for RentCast-sourced
+ * assessments and CA). "full_value" means the county's own figure is
+ * already meant to track market value directly (WA's King County, by
+ * statute) — treated the same as this codebase's "market_value" for
+ * anchor-plausibility purposes (assessAnchorPlausibility's tight
+ * DEFAULT_BAND). "assessed_ratio" carries straight through, and is what
+ * makes assessAnchorPlausibility widen its band and consult
+ * marketValueHint for a live county figure — same treatment RentCast's own
+ * tax-assessed figures get for every non-acquisition-value state.
+ *
+ * Deliberately does NOT special-case "the anchor happens to be marketValue,
+ * not assessedValue" — see this function's own doc comment below: when a
+ * county's assessmentBasis is "assessed_ratio", the Assessment stays
+ * tagged "assessed_ratio" even when countyLive.marketValue is what's
+ * actually anchored (e.g. Cook's derived market figure, NYC's capped
+ * curtxbtot/curmkttot pair), because that marketValue is still just the
+ * SAME county's own figure for a basis known to run low/capped — not
+ * independent corroboration of it. Only "full_value" counties (their own
+ * assessedValue already IS market-tracking) get the tight band regardless
+ * of which of the two fields ends up as totalValue.
+ *
+ * A live adapter that hasn't set assessmentBasis at all (shouldn't happen
+ * for any of the six adapters registered as of this function's writing —
+ * see src/lib/assessment/us-county/*.ts) falls back to the pre-existing
+ * state-level default, exactly as if no live county data had been used.
+ */
+function assessmentBasisFromCountyLive(
+  countyBasis: CountyAssessorResult["assessmentBasis"] | undefined,
+  state: string
+): Assessment["assessmentBasis"] {
+  if (countyBasis === "assessed_ratio") return "assessed_ratio";
+  if (countyBasis === "full_value") return "market_value";
+  return assessmentBasisForState(state);
+}
+
+/**
+ * Anchor priority: a LIVE county-assessor lookup (observed, government-
+ * sourced, primary source) when one succeeded; tax-assessed value from
+ * RentCast (observed, government-sourced, but a WEAKER secondary source —
+ * see docs/plans/10-RENTCAST-DATA-QUALITY.md: only 59% coverage, and
+ * measurably wrong for Phoenix specifically) when recent; RentCast's AVM
+ * (modeled) when neither tax record is usable. Returns null only when none
+ * of the three had anything for this address.
+ *
+ * `countyLive` — the result of src/lib/assessment/us-county's
+ * lookupCountyLive(), fetched by the caller (route.ts) IN PARALLEL with the
+ * RentCast bundle so this never adds latency when the county API answers
+ * before RentCast does (or fails/times out — see that module's doc comment
+ * for the hard per-county timeout). Optional/undefined for any caller that
+ * hasn't wired the live lookup (keeps this function's existing 3-arg
+ * callers, e.g. scripts/analyze-us-seeds.ts's zero-RentCast-call path,
+ * source-compatible).
+ *
+ * Within a successful countyLive result, the assessor's own market/full-
+ * cash figure (marketValue — AZ's Full Cash Value, FL's Just Value) is
+ * preferred over its capped assessed figure (assessedValue — AZ's Limited
+ * Property Value, FL's Save-Our-Homes-capped Assessed Value) when present:
+ * the capped figure is BY DESIGN allowed to run below market, so anchoring
+ * on the market-tracking figure when the county publishes one is a strictly
+ * better anchor for offer-model.ts's ratio-vs-asking banding. Which figure
+ * gets used as totalValue and what assessmentBasis gets reported are two
+ * separate decisions, though — see assessmentBasisFromCountyLive() below:
+ * a county whose own scheme is "assessed_ratio" (Cook, NYC, Maricopa,
+ * Miami-Dade) stays tagged that way even when its marketValue is the one
+ * anchored, since that marketValue is still just the same capped county's
+ * own figure, not independent corroboration. Either way, this is still
+ * just "is there a value to try" — assessAnchorPlausibility() (below) is
+ * what decides whether the caller should actually trust it.
  */
 export function buildUsAssessment(
   record: RentCastPropertyRecord | null,
   avm: RentCastAvm | null,
-  state: string
+  state: string,
+  countyLive?: CountyAssessorResult | null
 ): Assessment | null {
+  if (countyLive?.marketValue && countyLive.marketValue > 0) {
+    return {
+      totalValue: countyLive.marketValue,
+      landValue: 0,
+      buildingValue: 0,
+      assessmentYear: countyLive.assessmentYear,
+      found: true,
+      source: "government",
+      evidenceClass: "observed",
+      // NOT hardcoded "market_value" — a county whose OWN assessmentBasis
+      // is "assessed_ratio" (Cook, NYC, Maricopa, Miami-Dade) stays tagged
+      // "assessed_ratio" even though marketValue is what's anchored here,
+      // so assessAnchorPlausibility still applies the wider band and
+      // marketValueHint corroboration this basis calls for — see
+      // assessmentBasisFromCountyLive's doc comment above.
+      assessmentBasis: assessmentBasisFromCountyLive(countyLive.assessmentBasis, state),
+      liveCountySource: true,
+    };
+  }
+
+  if (countyLive?.assessedValue && countyLive.assessedValue > 0) {
+    return {
+      totalValue: countyLive.assessedValue,
+      landValue: 0,
+      buildingValue: 0,
+      assessmentYear: countyLive.assessmentYear,
+      found: true,
+      source: "government",
+      evidenceClass: "observed",
+      assessmentBasis: assessmentBasisFromCountyLive(countyLive.assessmentBasis, state),
+      liveCountySource: true,
+    };
+  }
+
   const latestTax = record?.taxAssessments?.[0];
   const currentYear = new Date().getFullYear();
   const isStale = !latestTax || currentYear - latestTax.year > STALE_ASSESSMENT_YEARS;

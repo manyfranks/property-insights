@@ -276,6 +276,13 @@ export async function lookupByAddress(
     lotSize,
     assessmentYear: typeof fdor.ASMNT_YR === "number" ? String(fdor.ASMNT_YR) : String(new Date().getFullYear()),
     source: "county_assessor",
+    // AV_NSD is FL's Save-Our-Homes-capped figure — routinely below JV for
+    // longer-held homestead properties (see module doc's FIELD MAPPING
+    // note above), the exact same "legally capped, not itself a market
+    // figure" situation as Maricopa's LPV/FCV split. assessed_ratio, not
+    // full_value, is the honest classification here (JV being close to
+    // true market doesn't make AV_NSD one).
+    assessmentBasis: "assessed_ratio",
   };
   return result;
 }

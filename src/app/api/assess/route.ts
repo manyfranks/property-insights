@@ -45,6 +45,7 @@ import { geocodeUSAddress } from "@/lib/geo/census-geocoder";
 import { lookupAssessment } from "@/lib/assessment";
 import { getCountyMarketPanel } from "@/lib/db/regional-econ";
 import { getUSProperty } from "@/lib/rentcast";
+import { lookupCountyLive } from "@/lib/assessment/us-county";
 import {
   buildUsAssessment,
   buildUsListing,
@@ -275,8 +276,22 @@ async function handleUSAssessment({
   }
 
   const countyFips = `US-${geo.stateFips}${geo.countyFips}`;
+  // Bare 5-digit FIPS (no "US-" prefix) — the format
+  // src/lib/assessment/us-county/index.ts's registry keys on, matching
+  // ${geo.stateFips}${geo.countyFips} directly.
+  const bareCountyFips = `${geo.stateFips}${geo.countyFips}`;
 
-  const [bundle, marketPanel] = await Promise.all([
+  // County-live lookup runs IN PARALLEL with the RentCast bundle fetch (not
+  // after it) so a fast county API (Maricopa/Miami-Dade, both live-verified
+  // well under their hard timeouts — see us-county/index.ts) adds ~zero
+  // wall-clock latency to this request. Non-live-capable counties (Travis)
+  // and addresses outside any registered county both resolve to null near-
+  // instantly (lookupCountyLive short-circuits before any network call) —
+  // never blocks. Any failure/timeout degrades to null, which
+  // buildUsAssessment() below treats identically to "no live county data
+  // available," falling back to RentCast's taxAssessments exactly as before
+  // this change (log prefix `[county-live]`, see that module for detail).
+  const [bundle, marketPanel, countyLive] = await Promise.all([
     getUSProperty(street, city, geo.stateUsps).catch((err) => {
       log("rentcast error", err instanceof Error ? err.message : String(err));
       return null;
@@ -287,7 +302,18 @@ async function handleUSAssessment({
       log("market panel error", err instanceof Error ? err.message : String(err));
       return null;
     }),
+    lookupCountyLive(bareCountyFips, street, city).catch((err) => {
+      log("county-live error", err instanceof Error ? err.message : String(err));
+      return null;
+    }),
   ]);
+
+  log(
+    "county-live done",
+    countyLive
+      ? `assessedValue=${countyLive.assessedValue}${countyLive.marketValue ? ` marketValue=${countyLive.marketValue}` : ""}`
+      : "no live county data (not registered, not liveCapable, no match, or timed out)"
+  );
 
   log(
     "rentcast done",
@@ -339,7 +365,7 @@ async function handleUSAssessment({
     });
   }
 
-  const assessment = buildUsAssessment(bundle.record, bundle.avm, geo.stateUsps);
+  const assessment = buildUsAssessment(bundle.record, bundle.avm, geo.stateUsps, countyLive);
 
   trackEvent(userId, "assessment_request", {
     address: geo.matchedAddress,
@@ -361,17 +387,47 @@ async function handleUSAssessment({
     // asking price all produce a real assessed value that offer-model.ts's
     // ratio-vs-asking banding was never tuned to handle — see that
     // function's module doc for the flagship 12400 Cedar St, Austin case).
-    // RentCast's AVM (real here, unlike the free-tier seed-analysis path)
-    // serves as the tiebreaker; RentCast's tax-assessment record has no
-    // separate market-value figure, so marketValueHint is always null on
-    // this path.
+    // This gate treats a county-live-sourced assessed value with exactly
+    // the same suspicion as a RentCast-tax-sourced one (docs/plans/
+    // 10-RENTCAST-DATA-QUALITY.md found primary county sources wrong by
+    // 50-59x too — Maricopa specifically) — "it came from the government"
+    // is not itself a plausibility pass.
+    //
+    // marketValueHint: only meaningful when buildUsAssessment() anchored on
+    // the county's CAPPED assessedValue (assessmentBasis "assessed_ratio")
+    // while ALSO holding a separate marketValue figure for the same parcel.
+    // As of the Cook/King/NYC counties added 2026-08-09, this is common —
+    // not "rare in practice" as originally noted here — since those
+    // adapters (and Maricopa/Miami-Dade) report assessmentBasis
+    // "assessed_ratio" even when their own marketValue is what
+    // buildUsAssessment ends up anchoring on (see
+    // assessmentBasisFromCountyLive's doc comment in us-assess.ts: a
+    // capped county's marketValue is still just that same county's own
+    // figure, not independent corroboration of it). The `assessment.
+    // totalValue !== countyLive?.marketValue` guard below specifically
+    // excludes that already-anchored-on-marketValue case: passing the SAME
+    // number in as both `assessedValue` and `marketValueHint` would make
+    // assessAnchorPlausibility's corroboration note claim "the capped
+    // assessed figure runs lower" when here it's identical — only pass the
+    // hint when it's a genuinely different, second figure (i.e.
+    // buildUsAssessment anchored on the capped assessedValue instead).
+    // RentCast's tax-assessment record has no separate market-value figure
+    // at all, so this is always null when the assessment came from
+    // RentCast instead of a live county lookup.
+    const marketValueHint =
+      assessment?.liveCountySource &&
+      assessment.assessmentBasis === "assessed_ratio" &&
+      countyLive?.marketValue &&
+      assessment.totalValue !== countyLive.marketValue
+        ? countyLive.marketValue
+        : null;
     const anchorDecision = assessment?.found
       ? assessAnchorPlausibility({
           assessedValue: assessment.totalValue,
           assessmentBasis: assessment.assessmentBasis,
           askingPrice: listing.price || null,
           avmValue: bundle.avm?.value ?? null,
-          marketValueHint: null,
+          marketValueHint,
         })
       : undefined;
     const taxAssessedDemoted = anchorDecision?.verdict === "context_only";

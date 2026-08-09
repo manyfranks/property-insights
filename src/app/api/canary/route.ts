@@ -38,6 +38,15 @@
  *      intentionally not probed here to preserve quota. A cache-layer
  *      outage would still surface indirectly via `/api/assess`'s
  *      `bundle.meta.errors` logging (see RUNBOOK.md §6).
+ *   9. County-assessor live lookup — one Maricopa County live lookup
+ *      (`lookupCountyLive`, src/lib/assessment/us-county/index.ts) against
+ *      a known-good Phoenix address. Unlike RentCast, this free county API
+ *      has no meaningful quota concern, so it's probed live rather than
+ *      cache-only — proves the ArcGIS endpoint + field mapping are both
+ *      still healthy, not just that the cache path works. A failure here
+ *      degrades to RentCast-based assessment in production (never blocks a
+ *      user's request), but a silent break would otherwise go undetected
+ *      until someone reads `[county-live]` logs.
  *
  * Returns 500 (not 200) on any failure so Vercel's cron dashboard marks the
  * run failed and alerts, in addition to the console.error("[canary]", ...)
@@ -58,6 +67,7 @@ import {
   pingCensusGeocoderLive,
 } from "@/lib/geo/census-geocoder";
 import { getCountyMarketPanel } from "@/lib/db/regional-econ";
+import { lookupCountyLive } from "@/lib/assessment/us-county";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -279,6 +289,42 @@ async function checkUsRentcastCache(): Promise<CheckResult> {
   }
 }
 
+// Known-good Maricopa County (Phoenix, AZ) address — same one
+// maricopaHealthCheck() in maricopa.ts probes (a genuine single-family
+// match, not one of that module's documented ambiguous-condo addresses —
+// see maricopaHealthCheck's own doc comment for why the address choice
+// matters here). FIPS "04013" matches the registry key in
+// src/lib/assessment/us-county/index.ts.
+const US_COUNTY_LIVE_PROBE = { countyFips: "04013", street: "8429 W Vernon Ave", city: "Phoenix" };
+
+async function checkUsCountyLive(): Promise<CheckResult> {
+  try {
+    const result = await lookupCountyLive(
+      US_COUNTY_LIVE_PROBE.countyFips,
+      US_COUNTY_LIVE_PROBE.street,
+      US_COUNTY_LIVE_PROBE.city
+    );
+    if (!result) {
+      return {
+        ok: false,
+        detail: `lookupCountyLive("${US_COUNTY_LIVE_PROBE.countyFips}", "${US_COUNTY_LIVE_PROBE.street}") returned null (no match, or the ArcGIS endpoint/schema may have changed)`,
+      };
+    }
+    if (!(result.assessedValue > 0)) {
+      return { ok: false, detail: `assessedValue not usable: ${JSON.stringify(result)}` };
+    }
+    return {
+      ok: true,
+      detail:
+        `assessedValue=${result.assessedValue}` +
+        (result.marketValue ? ` marketValue=${result.marketValue}` : "") +
+        ` year=${result.assessmentYear}`,
+    };
+  } catch (err) {
+    return { ok: false, detail: errDetail(err) };
+  }
+}
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
@@ -296,6 +342,7 @@ export async function GET(request: Request) {
     usGeocoder,
     usNeon,
     usRentcastCache,
+    usCountyLive,
   ] = await Promise.all([
     checkZoocasaSearch(),
     calgarySodaHealthCheck(),
@@ -304,6 +351,7 @@ export async function GET(request: Request) {
     checkUsGeocoder(),
     checkUsNeon(),
     checkUsRentcastCache(),
+    checkUsCountyLive(),
   ]);
   const bcCache = checkBcCache();
 
@@ -316,6 +364,7 @@ export async function GET(request: Request) {
     usGeocoder,
     usNeon,
     usRentcastCache,
+    usCountyLive,
   };
   const failures = Object.entries(checks)
     .filter(([, result]) => !result.ok)

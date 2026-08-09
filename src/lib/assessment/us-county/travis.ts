@@ -378,6 +378,24 @@ export async function lookupByAddress(street: string, _city?: string): Promise<C
     lotSize: lotSizeIndex.get(chosen.propId),
     assessmentYear: chosen.propValYr ? String(parseInt(chosen.propValYr, 10)) : String(new Date().getFullYear()),
     source: "county_assessor",
+    // TX appraises at market value by statute (unlike AZ/FL's formula-
+    // capped Full Cash/Just Value, market_value/appraised_val here IS the
+    // legal definition of market value, and the two agree for the
+    // overwhelming majority of rows per this module's own field-mapping
+    // note above) — full_value, not assessed_ratio. Caveat, for whoever
+    // revisits this: assessed_val itself (this result's assessedValue) is
+    // still POST-CAP under TX's homestead annual-increase limit, the same
+    // "actually-taxed, can run below market for long-held homes" role as
+    // AZ's LPV_CUR/FL's AV_NSD — this classification describes the
+    // marketValue field (always preferred as the anchor, see
+    // buildUsAssessment), not a claim that assessedValue alone is safe to
+    // anchor on without it. Moot in practice today: this adapter is
+    // liveCapable:false (see ./types.ts's doc comment and this module's
+    // own "WHY NOT A LIVE API" note), so it never reaches
+    // buildUsAssessment's live-countyLive path — only the batch enrichment
+    // script consumes it, and that script still keys off
+    // assessmentBasisForState(province), not this field.
+    assessmentBasis: "full_value",
   };
   return result;
 }

@@ -170,14 +170,24 @@ export async function lookupByAddress(
     lotSize,
     assessmentYear: chosen.TAX_YR_CUR ? String(chosen.TAX_YR_CUR) : String(new Date().getFullYear()),
     source: "county_assessor",
+    // LPV is capped below Full Cash Value by AZ's rate-cap formula (see
+    // module doc's FIELD MAPPING note) — not itself a market figure.
+    assessmentBasis: "assessed_ratio",
   };
   return result;
 }
 
-/** Minimal health probe — mirrors ab.ts's calgarySodaHealthCheck() convention. */
+/** Minimal health probe — mirrors ab.ts's calgarySodaHealthCheck() convention.
+ * NOTE: intentionally NOT "4330 N 5th Ave" — that address is one of this
+ * module's own documented ambiguous-condo examples (see the module doc
+ * above), which correctly returns null by design (rows.length!==1 guard).
+ * Using it here would make this health check permanently report a false
+ * failure. "8429 W Vernon Ave" is a genuine single-family match, live-
+ * reconfirmed while wiring src/lib/assessment/us-county/index.ts's
+ * lookupCountyLive() (2026-08-09). */
 export async function maricopaHealthCheck(): Promise<{ ok: boolean; detail: string }> {
   try {
-    const result = await lookupByAddress("4330 N 5th Ave");
+    const result = await lookupByAddress("8429 W Vernon Ave");
     if (result) return { ok: true, detail: `assessedValue=${result.assessedValue} year=${result.assessmentYear}` };
     return { ok: false, detail: "known-good address returned no result (dataset/schema may have changed)" };
   } catch (err) {

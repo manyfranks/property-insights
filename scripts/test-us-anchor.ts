@@ -127,6 +127,58 @@ console.log("\n═══ AZ assessed_ratio — legit low ratio (stays anchored) 
 }
 
 // ===========================================================================
+// 2b. Cook County-style 10%-ratio — derived marketValue tracks asking
+// (src/lib/assessment/us-county/cook.ts, registered 2026-08-09). Cook's own
+// assessedValue is a FIXED 10% Level of Assessment on class-2 residential
+// (not a capped-below-some-varying-cash-value scheme like AZ's LPV) and its
+// marketValue is DERIVED (assessedValue / 0.10), not an independently
+// published county figure — still assessmentBasis "assessed_ratio" per
+// cook.ts's own doc comment. Same mechanism as the AZ fixture above
+// (marketValueHint corroborates a low raw ratio), confirming it generalizes
+// to a fixed-ratio scheme, not just a capped/varying one.
+// ===========================================================================
+
+console.log("\n═══ Cook-style 10%-ratio — derived marketValue tracks asking (stays anchored) ═══\n");
+
+{
+  const d = assessAnchorPlausibility({
+    assessedValue: 70_000, // 10% of the derived $700k market figure — 0.098x asking on its own
+    assessmentBasis: "assessed_ratio",
+    askingPrice: 715_000,
+    avmValue: null,
+    marketValueHint: 700_000, // Cook's derivedMarketValue() — assessedValue / 0.10
+  });
+  assert("Cook 10%-ratio: stays anchored (not demoted)", d.verdict === "anchor", d.verdict);
+  assert("Cook 10%-ratio: no demotion reason", d.reason === null, d.reason ?? "");
+  assert("Cook 10%-ratio: anchorSource is tax_assessed", d.anchorSource === "tax_assessed", d.anchorSource);
+  assert("Cook 10%-ratio: note cites the market figure", d.note.includes("700,000"));
+}
+
+// ===========================================================================
+// 2c. NYC-style ~4% capped assessed value — no separate marketValue on this
+// path (mirrors RentCast's taxAssessments, which never carries a second
+// market figure, or an NYC parcel where curmkttot itself wasn't usable).
+// With nothing to corroborate a ratio this far outside even the widened
+// assessed_ratio band, it must NOT be taken at face value as the anchor.
+// ===========================================================================
+
+console.log("\n═══ NYC-style ~4% capped, no market-value corroboration (demoted) ═══\n");
+
+{
+  const d = assessAnchorPlausibility({
+    assessedValue: 32_000, // ~4% of an $800k market value, NYC-style (curtxbtot without curmkttot)
+    assessmentBasis: "assessed_ratio",
+    askingPrice: 800_000,
+    avmValue: null,
+    marketValueHint: null,
+  });
+  assert("NYC ~4%-capped, no market figure: demoted (not used as a raw anchor)", d.verdict === "context_only", d.verdict);
+  assert("NYC ~4%-capped, no market figure: reason is extreme_delta", d.reason === "extreme_delta", d.reason ?? "null");
+  assert("NYC ~4%-capped, no market figure: anchorSource falls back to language (no AVM)", d.anchorSource === "language", d.anchorSource);
+  assert("NYC ~4%-capped, no market figure: confidence low", d.confidence === "low", d.confidence);
+}
+
+// ===========================================================================
 // 3. Asking outlier — AVM + assessed agree, asking is the aspirational one
 // ===========================================================================
 
