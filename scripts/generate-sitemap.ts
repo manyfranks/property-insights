@@ -89,6 +89,7 @@ async function main() {
       entry(`${BASE_URL}/us/${c.stateSlug}/${c.countySlug}/property-tax`, now, "monthly", isTopMetroCounty(c.fips) ? 0.7 : 0.6)
     ),
     entry(`${BASE_URL}/tools/appeal-checker`, now, "monthly", 0.7),
+    entry(`${BASE_URL}/resources`, now, "monthly", 0.6),
     entry(`${BASE_URL}/us/rankings/investment`, now, "weekly", 0.8),
     entry(`${BASE_URL}/us/rankings/rent-to-price`, now, "weekly", 0.8),
     ...getAllStatesWithCounties().flatMap((s) => [
