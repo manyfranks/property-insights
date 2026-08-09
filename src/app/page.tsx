@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { buildCityMetadata } from "@/lib/data/city-metadata";
 import { getAllListings } from "@/lib/kv/listings";
 import HomeCta from "@/components/home-cta";
 import ProvinceExplorer from "@/components/province-explorer";
 import HomeAddressSearch from "@/components/home-address-search";
+import ExampleAnalysisCard from "@/components/example-analysis-card";
 
 export const revalidate = 300; // Re-fetch from KV every 5 min
 
@@ -17,6 +19,20 @@ export const metadata: Metadata = {
 export default async function Home() {
   const listings = await getAllListings();
   const { cities, provinces } = buildCityMetadata(listings);
+
+  // Vercel's edge geo headers — same ones src/app/api/geo/route.ts reads.
+  // Null everywhere locally / off Vercel; ExampleAnalysisCard falls back to
+  // its tier-based pool in that case. Reading headers() here doesn't change
+  // this route's rendering mode — it's already fully dynamic because
+  // ClerkProvider (src/app/layout.tsx) reads request headers/cookies for
+  // auth state on every route in this app.
+  const hdrs = await headers();
+  const rawCity = hdrs.get("x-vercel-ip-city");
+  const geo = {
+    country: hdrs.get("x-vercel-ip-country"),
+    region: hdrs.get("x-vercel-ip-country-region"),
+    city: rawCity ? decodeURIComponent(rawCity) : null,
+  };
 
   return (
     <main className="relative flex flex-col items-center min-h-[calc(100vh-3.5rem)] px-6">
@@ -34,17 +50,10 @@ export default async function Home() {
         <HomeAddressSearch />
 
         {/* Example output — the visual anchor under the input: shows exactly
-            what typing an address yields, instead of explaining it in prose. */}
-        <div className="mt-6 mx-auto max-w-sm border border-border rounded-xl bg-white p-4 text-left">
-          <div className="flex items-baseline justify-between mb-1.5">
-            <span className="text-[10px] uppercase tracking-widest text-muted">Example analysis</span>
-            <span className="text-[10px] text-muted/60">128 Oakwood Dr, Austin TX</span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="font-mono text-2xl font-semibold text-foreground">$412,000</span>
-            <span className="text-xs text-muted">recommended offer &middot; 4.3% below asking</span>
-          </div>
-        </div>
+            what typing an address yields, instead of explaining it in prose.
+            Pulled from the real listings cache and rotated daily — see
+            ExampleAnalysisCard for selection/rotation logic. */}
+        <ExampleAnalysisCard listings={listings} geo={geo} />
 
         <div className="hidden sm:block mt-10">
           <ProvinceExplorer cities={cities} provinces={provinces} />
