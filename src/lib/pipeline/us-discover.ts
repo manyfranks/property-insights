@@ -15,15 +15,22 @@
  * city once.
  *
  * METRO LIST + CADENCE (the two scaling knobs)
- * See US_DISCOVER_CITIES in src/lib/data/city-metadata.ts for the metro
- * list and quota math. Refresh cadence is gated by env var
- * US_DISCOVER_REFRESH_DAYS (default 3): a city refreshed within that
- * window is skipped on the next cron tick (last-refresh timestamps live in
- * KV via getMetaValue/setMetaValue, see kv/listings.ts). At 3 cities every
- * 3 days that's ~30 requests/month, leaving headroom in the 45/mo cap for
- * on-demand /assess lookups hitting the same quota counter.
+ * The ACTIVE metro set (getActiveUSDiscoverCities() in city-metadata.ts) is
+ * a KV-persisted, growable list seeded from US_DISCOVER_CITIES — see that
+ * file's "US Metro Fill Queue" section (Part 4, 2026-08-09) for the ~60
+ * metro queue and the quota-headroom-driven "activate one per cycle" slow
+ * fill implemented in refreshUSDiscover() below. Refresh cadence is gated
+ * by env var US_DISCOVER_REFRESH_DAYS (default 3): a city refreshed within
+ * that window is skipped on the next cron tick (last-refresh timestamps
+ * live in KV via getMetaValue/setMetaValue, see kv/listings.ts). Spending
+ * is additionally reserve-gated per city (US_DISCOVER_QUOTA_RESERVE,
+ * default 10 — see quotaReserve() below) so a cron sweep can never consume
+ * the last N requests of the month; those are reserved for on-demand
+ * /assess lookups hitting the same quota counter.
  * Foundation tier ($74/mo, higher request cap) → US_DISCOVER_REFRESH_DAYS=1
- * (daily) across 10+ cities, no code change needed here.
+ * (daily); the fill queue then actives across the full ~60 metros within
+ * about a week purely from headroom being routinely available — no code
+ * change needed, see refreshUSDiscover()'s pacing math.
  *
  * SCORING WITHOUT DESCRIPTIONS
  * See buildUsListing()'s doc comment in us-assess.ts: RentCast search
@@ -62,7 +69,7 @@ import { enrichUSCityListings } from "./us-enrich";
 import { scoreV2 } from "../scoring";
 import { getAcsCountyMedian, getCountyMedianDom, CountyMedianDom } from "../db/regional-econ";
 import { getAllListings, writeAllListings, getMetaValue, setMetaValue } from "../kv/listings";
-import { US_DISCOVER_CITIES, USDiscoverCityConfig } from "../data/city-metadata";
+import { USDiscoverCityConfig, getActiveUSDiscoverCities, activateNextQueuedMetro } from "../data/city-metadata";
 import { Listing, ScoreResult, RelativeDom, RelativeDomBand } from "../types";
 
 // RentCast /listings/sale page size for a single city-wide call. One
@@ -86,6 +93,47 @@ function refreshIntervalDays(): number {
   const n = Number(process.env.US_DISCOVER_REFRESH_DAYS);
   return Number.isFinite(n) && n > 0 ? n : 3;
 }
+
+// ---------------------------------------------------------------------------
+// Quota-aware scheduling (Part 2c/2d of the 2026-08-09 incident response).
+//
+// PROBLEM PROVEN LIVE ON 2026-08-09: RentCast quota was already at 45/45
+// before this cron's US phase ran. Every discoverActiveListingsByCity()
+// call was therefore quota-blocked (cachedRentcastCall in rentcast.ts
+// increments-then-decrements back on a blocked call — net zero cost — and
+// never reaches its cacheSet, which is exactly why the
+// `rentcast:discover:{city}:{state}:200` sweep-result cache came back
+// empty for all 3 configured metros afterward). The OLD code still called
+// setLastRefresh() unconditionally after any non-throwing attempt — so a
+// cron tick that fetched literally nothing still stamped every metro as
+// "just refreshed," poisoning the cadence gate for the next
+// US_DISCOVER_REFRESH_DAYS even though zero real work happened. That
+// compounds an outage: once quota resets, metros don't actually re-sweep
+// for days because of a false stamp left by the exhausted run.
+//
+// FIX: reserve a headroom buffer BEFORE attempting each city's fetch — if
+// spending isn't safe, skip the fetch entirely (never call
+// fetchUSCityListings, never touch quota, never stamp last-refresh) so the
+// city is still "due" the moment real headroom returns. The reserve also
+// protects real users: cron sweeps must never consume the last N requests
+// of the month — those belong to on-demand /assess lookups hitting the
+// same shared quota counter (see rentcast.ts's module doc).
+// ---------------------------------------------------------------------------
+function quotaReserve(): number {
+  const n = Number(process.env.US_DISCOVER_QUOTA_RESERVE);
+  return Number.isFinite(n) && n >= 0 ? n : 10;
+}
+
+// Rough worst-case cost of fully refreshing one metro: 1 discover call +
+// up to usEnrichTopN() (default 3) enrichment candidates, each up to ~2
+// requests on a cache miss (getUSPropertyLite — record + AVM; see
+// us-enrich.ts's module doc: "~2 requests/listing"). 1 + 3*2 = 7. Used only
+// to decide whether there's enough headroom to safely ACTIVATE a brand new
+// metro this cycle (Part 4) — refreshing an already-active metro is
+// separately guarded per-city by the reserve check above regardless of
+// this estimate, so an under-estimate here just means a slightly less
+// conservative activation, never a quota overrun.
+const ESTIMATED_SWEEP_COST = 7;
 
 // Per-address `rentcast:listing:*` cache TTL for sweep-primed entries — see
 // discoverActiveListingsByCity()'s `listingTtlSeconds` param doc in
@@ -347,12 +395,16 @@ export interface USDiscoverFetchResult {
  * quota-blocked or empty response, matching discoverActiveListingsByCity's
  * own degrade-gracefully contract.
  */
-export async function fetchUSCityListings(cfg: USDiscoverCityConfig): Promise<USDiscoverFetchResult> {
+export async function fetchUSCityListings(
+  cfg: USDiscoverCityConfig,
+  keyOpts?: { apiKeyOverride: string; quotaNamespace: string }
+): Promise<USDiscoverFetchResult> {
   const discovered: DiscoveredListing[] = await discoverActiveListingsByCity(
     cfg.name,
     cfg.state,
     LISTINGS_PER_CITY,
-    listingCacheTtlSeconds()
+    listingCacheTtlSeconds(),
+    keyOpts
   );
 
   if (discovered.length === 0) return { listings: [], fetchedCount: 0, droppedArtifacts: 0 };
@@ -438,27 +490,125 @@ export interface USDiscoverRefreshResult {
   cities: USDiscoverCityRunResult[];
   totalListings: number;
   quotaAfter: Awaited<ReturnType<typeof getRentcastQuotaStatus>>;
+  /** Slow-fill (Part 4): the metro newly activated this cycle, if quota
+   * headroom allowed one — null on a cycle that only refreshed existing
+   * active metros (or where the queue is already exhausted). */
+  activatedMetro?: { city: string; state: string; slug: string } | null;
 }
 
 /**
- * Iterate US_DISCOVER_CITIES, skip any city refreshed within
- * US_DISCOVER_REFRESH_DAYS, fetch+score the rest (1 RentCast call each),
- * enrich each city's top-N scored listings in the same run
- * (enrichUSCityListings — src/lib/pipeline/us-enrich.ts; quota-guarded, so
- * a run that goes quota-exhausted mid-city just leaves the remaining
- * candidates sparse rather than failing), merge into the shared KV listings
- * store (the SAME listings:all key CA listings live in — see
- * kv/listings.ts's doc comment; US listings carry province = USPS state
- * code, distinguished from CA province codes via isUSState() in
- * assessment/us.ts), and stamp each refreshed city's last-refresh
- * timestamp.
+ * Fetch+score+enrich ONE metro (1 RentCast discover call + up to
+ * usEnrichTopN() enrichment calls) and stamp its last-refresh timestamp.
+ * Shared by both the "refresh a due active metro" loop and the "sweep a
+ * newly-activated metro" step below — same work either way, the only
+ * difference is which list the caller drew `cfg` from. Last-refresh is
+ * ONLY stamped here, i.e. only on an attempt that actually ran (the
+ * caller is responsible for the quota-reserve gate BEFORE calling this —
+ * see refreshUSDiscover's 2026-08-09 incident comment above
+ * quotaReserve()).
+ */
+async function sweepOneMetro(cfg: USDiscoverCityConfig): Promise<{
+  result: USDiscoverCityRunResult;
+  newListings: Listing[];
+}> {
+  try {
+    const { listings, fetchedCount, droppedArtifacts } = await fetchUSCityListings(cfg);
+
+    // Enrich the top-N scored listings (default 3 — see
+    // usEnrichTopN()'s doc comment in us-enrich.ts) within this same run,
+    // before writing to KV. Quota-guarded internally — degrades to
+    // "leave sparse" rather than throwing if the monthly cap is hit
+    // partway through.
+    let enrichedListings = listings;
+    let enrichAttempted = 0;
+    let enrichSucceeded = 0;
+    let enrichQuotaStoppedEarly = false;
+    if (listings.length > 0) {
+      const enrichResult = await enrichUSCityListings(listings, cfg);
+      enrichedListings = enrichResult.listings;
+      enrichAttempted = enrichResult.attempted;
+      enrichSucceeded = enrichResult.succeeded;
+      enrichQuotaStoppedEarly = enrichResult.quotaStoppedEarly;
+    }
+
+    await setLastRefresh(cfg.slug);
+
+    return {
+      result: {
+        city: cfg.name,
+        state: cfg.state,
+        slug: cfg.slug,
+        skipped: false,
+        fetched: fetchedCount,
+        scored: enrichedListings.length,
+        droppedArtifacts,
+        enrichAttempted,
+        enrichSucceeded,
+        enrichQuotaStoppedEarly,
+      },
+      newListings: enrichedListings,
+    };
+  } catch (err) {
+    return {
+      result: {
+        city: cfg.name,
+        state: cfg.state,
+        slug: cfg.slug,
+        skipped: false,
+        skipReason: `error: ${err instanceof Error ? err.message : String(err)}`,
+        fetched: 0,
+        scored: 0,
+      },
+      newListings: [],
+    };
+  }
+}
+
+/**
+ * Iterate the current active metro set (getActiveUSDiscoverCities() —
+ * KV-persisted, growable via the slow-fill queue, seeded from
+ * US_DISCOVER_CITIES on first read; see city-metadata.ts's Part 4 doc),
+ * skip any city refreshed within US_DISCOVER_REFRESH_DAYS OR whose refresh
+ * would breach the quota reserve (US_DISCOVER_QUOTA_RESERVE, see
+ * quotaReserve() above — a reserve-skipped city is NOT stamped, so it
+ * stays "due" until real headroom returns), fetch+score+enrich the rest
+ * (sweepOneMetro), merge into the shared KV listings store (the SAME
+ * listings:all key CA listings live in — see kv/listings.ts's doc comment;
+ * US listings carry province = USPS state code, distinguished from CA
+ * province codes via isUSState() in assessment/us.ts).
+ *
+ * SLOW FILL (Part 4): after refreshing the active set, if there's still
+ * headroom beyond the reserve PLUS one more sweep's estimated cost
+ * (ESTIMATED_SWEEP_COST), activate exactly one new metro from
+ * US_METRO_FILL_QUEUE and sweep it immediately — "one per cycle" growth.
+ * FREE-TIER PACING MATH (45 req/mo, reserve 10 → ~35 spendable/mo): 3
+ * active metros refreshed every 3 days costs ~30 discover calls/mo alone
+ * (enrichment is separately quota-guarded per listing and just degrades
+ * sparse under pressure rather than failing) — on a typical month that
+ * leaves single-digit headroom for activation, so expect roughly one new
+ * metro every 1-3 months on the free tier once 3-4 metros are active,
+ * accelerating only if actual on-demand /assess traffic stays low that
+ * month. FOUNDATION TIER (1,000 req/mo, same reserve ratio) has ~950
+ * spendable/mo — refreshing even the full ~60-metro queue daily
+ * (60 * ~1 discover call/day = ~60/day = ~1,800/mo) exceeds that, so
+ * US_DISCOVER_REFRESH_DAYS should move to a higher cadence too (e.g. 3-4
+ * days keeps ~60 metros under budget: 60 * ~10 refreshes/mo ≈ 600 discover
+ * calls + enrichment); either way activation itself is headroom-driven and
+ * needs zero code change — it naturally happens every cycle instead of
+ * every few months once the monthly budget stops being the binding
+ * constraint. Both tiers: this function's logic is identical, only the env
+ * vars (RENTCAST_MONTHLY_QUOTA, US_DISCOVER_QUOTA_RESERVE,
+ * US_DISCOVER_REFRESH_DAYS) change.
  */
 export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
   const results: USDiscoverCityRunResult[] = [];
   const intervalMs = refreshIntervalDays() * 24 * 60 * 60 * 1000;
   const allNew: Listing[] = [];
+  const reserve = quotaReserve();
 
-  for (const cfg of US_DISCOVER_CITIES) {
+  const activeCities = await getActiveUSDiscoverCities();
+
+  for (const cfg of activeCities) {
     const lastRefresh = await getLastRefresh(cfg.slug);
     if (lastRefresh && Date.now() - lastRefresh < intervalMs) {
       const ageDays = Math.round((Date.now() - lastRefresh) / 86_400_000);
@@ -474,51 +624,53 @@ export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
       continue;
     }
 
-    try {
-      const { listings, fetchedCount, droppedArtifacts } = await fetchUSCityListings(cfg);
-
-      // Enrich the top-N scored listings (default 3 — see
-      // usEnrichTopN()'s doc comment in us-enrich.ts) within this same run,
-      // before writing to KV. Quota-guarded internally — degrades to
-      // "leave sparse" rather than throwing if the monthly cap is hit
-      // partway through.
-      let enrichedListings = listings;
-      let enrichAttempted = 0;
-      let enrichSucceeded = 0;
-      let enrichQuotaStoppedEarly = false;
-      if (listings.length > 0) {
-        const enrichResult = await enrichUSCityListings(listings, cfg);
-        enrichedListings = enrichResult.listings;
-        enrichAttempted = enrichResult.attempted;
-        enrichSucceeded = enrichResult.succeeded;
-        enrichQuotaStoppedEarly = enrichResult.quotaStoppedEarly;
-      }
-
+    // Quota-reserve gate — see the 2026-08-09 incident comment above
+    // quotaReserve(). Checked fresh before EVERY city (not once at the top
+    // of the loop) since enrichment from an earlier city in this same run
+    // can consume headroom the later cities need to see.
+    const quotaBeforeCity = await getRentcastQuotaStatus();
+    const headroomBeforeCity = quotaBeforeCity.limit - quotaBeforeCity.used;
+    if (headroomBeforeCity <= reserve) {
+      console.log(
+        `[us-discover] ${cfg.name}, ${cfg.state}: skipped — quota reserve guard ` +
+          `(${headroomBeforeCity} left, reserve ${reserve}); listings preserved, not re-stamped`
+      );
       results.push({
         city: cfg.name,
         state: cfg.state,
         slug: cfg.slug,
-        skipped: false,
-        fetched: fetchedCount,
-        scored: enrichedListings.length,
-        droppedArtifacts,
-        enrichAttempted,
-        enrichSucceeded,
-        enrichQuotaStoppedEarly,
-      });
-      allNew.push(...enrichedListings);
-      await setLastRefresh(cfg.slug);
-    } catch (err) {
-      results.push({
-        city: cfg.name,
-        state: cfg.state,
-        slug: cfg.slug,
-        skipped: false,
-        skipReason: `error: ${err instanceof Error ? err.message : String(err)}`,
+        skipped: true,
+        skipReason: `quota reserve guard (${headroomBeforeCity} left, reserve ${reserve})`,
         fetched: 0,
         scored: 0,
       });
+      continue;
     }
+
+    const { result, newListings } = await sweepOneMetro(cfg);
+    results.push(result);
+    allNew.push(...newListings);
+  }
+
+  // Slow fill (Part 4) — one new metro per cycle, only if headroom clears
+  // the reserve AND one more sweep's estimated cost.
+  let activatedMetro: USDiscoverRefreshResult["activatedMetro"] = null;
+  const quotaAfterActive = await getRentcastQuotaStatus();
+  const headroomAfterActive = quotaAfterActive.limit - quotaAfterActive.used;
+  if (headroomAfterActive > reserve + ESTIMATED_SWEEP_COST) {
+    const next = await activateNextQueuedMetro();
+    if (next) {
+      console.log(`[us-discover] activating new metro: ${next.name}, ${next.state} (headroom ${headroomAfterActive})`);
+      const { result, newListings } = await sweepOneMetro(next);
+      results.push(result);
+      allNew.push(...newListings);
+      activatedMetro = { city: next.name, state: next.state, slug: next.slug };
+    }
+  } else {
+    console.log(
+      `[us-discover] slow-fill: no activation this cycle (headroom ${headroomAfterActive}, ` +
+        `need > reserve(${reserve}) + sweep-cost(${ESTIMATED_SWEEP_COST}))`
+    );
   }
 
   if (allNew.length > 0) {
@@ -534,7 +686,10 @@ export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
       return true;
     });
     const kept = existing.filter((l) => !seen.has(buildUsListingDedupKey(l.address, l.city, l.province)));
-    await writeAllListings([...kept, ...deduped]);
+    const writeResult = await writeAllListings([...kept, ...deduped]);
+    if (writeResult.refused) {
+      console.error(`[pipeline-guard] US Discover merge-write refused: ${writeResult.refusedReason}`);
+    }
   }
 
   const quotaAfter = await getRentcastQuotaStatus();
@@ -542,5 +697,6 @@ export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
     cities: results,
     totalListings: allNew.length,
     quotaAfter,
+    activatedMetro,
   };
 }

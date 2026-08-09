@@ -41,6 +41,12 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/api/", "/assess"],
       },
     ],
-    sitemap: `${BASE_URL}/sitemap.xml`,
+    // Points at /sitemap-main.xml, not /sitemap.xml — GSC fetches
+    // sitemap-main.xml successfully; /sitemap.xml is pinned in a
+    // fetch-failure state on Google's side from an earlier pipeline
+    // incident (see 71caf49 "Publish sitemap at fresh URL"). The
+    // sitemap.xml route itself keeps being served (no callers removed),
+    // this only changes which URL robots.txt advertises to crawlers.
+    sitemap: `${BASE_URL}/sitemap-main.xml`,
   };
 }

@@ -19,6 +19,7 @@ import { enrichListing } from "@/lib/pipeline/enrich";
 import { refreshUSDiscover } from "@/lib/pipeline/us-discover";
 import { slugify } from "@/lib/utils";
 import { Listing } from "@/lib/types";
+import { isUSState } from "@/lib/assessment/us";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -144,15 +145,52 @@ export async function GET(request: Request) {
     // Global freshness queue: all kept listings across all cities
     const freshnessQueue: { listing: Listing; cityIdx: number }[] = [];
 
-    for (const result of searchResults) {
+    // -----------------------------------------------------------------------
+    // [pipeline-guard] Preserve-on-empty/failed-fetch (Part 2b fix).
+    //
+    // ROOT CAUSE (proven 2026-08-09, see also kv/listings.ts's floor guard
+    // and Phase 8 below): previously, a city whose Zoocasa search returned
+    // zero candidates — or whose search promise rejected outright — was
+    // simply `continue`d past with zero listings, discarding EVERY
+    // previously-stored listing for that city even though nothing about
+    // them was actually confirmed dead. There is no code path that
+    // freshness-checks or re-adds a listing that isn't re-matched against
+    // THIS run's candidates, so a single flaky/rate-limited/empty search
+    // (the codebase's own CITIES comment above documents Zoocasa's known
+    // "province-wide-fallback regression... returns 0 candidates on some
+    // requests" as a tolerated, real occurrence) silently zeroed that
+    // city's contribution to `allListings`. Combined with Phase 8's old
+    // full-replace write, this is what took CA from 136 -> 53 listings on
+    // 2026-08-09: most cities returned far below their candidate target
+    // that run. Fix: on empty/failed search, fall back to the existing
+    // cron-sourced listings for that exact city+province, unmodified
+    // (unverified freshness this cycle, but far better than deleting them
+    // outright) — logged loudly so a real, sustained Zoocasa outage is
+    // still visible in the cron's own log output.
+    // -----------------------------------------------------------------------
+    const preservedListings: Listing[] = [];
+
+    for (const [resultIdx, result] of searchResults.entries()) {
       if (result.status === "rejected") {
-        log.push(`Search failed: ${result.reason}`);
+        const cfg = CITIES[resultIdx];
+        log.push(`[pipeline-guard] Search failed for ${cfg?.city ?? "unknown"}: ${result.reason} — preserving existing listings`);
+        if (cfg) {
+          const preserved = existingListings.filter(
+            (l) => l.source === "cron" && l.city === cfg.city && l.province === cfg.province
+          );
+          preservedListings.push(...preserved);
+          summary.push({ city: cfg.city, province: cfg.province, existing: preserved.length, new: 0, total: preserved.length });
+        }
         continue;
       }
       const { cfg, candidates } = result.value;
       if (candidates.length === 0) {
-        log.push(`${cfg.city}: no candidates`);
-        summary.push({ city: cfg.city, province: cfg.province, existing: 0, new: 0, total: 0 });
+        const preserved = existingListings.filter(
+          (l) => l.source === "cron" && l.city === cfg.city && l.province === cfg.province
+        );
+        log.push(`[pipeline-guard] ${cfg.city}: no candidates this run — preserving ${preserved.length} existing listing(s)`);
+        preservedListings.push(...preserved);
+        summary.push({ city: cfg.city, province: cfg.province, existing: preserved.length, new: 0, total: preserved.length });
         continue;
       }
 
@@ -273,6 +311,14 @@ export async function GET(request: Request) {
         existing: picked.length - newCount, new: newCount, total: picked.length,
       });
       log.push(`${cfg.city}: ${picked.length} (${newCount} new)`);
+    }
+
+    // [pipeline-guard] Fold in listings preserved above from cities whose
+    // search failed/returned empty this run (see the Phase 2 comment).
+    if (preservedListings.length > 0) {
+      allListings.push(...preservedListings);
+      for (const p of preservedListings) citiesClaimedAddresses.add(p.address.toLowerCase());
+      log.push(`[pipeline-guard] folded in ${preservedListings.length} preserved listing(s) from empty/failed searches`);
     }
 
     log.push(`Phase 4 detail done: ${allListings.length} CITIES listings (${elapsed()}ms)`);
@@ -410,17 +456,52 @@ export async function GET(request: Request) {
 
     // -----------------------------------------------------------------------
     // Phase 8: Write to KV
+    //
+    // ROOT CAUSE OF THE 2026-08-09 US-LISTING WIPE (proven via live KV
+    // inspection): this used to be `writeAllListings(allListings)` —
+    // `allListings` at this point is built ENTIRELY from Phase 1-4's fresh
+    // CA search results plus Phase 5's `source === "user"` carry-forward.
+    // It structurally cannot contain a previously-stored US listing: US
+    // Discover listings are tagged `source: "cron"` (see
+    // pipeline/us-discover.ts), not "user", so Phase 5's carry-forward
+    // filter always excludes them. A bare `writeAllListings(allListings)`
+    // is therefore a full replace of listings:all with a CA-only array —
+    // it silently discarded every US listing on every single run,
+    // regardless of whether Phase 9 (refreshUSDiscover, below) went on to
+    // repair it that cycle. On 2026-08-09 Phase 9 could NOT repair it
+    // (RentCast quota was already exhausted before this run — see that
+    // phase's comment) so the wipe was never undone: listings:all went
+    // from ~280 (136 CA + 144 US) to 53 (0 US) in one cron tick.
+    //
+    // FIX: country-aware merge-write. CA listings are fully rebuilt by this
+    // run (that's this pipeline's whole job); everything else (US listings,
+    // any future third country) is untouched data this pipeline has no
+    // business overwriting, so carry it forward unconditionally.
     // -----------------------------------------------------------------------
     const writeStart = Date.now();
-    const validSlugs = new Set(allListings.map((l) => slugify(l.address)));
+    const nonCaExisting = existingListings.filter((l) => isUSState(l.province));
+    const writePayload = [...nonCaExisting, ...allListings];
+    // Slug purge must cover the FULL write payload (CA + preserved non-CA),
+    // not just this run's CA output — otherwise the purge itself deletes
+    // listings:by-slug:* entries for listings we just decided to keep in
+    // listings:all, leaving the two stores inconsistent.
+    const validSlugs = new Set(writePayload.map((l) => slugify(l.address)));
     const purged = await purgeStaleSlugKeys(validSlugs);
-    const result = await writeAllListings(allListings);
-    log.push(`KV write: ${result.written} listings, ${result.slugs} slugs, ${purged} purged in ${Date.now() - writeStart}ms (${elapsed()}ms total)`);
+    const result = await writeAllListings(writePayload);
+    if (result.refused) {
+      log.push(`[pipeline-guard] KV write REFUSED: ${result.refusedReason} — listings:all left untouched this run`);
+    } else {
+      log.push(
+        `KV write: ${result.written} listings (${allListings.length} CA + ${nonCaExisting.length} preserved non-CA), ` +
+          `${result.slugs} slugs, ${purged} purged in ${Date.now() - writeStart}ms (${elapsed()}ms total)`
+      );
+    }
 
-    const totalListings = allListings.length;
+    const reportedListings = result.refused ? existingListings : writePayload;
+    const totalListings = reportedListings.length;
     const byProvince = new Map<string, number>();
     const bySource = { cron: 0, user: 0 };
-    for (const l of allListings) {
+    for (const l of reportedListings) {
       byProvince.set(l.province, (byProvince.get(l.province) || 0) + 1);
       if (l.source === "user") bySource.user++;
       else bySource.cron++;
@@ -433,6 +514,24 @@ export async function GET(request: Request) {
     // block the CA update; isolated in its own try/catch for the same
     // reason — a RentCast outage or quota exhaustion here must not turn
     // this whole cron run into a 500.
+    //
+    // 2026-08-09 INCIDENT NOTE: before the Phase 8 fix above, this ordering
+    // guarantee was false in practice — Phase 8's old full-replace write
+    // ALREADY discarded every US listing before this phase ran, and
+    // refreshUSDiscover()'s own merge-write only fires when it fetches at
+    // least one new US listing (see its `if (allNew.length > 0)` guard in
+    // us-discover.ts). On 2026-08-09, RentCast quota was already at 45/45
+    // before this phase ran (verified: the `rentcast:discover:*` sweep
+    // caches for all 3 configured metros are absent from KV even though
+    // their `us-discover:last-refresh:*` meta got stamped at this exact
+    // cron's run time — see us-discover.ts's setLastRefresh fix below for
+    // why a quota-blocked attempt used to stamp anyway), so every city's
+    // fetch returned zero listings, `allNew` stayed empty, and Phase 9
+    // silently did nothing to repair Phase 8's damage. With Phase 8 now
+    // preserving non-CA listings unconditionally, this phase is back to
+    // being a pure enrichment/backfill on top of an already-intact store —
+    // its own failure or quota exhaustion no longer has any destructive
+    // potential regardless of this phase's outcome.
     // -----------------------------------------------------------------------
     let usDiscover: Awaited<ReturnType<typeof refreshUSDiscover>> | { error: string } | null = null;
     try {
@@ -447,6 +546,9 @@ export async function GET(request: Request) {
             c.skipped ? `skipped (${c.skipReason})` : `${c.scored} scored (${c.skipReason ?? "ok"})`
           }`
         );
+      }
+      if (usDiscover.activatedMetro) {
+        log.push(`[us-discover] slow-fill activated: ${usDiscover.activatedMetro.city}, ${usDiscover.activatedMetro.state}`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,7 @@
 import { Listing } from "../types";
 import { cityToSlug } from "../utils";
 import { getAllStatesWithCounties } from "../us-counties";
+import { getMetaValue, setMetaValue } from "../kv/listings";
 
 export interface CityMeta {
   name: string;
@@ -219,4 +220,161 @@ export function getUsDiscoverCitiesByStateSlug(stateSlug: string): USDiscoverCit
   const state = getAllStatesWithCounties().find((s) => s.stateSlug === stateSlug);
   if (!state) return [];
   return US_DISCOVER_CITIES.filter((c) => c.state === state.state);
+}
+
+// ---------------------------------------------------------------------------
+// US Metro Fill Queue — "slowly FILL every state with cached listings in
+// all major metros" (Part 4 of the 2026-08-09 incident response).
+//
+// US_DISCOVER_CITIES above stays exactly as-is (Austin/Miami/Phoenix, the
+// original 3 hand-seeded metros) — several existing scripts
+// (enrich-us-from-assessors.ts, ingest-us-dom.ts, rescore-us-relative-dom.ts,
+// analyze-us-seeds.ts, enrich-us-listings.ts) import it as a plain
+// synchronous constant and filter/backfill against exactly those 3; changing
+// its meaning out from under them is a bigger blast radius than this
+// incident-response session should take on. Instead, the ACTIVE metro set
+// is now a separate, KV-persisted, growable list — see
+// getActiveUSDiscoverCities()/activateNextQueuedMetro() below — seeded from
+// US_DISCOVER_CITIES on first read so today's behavior is unchanged until
+// the fill mechanics actually activate something new. (Follow-up, not done
+// here: point the backfill scripts above at getActiveUSDiscoverCities()
+// once metros beyond the original 3 are actually active in production.)
+//
+// ORDERING RATIONALE: built from TOP_METRO_FIPS (src/lib/us-counties.ts) —
+// the same ~105-county, population-ranked, hand-curated registry that
+// already has regional_econ ingested (ACS median value + FRED/realtor.com
+// median DOM — see us-discover.ts's scoring doc), so every queue entry's
+// county-median scoring signal works from the moment it activates with zero
+// additional ingest work. One representative metro per state (its largest
+// TOP_METRO_FIPS county), in that county's TOP_METRO_FIPS rank order, so
+// every state gets covered before any state gets a second metro; the
+// largest, highest-SEO-value states (CA/TX/FL/NY/GA/OH/NC/CO/PA/TN/MO/KS/
+// FL/OK/WA/NV) then get 2nd-4th entries appended (still in rank order) to
+// round out ~60 total — these are the metros with enough population to be
+// worth a second RentCast city search before a small state gets its first.
+//
+// KNOWN GAP: AL, AR, CT, LA, ME, MS, MT, ND, NH, SD, VT, WV, WY have no
+// county in TOP_METRO_FIPS at all (never population-ranked into that list),
+// so they have no regional_econ ingest yet and can't join this queue
+// without a follow-up ingest run (scripts/ingest-us-acs.ts,
+// scripts/ingest-us-dom.ts) adding a representative county for each first.
+// Not fabricating a FIPS for them here — an unverified county-value
+// baseline would silently corrupt those metros' scoring.
+// ---------------------------------------------------------------------------
+
+export const US_METRO_FILL_QUEUE: USDiscoverCityConfig[] = [
+  { name: "Los Angeles", state: "CA", slug: "los-angeles", countyFips: "US-06037" },
+  { name: "Chicago", state: "IL", slug: "chicago", countyFips: "US-17031" },
+  { name: "Houston", state: "TX", slug: "houston", countyFips: "US-48201" },
+  { name: "Phoenix", state: "AZ", slug: "phoenix", countyFips: "US-04013" }, // already active
+  { name: "San Diego", state: "CA", slug: "san-diego", countyFips: "US-06073" },
+  { name: "Miami", state: "FL", slug: "miami", countyFips: "US-12086" }, // already active
+  { name: "Dallas", state: "TX", slug: "dallas", countyFips: "US-48113" },
+  { name: "New York", state: "NY", slug: "new-york", countyFips: "US-36061" },
+  { name: "Seattle", state: "WA", slug: "seattle", countyFips: "US-53033" },
+  { name: "Las Vegas", state: "NV", slug: "las-vegas", countyFips: "US-32003" },
+  { name: "Detroit", state: "MI", slug: "detroit", countyFips: "US-26163" },
+  { name: "San Antonio", state: "TX", slug: "san-antonio", countyFips: "US-48029" },
+  { name: "Boston", state: "MA", slug: "boston", countyFips: "US-25025" },
+  { name: "Atlanta", state: "GA", slug: "atlanta", countyFips: "US-13121" },
+  { name: "Sacramento", state: "CA", slug: "sacramento", countyFips: "US-06067" },
+  { name: "Minneapolis", state: "MN", slug: "minneapolis", countyFips: "US-27053" },
+  { name: "Austin", state: "TX", slug: "austin", countyFips: "US-48453" }, // already active
+  { name: "Salt Lake City", state: "UT", slug: "salt-lake-city", countyFips: "US-49035" },
+  { name: "Tampa", state: "FL", slug: "tampa", countyFips: "US-12057" },
+  { name: "Pittsburgh", state: "PA", slug: "pittsburgh", countyFips: "US-42003" },
+  { name: "Orlando", state: "FL", slug: "orlando", countyFips: "US-12095" },
+  { name: "Raleigh", state: "NC", slug: "raleigh", countyFips: "US-37183" },
+  { name: "Charlotte", state: "NC", slug: "charlotte", countyFips: "US-37119" },
+  { name: "Denver", state: "CO", slug: "denver", countyFips: "US-08031" },
+  { name: "Fresno", state: "CA", slug: "fresno", countyFips: "US-06019" },
+  { name: "Tucson", state: "AZ", slug: "tucson", countyFips: "US-04019" },
+  { name: "Milwaukee", state: "WI", slug: "milwaukee", countyFips: "US-55079" },
+  { name: "Portland", state: "OR", slug: "portland", countyFips: "US-41051" },
+  { name: "Indianapolis", state: "IN", slug: "indianapolis", countyFips: "US-18097" },
+  { name: "Memphis", state: "TN", slug: "memphis", countyFips: "US-47157" },
+  { name: "San Francisco", state: "CA", slug: "san-francisco", countyFips: "US-06075" },
+  { name: "Nashville", state: "TN", slug: "nashville", countyFips: "US-47037" },
+  { name: "Newark", state: "NJ", slug: "newark", countyFips: "US-34013" },
+  { name: "Oklahoma City", state: "OK", slug: "oklahoma-city", countyFips: "US-40109" },
+  { name: "Louisville", state: "KY", slug: "louisville", countyFips: "US-21111" },
+  { name: "Jacksonville", state: "FL", slug: "jacksonville", countyFips: "US-12031" },
+  { name: "Charleston", state: "SC", slug: "charleston", countyFips: "US-45019" },
+  { name: "Wilmington", state: "DE", slug: "wilmington", countyFips: "US-10003" },
+  { name: "Greensboro", state: "NC", slug: "greensboro", countyFips: "US-37081" },
+  { name: "Cincinnati", state: "OH", slug: "cincinnati", countyFips: "US-39061" },
+  { name: "Cleveland", state: "OH", slug: "cleveland", countyFips: "US-39035" },
+  { name: "Omaha", state: "NE", slug: "omaha", countyFips: "US-31055" },
+  { name: "Des Moines", state: "IA", slug: "des-moines", countyFips: "US-19153" },
+  { name: "Buffalo", state: "NY", slug: "buffalo", countyFips: "US-36029" },
+  { name: "Honolulu", state: "HI", slug: "honolulu", countyFips: "US-15003" },
+  { name: "Reno", state: "NV", slug: "reno", countyFips: "US-32031" },
+  { name: "Providence", state: "RI", slug: "providence", countyFips: "US-44007" },
+  { name: "St. Louis", state: "MO", slug: "st-louis", countyFips: "US-29189" },
+  { name: "Kansas City", state: "MO", slug: "kansas-city", countyFips: "US-29095" },
+  { name: "Wichita", state: "KS", slug: "wichita", countyFips: "US-20173" },
+  { name: "Tulsa", state: "OK", slug: "tulsa", countyFips: "US-40143" },
+  { name: "Fort Myers", state: "FL", slug: "fort-myers", countyFips: "US-12071" },
+  { name: "Albuquerque", state: "NM", slug: "albuquerque", countyFips: "US-35001" },
+  { name: "Colorado Springs", state: "CO", slug: "colorado-springs", countyFips: "US-08041" },
+  { name: "Spokane", state: "WA", slug: "spokane", countyFips: "US-53063" },
+  { name: "Columbia", state: "SC", slug: "columbia-sc", countyFips: "US-45079" },
+  { name: "Winston-Salem", state: "NC", slug: "winston-salem", countyFips: "US-37067" },
+  { name: "Lancaster", state: "PA", slug: "lancaster", countyFips: "US-42071" },
+  { name: "Anchorage", state: "AK", slug: "anchorage", countyFips: "US-02020" },
+  { name: "Rockville", state: "MD", slug: "rockville", countyFips: "US-24031" },
+  { name: "Fairfax", state: "VA", slug: "fairfax", countyFips: "US-51059" },
+];
+
+const ACTIVE_METROS_META_KEY = "us-discover:active-metros";
+
+/**
+ * Current active-metro slug list — the growable subset of
+ * US_METRO_FILL_QUEUE this deployment actually sweeps. Persisted in KV
+ * (survives deploys/cold starts, per Part 4's requirement) via the same
+ * getMetaValue/setMetaValue primitives us-discover.ts already uses for
+ * last-refresh timestamps. Seeded from US_DISCOVER_CITIES' slugs on first
+ * read (no meta key yet) so a fresh deploy's behavior is identical to
+ * today's — nothing "activates" until activateNextQueuedMetro() below adds
+ * to this list.
+ */
+async function getActiveMetroSlugs(): Promise<string[]> {
+  const raw = await getMetaValue(ACTIVE_METROS_META_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every((s) => typeof s === "string")) return parsed;
+    } catch {
+      // fall through to seed default
+    }
+  }
+  return US_DISCOVER_CITIES.map((c) => c.slug);
+}
+
+/** Active metro configs, resolved against the fill queue (falls back to
+ * US_DISCOVER_CITIES' own config for the original 3 in case a slug isn't
+ * in the queue for some reason — keeps this resilient to the queue and
+ * active-list ever drifting out of sync). */
+export async function getActiveUSDiscoverCities(): Promise<USDiscoverCityConfig[]> {
+  const slugs = await getActiveMetroSlugs();
+  const bySlug = new Map(US_METRO_FILL_QUEUE.map((c) => [c.slug, c]));
+  const fallback = new Map(US_DISCOVER_CITIES.map((c) => [c.slug, c]));
+  return slugs.map((slug) => bySlug.get(slug) ?? fallback.get(slug)).filter((c): c is USDiscoverCityConfig => !!c);
+}
+
+/**
+ * Activate the next not-yet-active metro from US_METRO_FILL_QUEUE (queue
+ * order = population/SEO rank, see the module doc above) and persist it.
+ * Pure list bookkeeping — does NOT sweep it; the caller (us-discover.ts's
+ * refreshUSDiscover, quota-headroom-gated) is responsible for running the
+ * actual RentCast fetch once activation succeeds. Returns null if every
+ * queued metro is already active.
+ */
+export async function activateNextQueuedMetro(): Promise<USDiscoverCityConfig | null> {
+  const activeSlugs = await getActiveMetroSlugs();
+  const activeSet = new Set(activeSlugs);
+  const next = US_METRO_FILL_QUEUE.find((c) => !activeSet.has(c.slug));
+  if (!next) return null;
+  await setMetaValue(ACTIVE_METROS_META_KEY, JSON.stringify([...activeSlugs, next.slug]));
+  return next;
 }
