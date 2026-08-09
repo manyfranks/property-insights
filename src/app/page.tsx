@@ -23,10 +23,10 @@ export default async function Home() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.03)_0%,transparent_70%)]" />
       <div className="w-full max-w-2xl text-center mt-[8vh] sm:mt-[14vh]">
         <h1 className="text-3xl sm:text-6xl font-semibold tracking-tight mb-3 text-foreground">
-          Know what to offer — before you bid.
+          Know what to offer before you bid.
         </h1>
         <p className="text-lg text-muted mb-8 sm:mb-14">
-          Free property analysis backed by government assessment and market data — US and Canada.
+          Free property analysis backed by government assessment and market data across the US and Canada.
         </p>
 
         {/* Address bar is the primary action on every viewport. The city-pill
