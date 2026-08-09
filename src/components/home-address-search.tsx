@@ -28,12 +28,10 @@ function isOtherListingUrl(text: string): boolean {
 }
 
 /**
- * Mobile-only inline address search bar for the homepage hero — the primary
- * action for mobile visitors, replacing the city pills (which stay on
- * desktop where the navbar's NavbarSearch already covers address lookup).
- * Same autocomplete data sources and result handling as NavbarSearch /
- * MobileSearch, just rendered inline instead of absolutely-positioned or
- * behind a full-screen overlay.
+ * Inline address search bar for the homepage hero — the primary action for
+ * all visitors, on every viewport width. Same autocomplete data sources and
+ * result handling as NavbarSearch / MobileSearch, just rendered inline
+ * instead of absolutely-positioned or behind a full-screen overlay.
  */
 export default function HomeAddressSearch() {
   const [query, setQuery] = useState("");
@@ -43,6 +41,7 @@ export default function HomeAddressSearch() {
   const [searched, setSearched] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const router = useRouter();
   const { isSignedIn } = useUser();
@@ -117,33 +116,73 @@ export default function HomeAddressSearch() {
     router.push(`/assess?address=${encodeURIComponent(address)}`);
   }
 
+  /**
+   * Action-button / Enter-key submit — mirrors what clicking the top
+   * autocomplete result would do, so the button works even if the user
+   * never opens the results panel.
+   */
+  function handleSubmit() {
+    if (!query.trim() && !detectedUrl) {
+      inputRef.current?.focus();
+      return;
+    }
+    if (detectedUrl) {
+      handleRequestAssessment();
+      return;
+    }
+    if (otherUrl) {
+      setOpen(true);
+      return;
+    }
+    if (results.length > 0) {
+      handleSelect(results[0].address);
+      return;
+    }
+    if (places.length > 0) {
+      handleSelectPlace(places[0]);
+      return;
+    }
+    handleRequestAssessment();
+  }
+
   const hasLocal = results.length > 0;
   const hasPlaces = places.length > 0;
   const noResults = searched && query.length > 1 && !hasLocal && !hasPlaces;
   const showPanel = open && (otherUrl || detectedUrl || selectedAddress || hasLocal || hasPlaces || noResults);
 
   return (
-    <div ref={containerRef} className="relative block sm:hidden text-left">
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setSelectedAddress("");
-        }}
-        onFocus={() => (query.length > 1 || detectedUrl || otherUrl) && setOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setOpen(false);
-            (e.target as HTMLInputElement).blur();
-          }
-          if (e.key === "Enter" && detectedUrl) handleRequestAssessment();
-        }}
-        placeholder="Search any address..."
-        className="w-full px-4 py-3 text-sm rounded-full border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
-      />
+    <div className="text-left">
+      <div ref={containerRef} className="relative">
+        <div className="flex items-center gap-1.5 w-full rounded-full border border-border bg-white pl-4 pr-1.5 py-1.5 focus-within:ring-2 focus-within:ring-foreground/10 focus-within:border-foreground/20 transition-all">
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelectedAddress("");
+            }}
+            onFocus={() => (query.length > 1 || detectedUrl || otherUrl) && setOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setOpen(false);
+                (e.target as HTMLInputElement).blur();
+              }
+              if (e.key === "Enter") handleSubmit();
+            }}
+            placeholder="Search any address..."
+            className="flex-1 min-w-0 bg-transparent text-sm py-1.5 placeholder:text-gray-400 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="shrink-0 px-4 py-2 text-sm font-medium rounded-full bg-cta-accent text-white hover:bg-cta-accent-hover transition-all"
+          >
+            Get analysis
+          </button>
+        </div>
 
-      {showPanel && (
+        {showPanel && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-border rounded-lg shadow-lg overflow-hidden z-50 max-h-80 overflow-y-auto">
           {otherUrl && (
             <div className="px-4 py-4 text-center">
@@ -291,7 +330,15 @@ export default function HomeAddressSearch() {
             </div>
           )}
         </div>
-      )}
+        )}
+      </div>
+
+      <p className="text-xs text-muted text-center mt-2.5">
+        Free &middot; No sign-up to search &middot; Results in seconds
+      </p>
+      <p className="text-xs text-muted/70 text-center mt-1">
+        Market data for 3,144 US counties and live Canadian listings
+      </p>
     </div>
   );
 }
