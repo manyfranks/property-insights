@@ -5,7 +5,6 @@ import Image from "next/image";
 import { ClerkProvider, Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { Analytics } from "@vercel/analytics/next";
 import NavbarSearch from "@/components/navbar-search";
-import MobileSearch from "@/components/mobile-search";
 import MobileNav from "@/components/mobile-nav";
 import { OrganizationJsonLd, OrganizationEntityJsonLd } from "@/components/json-ld";
 import Footer from "@/components/footer";
@@ -106,10 +105,9 @@ export default function RootLayout({
             <div className="relative max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
               <Link href="/" className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground" aria-label="Property Insights home">
                 <Image src="/logo.png" alt="Property Insights" width={20} height={20} className="shrink-0" />
-                <span className="hidden sm:inline">Property Insights</span>
+                <span className="text-sm sm:text-base">Property Insights</span>
               </Link>
               <NavbarSearch />
-              <MobileSearch />
               <MobileNav />
               <nav className="hidden sm:flex items-center gap-6 text-sm text-muted">
                 <Link href="/how-it-works" className="hover:text-foreground transition-colors">

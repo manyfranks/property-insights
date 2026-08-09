@@ -144,7 +144,7 @@ export default function AppealChecker() {
     <div>
       {/* Form */}
       <div className="border border-border rounded-xl p-4 sm:p-6 bg-white">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div className="max-w-md space-y-5">
           <div>
             <label htmlFor="assessed" className="block text-xs font-medium text-muted uppercase tracking-wide mb-1.5">
               What is your property&apos;s assessed value?
@@ -187,25 +187,25 @@ export default function AppealChecker() {
               .
             </p>
           </div>
-        </div>
 
-        <div>
-          <label htmlFor="state" className="block text-xs font-medium text-muted uppercase tracking-wide mb-1.5">
-            State <span className="normal-case text-muted/70">(optional)</span>
-          </label>
-          <select
-            id="state"
-            value={state}
-            onChange={(e) => setState(e.target.value as UsState | "")}
-            className="w-full sm:max-w-xs text-sm border border-border rounded-lg px-3 py-2.5 bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
-          >
-            <option value="">Select state</option>
-            {US_STATES.map((s) => (
-              <option key={s.code} value={s.code}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label htmlFor="state" className="block text-xs font-medium text-muted uppercase tracking-wide mb-1.5">
+              State <span className="normal-case text-muted/70">(optional)</span>
+            </label>
+            <select
+              id="state"
+              value={state}
+              onChange={(e) => setState(e.target.value as UsState | "")}
+              className="w-full text-sm border border-border rounded-lg px-3 py-2.5 bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
+            >
+              <option value="">Select state</option>
+              {US_STATES.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

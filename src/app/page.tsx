@@ -3,6 +3,7 @@ import { buildCityMetadata } from "@/lib/data/city-metadata";
 import { getAllListings } from "@/lib/kv/listings";
 import HomeCta from "@/components/home-cta";
 import ProvinceExplorer from "@/components/province-explorer";
+import HomeAddressSearch from "@/components/home-address-search";
 
 export const revalidate = 300; // Re-fetch from KV every 5 min
 
@@ -28,7 +29,13 @@ export default async function Home() {
           Data-driven insights for residential real estate across Canada and the US.
         </p>
 
-        <ProvinceExplorer cities={cities} provinces={provinces} />
+        {/* Mobile: address bar is the primary landing action. Desktop keeps
+            the city-pill explorer (the navbar's address search already
+            covers direct address lookup on wider viewports). */}
+        <HomeAddressSearch />
+        <div className="hidden sm:block">
+          <ProvinceExplorer cities={cities} provinces={provinces} />
+        </div>
 
         <div className="mt-14">
           <HomeCta cities={cities} />

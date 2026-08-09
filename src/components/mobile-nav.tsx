@@ -28,6 +28,9 @@ export default function MobileNav() {
       {open && (
         <div className="absolute top-14 left-0 right-0 bg-white border-b border-border z-50">
           <nav className="flex flex-col px-6 py-4 gap-4 text-sm text-muted">
+            <Link href="/" onClick={() => setOpen(false)} className="hover:text-foreground transition-colors">
+              Search an address
+            </Link>
             <Link href="/how-it-works" onClick={() => setOpen(false)} className="hover:text-foreground transition-colors">
               How it works
             </Link>

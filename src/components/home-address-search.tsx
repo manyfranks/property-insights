@@ -1,0 +1,297 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useUser, SignInButton } from "@clerk/nextjs";
+import { slugify } from "@/lib/utils";
+
+interface SearchResult {
+  address: string;
+  city: string;
+  price: number;
+}
+
+interface PlaceSuggestion {
+  address: string;
+  placeId: string;
+}
+
+const ZOOCASA_URL_RE = /zoocasa\.com\/[a-z][a-z0-9-]*-[a-z]{2}-real-estate\/[a-z0-9-]+/i;
+const OTHER_LISTING_RE = /(?:realtor\.ca|remax\.ca|century21\.ca|royallepage\.ca|redfin\.ca|point2homes\.com|housesigma\.com)\//i;
+
+function isZoocasaUrl(text: string): boolean {
+  return ZOOCASA_URL_RE.test(text);
+}
+
+function isOtherListingUrl(text: string): boolean {
+  return !isZoocasaUrl(text) && OTHER_LISTING_RE.test(text);
+}
+
+/**
+ * Mobile-only inline address search bar for the homepage hero — the primary
+ * action for mobile visitors, replacing the city pills (which stay on
+ * desktop where the navbar's NavbarSearch already covers address lookup).
+ * Same autocomplete data sources and result handling as NavbarSearch /
+ * MobileSearch, just rendered inline instead of absolutely-positioned or
+ * behind a full-screen overlay.
+ */
+export default function HomeAddressSearch() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [places, setPlaces] = useState<PlaceSuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const router = useRouter();
+  const { isSignedIn } = useUser();
+
+  const detectedUrl = isZoocasaUrl(query) ? query.trim() : null;
+  const otherUrl = isOtherListingUrl(query);
+
+  useEffect(() => {
+    if (detectedUrl || otherUrl) {
+      setResults([]);
+      setPlaces([]);
+      setSearched(false);
+      setSelectedAddress("");
+      setOpen(true);
+      return;
+    }
+
+    if (query.length < 2) {
+      setResults([]);
+      setPlaces([]);
+      setSearched(false);
+      setSelectedAddress("");
+      setOpen(false);
+      return;
+    }
+
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const [localRes, placesRes] = await Promise.all([
+          fetch(`/api/search?q=${encodeURIComponent(query)}`),
+          fetch(`/api/autocomplete?q=${encodeURIComponent(query)}`),
+        ]);
+        if (localRes.ok) setResults(await localRes.json());
+        if (placesRes.ok) setPlaces(await placesRes.json());
+        setSearched(true);
+        setOpen(true);
+      } catch {
+        // Silently fail
+      }
+    }, 250);
+
+    return () => clearTimeout(debounceRef.current);
+  }, [query, detectedUrl, otherUrl]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function handleSelect(address: string) {
+    setQuery("");
+    setOpen(false);
+    setSearched(false);
+    router.push(`/property/${slugify(address)}`);
+  }
+
+  function handleSelectPlace(place: PlaceSuggestion) {
+    setSelectedAddress(place.address);
+  }
+
+  function handleRequestAssessment() {
+    const address = detectedUrl || selectedAddress || query.trim();
+    if (!address) return;
+    setQuery("");
+    setOpen(false);
+    router.push(`/assess?address=${encodeURIComponent(address)}`);
+  }
+
+  const hasLocal = results.length > 0;
+  const hasPlaces = places.length > 0;
+  const noResults = searched && query.length > 1 && !hasLocal && !hasPlaces;
+  const showPanel = open && (otherUrl || detectedUrl || selectedAddress || hasLocal || hasPlaces || noResults);
+
+  return (
+    <div ref={containerRef} className="relative block sm:hidden text-left">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setSelectedAddress("");
+        }}
+        onFocus={() => (query.length > 1 || detectedUrl || otherUrl) && setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setOpen(false);
+            (e.target as HTMLInputElement).blur();
+          }
+          if (e.key === "Enter" && detectedUrl) handleRequestAssessment();
+        }}
+        placeholder="Search any address..."
+        className="w-full px-4 py-3 text-sm rounded-full border border-border bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 transition-all"
+      />
+
+      {showPanel && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-border rounded-lg shadow-lg overflow-hidden z-50 max-h-80 overflow-y-auto">
+          {otherUrl && (
+            <div className="px-4 py-4 text-center">
+              <p className="text-sm font-medium text-foreground mb-1">We can&apos;t read this link directly</p>
+              <p className="text-xs text-muted mb-2">
+                Copy the <span className="font-medium text-foreground">street address</span> from the listing and
+                paste it here instead. We&apos;ll find it and run a full assessment.
+              </p>
+              <p className="text-[10px] text-muted/70">Tip: Zoocasa listing URLs can be pasted directly.</p>
+            </div>
+          )}
+
+          {!otherUrl && detectedUrl && (
+            <div className="px-4 py-4 text-center">
+              <p className="text-sm font-medium text-foreground mb-1">Listing detected</p>
+              {isSignedIn ? (
+                <>
+                  <p className="text-xs text-muted mb-3">
+                    We&apos;ll fetch this listing, run a full assessment with offer modeling, and email you the analysis.
+                  </p>
+                  <button
+                    onClick={handleRequestAssessment}
+                    className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all"
+                  >
+                    Assess this listing
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted mb-3">
+                    Sign in and we&apos;ll fetch this listing, run a full assessment, and email you the results.
+                  </p>
+                  <SignInButton mode="modal">
+                    <button className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all">
+                      Sign in to request
+                    </button>
+                  </SignInButton>
+                </>
+              )}
+            </div>
+          )}
+
+          {!otherUrl && !detectedUrl && selectedAddress && (
+            <div className="px-4 py-4 text-center">
+              <p className="text-sm font-medium text-foreground mb-1">We don&apos;t have this listing yet</p>
+              <p className="text-xs text-muted mb-1 break-words">{selectedAddress}</p>
+              {isSignedIn ? (
+                <>
+                  <p className="text-xs text-muted mb-3">
+                    If it&apos;s currently for sale, we&apos;ll look it up, run a full assessment with offer modeling, and
+                    email you the analysis.
+                  </p>
+                  <button
+                    onClick={handleRequestAssessment}
+                    className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all"
+                  >
+                    Assess this property
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted mb-3">
+                    Sign in and we&apos;ll look it up, run a full assessment with offer modeling, and email you the results.
+                  </p>
+                  <SignInButton mode="modal">
+                    <button className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all">
+                      Sign in to request
+                    </button>
+                  </SignInButton>
+                </>
+              )}
+            </div>
+          )}
+
+          {!otherUrl && !detectedUrl && !selectedAddress && (hasLocal || hasPlaces) && (
+            <>
+              {hasLocal &&
+                results.map((r, i) => (
+                  <button
+                    key={`${r.address}-${i}`}
+                    onClick={() => handleSelect(r.address)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors border-b border-border last:border-b-0"
+                  >
+                    <span className="text-sm font-medium text-foreground">{r.address}</span>
+                    <span className="text-xs text-muted ml-2">
+                      {r.city} &middot; ${r.price.toLocaleString()}
+                    </span>
+                  </button>
+                ))}
+
+              {hasPlaces && (
+                <>
+                  {hasLocal && (
+                    <div className="px-4 py-1.5 bg-gray-50 border-b border-border">
+                      <span className="text-[10px] font-medium text-muted uppercase tracking-wide">
+                        Other addresses
+                      </span>
+                    </div>
+                  )}
+                  {places.map((p) => (
+                    <button
+                      key={p.placeId}
+                      onClick={() => handleSelectPlace(p)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors border-b border-border last:border-b-0"
+                    >
+                      <span className="text-sm text-foreground">{p.address}</span>
+                      <span className="text-[10px] text-muted ml-2">Request assessment</span>
+                    </button>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+
+          {!otherUrl && !detectedUrl && !selectedAddress && noResults && (
+            <div className="px-4 py-4 text-center">
+              <p className="text-sm font-medium text-foreground mb-1">No matches found</p>
+              {isSignedIn ? (
+                <>
+                  <p className="text-xs text-muted mb-3">
+                    Try a more specific address, or submit what you have and we&apos;ll try to find and assess it.
+                  </p>
+                  <button
+                    onClick={handleRequestAssessment}
+                    className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all"
+                  >
+                    Request assessment
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted mb-3">
+                    Sign in and we&apos;ll look up any property, run a full assessment, and email you the analysis.
+                  </p>
+                  <p className="text-[10px] text-muted/70 mb-3">
+                    US addresses return a county-level market estimate rather than a listing-based offer.
+                  </p>
+                  <SignInButton mode="modal">
+                    <button className="px-4 py-1.5 text-xs font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 transition-all">
+                      Sign in to request
+                    </button>
+                  </SignInButton>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
