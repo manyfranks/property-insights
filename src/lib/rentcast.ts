@@ -264,11 +264,20 @@ async function cachedRentcastCall<T>(opts: {
   ttlSeconds: number;
   path: string;
   params: Record<string, string | number | undefined>;
+  /** Explicit alternate credential for offline seeding/audit scripts.
+   * When set, quotaNamespace MUST also be set so spend is counted against
+   * that key's own truthful counter, never the production key's. Production
+   * request paths never set these. */
+  apiKeyOverride?: string;
+  quotaNamespace?: string;
 }): Promise<CachedCallResult<T>> {
   const cached = await cacheGet<T>(opts.cacheKey);
   if (cached.hit) return { data: cached.value, cacheHit: true, quotaBlocked: false };
 
-  const key = quotaKey();
+  if (opts.apiKeyOverride && !opts.quotaNamespace) {
+    throw new Error("apiKeyOverride requires an explicit quotaNamespace — per-key spend must be tracked against its own counter");
+  }
+  const key = quotaKey(opts.quotaNamespace);
   const limit = monthlyQuotaLimit();
   const count = await quotaIncr(key);
   if (count > limit) {
@@ -277,7 +286,7 @@ async function cachedRentcastCall<T>(opts: {
   }
 
   try {
-    const data = await rentcastRequest<T>(opts.path, opts.params);
+    const data = await rentcastRequest<T>(opts.path, opts.params, opts.apiKeyOverride);
     await cacheSet(opts.cacheKey, data, opts.ttlSeconds);
     return { data, cacheHit: false, quotaBlocked: false };
   } catch (err) {
@@ -809,7 +818,8 @@ export async function discoverActiveListingsByCity(
   city: string,
   state: string,
   limit = 5,
-  listingTtlSeconds: number = TTL_LISTING_SECONDS
+  listingTtlSeconds: number = TTL_LISTING_SECONDS,
+  keyOpts?: { apiKeyOverride: string; quotaNamespace: string }
 ): Promise<DiscoveredListing[]> {
   const cacheKey = `rentcast:discover:${city.toLowerCase()}:${state.toLowerCase()}:${limit}`;
   const res = await cachedRentcastCall<RawListing[]>({
@@ -817,6 +827,7 @@ export async function discoverActiveListingsByCity(
     ttlSeconds: TTL_LISTING_SECONDS,
     path: "/listings/sale",
     params: { city, state, status: "Active", limit },
+    ...keyOpts,
   });
 
   if (!res.data) return [];
