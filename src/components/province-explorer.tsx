@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { CityMeta } from "@/lib/data/city-metadata";
-import { POPULAR_US_STATES, POPULAR_MARKETS, getUsStateByRegionCode } from "@/lib/data/city-metadata";
+import {
+  POPULAR_US_STATES,
+  POPULAR_MARKETS,
+  getUsStateByRegionCode,
+  getUsDiscoverCitiesByStateSlug,
+} from "@/lib/data/city-metadata";
 import { getCountiesByState, isTopMetroCounty } from "@/lib/us-counties";
 import { useVisitorGeo } from "@/lib/geo/visitor-geo";
 import RequestCityPrompt from "./request-city-prompt";
@@ -87,13 +92,25 @@ export default function ProvinceExplorer({ cities, provinces }: ProvinceExplorer
     return null;
   }, [geo, activeProvinceCodes, citiesWithListings]);
 
+  // The visitor's resolved country, once geo lookup finishes — only when it
+  // lands on a country this product actually serves. Drives both which
+  // curated pills show (filtered to just that country, so a US visitor
+  // isn't shown Victoria/Vancouver/Calgary/Toronto as noise) and which tab
+  // reads as "active" by default. Null while loading, on lookup failure, or
+  // for countries we don't have a CA/US pill row for (mixed default holds).
+  const visitorCountry: "CA" | "US" | null =
+    !geoLoading && (geo.country === "CA" || geo.country === "US") ? geo.country : null;
+
   const orderedMarkets = useMemo(() => {
-    if (!leadingMarket) return POPULAR_MARKETS;
-    const rest = POPULAR_MARKETS.filter(
+    const base = visitorCountry
+      ? POPULAR_MARKETS.filter((m) => m.country === visitorCountry)
+      : POPULAR_MARKETS;
+    if (!leadingMarket) return base;
+    const rest = base.filter(
       (m) => !(m.kind === leadingMarket.kind && m.target === leadingMarket.target)
     );
     return [leadingMarket, ...rest];
-  }, [leadingMarket]);
+  }, [leadingMarket, visitorCountry]);
 
   const geoDefaultSelection = useMemo<Selection>(() => {
     if (leadingMarket) {
@@ -115,6 +132,15 @@ export default function ProvinceExplorer({ cities, provinces }: ProvinceExplorer
   const [selectedMarketKey, setSelectedMarketKey] = useState(geoDefaultMarketKey);
   const [mode, setMode] = useState<BrowseMode>("curated");
   const [touched, setTouched] = useState(false); // true once the visitor has clicked something
+
+  // Which tab reads as "active" (bold) in the Popular | Canada | US row.
+  // Normally this just mirrors `mode`. But before the visitor has touched
+  // anything, a resolved geo country should read as the active tab even
+  // though `mode` is still "curated" — the curated pill row underneath is
+  // already filtered down to that country (see orderedMarkets above), so
+  // the tab bar should agree rather than keep pointing at "Popular".
+  const activeTab: BrowseMode =
+    mode === "curated" && !touched && visitorCountry ? visitorCountry : mode;
 
   // Once geo resolves (cache hit or /api/geo response), adopt it as the
   // default selection — but only if the visitor hasn't already interacted,
@@ -177,6 +203,19 @@ export default function ProvinceExplorer({ cities, provinces }: ProvinceExplorer
   const caCities =
     selection.kind === "CA" ? citiesWithListings.filter((c) => c.province === selection.province) : [];
 
+  // Cached-listing discover cities for the selected state (e.g. Texas ->
+  // Austin) — higher-intent than county stats, so these render above the
+  // county cards. Only cities that actually have live cached listings
+  // (citiesWithListings) make the cut; a configured-but-not-yet-cached
+  // metro shouldn't produce a dead link.
+  const usDiscoverCities = useMemo(() => {
+    if (selection.kind !== "US") return [];
+    const configs = getUsDiscoverCitiesByStateSlug(selection.stateSlug);
+    return configs
+      .map((c) => citiesWithListings.find((city) => city.slug === c.slug))
+      .filter((c): c is CityMeta => c != null);
+  }, [selection, citiesWithListings]);
+
   const usCounties = selection.kind === "US" ? getCountiesByState(selection.stateSlug) : [];
   const usCountiesOrdered = useMemo(() => {
     if (selection.kind !== "US") return [];
@@ -195,7 +234,7 @@ export default function ProvinceExplorer({ cities, provinces }: ProvinceExplorer
         <button
           onClick={showPopular}
           className={`px-3 py-1 rounded-full transition-colors ${
-            mode === "curated" ? "text-foreground font-medium" : "text-muted hover:text-foreground"
+            activeTab === "curated" ? "text-foreground font-medium" : "text-muted hover:text-foreground"
           }`}
         >
           Popular
@@ -204,7 +243,7 @@ export default function ProvinceExplorer({ cities, provinces }: ProvinceExplorer
         <button
           onClick={() => toggleCountry("CA")}
           className={`px-3 py-1 rounded-full transition-colors ${
-            mode === "CA" ? "text-foreground font-medium" : "text-muted hover:text-foreground"
+            activeTab === "CA" ? "text-foreground font-medium" : "text-muted hover:text-foreground"
           }`}
         >
           🇨🇦 Canada
@@ -213,7 +252,7 @@ export default function ProvinceExplorer({ cities, provinces }: ProvinceExplorer
         <button
           onClick={() => toggleCountry("US")}
           className={`px-3 py-1 rounded-full transition-colors ${
-            mode === "US" ? "text-foreground font-medium" : "text-muted hover:text-foreground"
+            activeTab === "US" ? "text-foreground font-medium" : "text-muted hover:text-foreground"
           }`}
         >
           🇺🇸 US
@@ -292,6 +331,28 @@ export default function ProvinceExplorer({ cities, provinces }: ProvinceExplorer
         )
       ) : (
         <div className="border border-border rounded-xl p-6 text-center">
+          {usDiscoverCities.length > 0 && (
+            <>
+              <p className="text-sm text-muted mb-3">Live listings in {selection.stateName}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-left mb-6">
+                {usDiscoverCities.map((city) => (
+                  <Link key={city.slug} href={`/discover/${city.slug}`} className={CARD_CLASS}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-foreground text-sm group-hover:text-foreground/80">
+                        Browse {city.name} listings
+                      </span>
+                      <span className="text-muted group-hover:text-foreground transition-colors text-sm opacity-0 group-hover:opacity-100">
+                        &rarr;
+                      </span>
+                    </div>
+                    <span className="text-xs text-green-600 mt-1 inline-block">
+                      {city.listingCount} live listings
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
           <p className="text-sm text-muted mb-5">
             County-level market data for {selection.stateName}
           </p>

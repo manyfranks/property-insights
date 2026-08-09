@@ -206,3 +206,17 @@ export const US_DISCOVER_CITIES: USDiscoverCityConfig[] = [
   { name: "Miami", state: "FL", slug: "miami", countyFips: "US-12086" }, // Miami-Dade County
   { name: "Phoenix", state: "AZ", slug: "phoenix", countyFips: "US-04013" }, // Maricopa County
 ];
+
+/**
+ * Discover-city configs whose state matches the given /us/[state] slug
+ * (e.g. "texas" -> Austin). Derived by mapping the slug to its USPS code
+ * via getAllStatesWithCounties and matching against US_DISCOVER_CITIES'
+ * `state` field, rather than hardcoding a city<->state list a second time
+ * — keeps ProvinceExplorer's "browse live listings" row in sync with
+ * whatever metros US_DISCOVER_CITIES actually configures.
+ */
+export function getUsDiscoverCitiesByStateSlug(stateSlug: string): USDiscoverCityConfig[] {
+  const state = getAllStatesWithCounties().find((s) => s.stateSlug === stateSlug);
+  if (!state) return [];
+  return US_DISCOVER_CITIES.filter((c) => c.state === state.state);
+}
