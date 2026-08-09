@@ -61,11 +61,28 @@ export default async function Home() {
       </div>
 
       <div className="w-full max-w-2xl mt-14 sm:mt-24">
-        <div className="flex flex-col sm:flex-row sm:justify-center gap-1.5 sm:gap-6 text-sm text-muted text-center">
-          <span><span className="font-medium text-foreground">1</span> Search any address</span>
-          <span><span className="font-medium text-foreground">2</span> We pull assessment, comps, and market data</span>
-          <span><span className="font-medium text-foreground">3</span> Get a recommended offer range</span>
-        </div>
+        <ol className="flex flex-col sm:flex-row sm:items-center sm:justify-center gap-2.5 sm:gap-3 text-sm text-muted">
+          <li className="flex items-center justify-center gap-2.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-white font-mono text-[11px] text-foreground">
+              1
+            </span>
+            Search any address
+          </li>
+          <li aria-hidden className="hidden sm:block text-muted/40">&rarr;</li>
+          <li className="flex items-center justify-center gap-2.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-white font-mono text-[11px] text-foreground">
+              2
+            </span>
+            We pull assessments, comps, and market data
+          </li>
+          <li aria-hidden className="hidden sm:block text-muted/40">&rarr;</li>
+          <li className="flex items-center justify-center gap-2.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-white font-mono text-[11px] text-foreground">
+              3
+            </span>
+            Get a recommended offer range
+          </li>
+        </ol>
 
         <div className="mt-10 text-center">
           <HomeCta cities={cities} />
