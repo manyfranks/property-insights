@@ -4,6 +4,22 @@ import Link from "next/link";
 import { getBlogPost, getRelatedCities, BLOG_POSTS } from "@/lib/blog";
 import { BASE_URL } from "@/lib/seo";
 import { JsonLd, FaqJsonLd } from "@/components/json-ld";
+import PartnerCta from "@/components/partner-cta";
+import type { SurfaceKey, Vertical } from "@/config/affiliate-vendors";
+
+/**
+ * Maps a post's `ctaVertical` to the PartnerCta surface that best matches
+ * its journey priority (see SURFACE_VERTICAL_PRIORITY in
+ * src/config/affiliate-vendors.ts) — investor-tools content pairs with the
+ * investor journey, tax-appeal content with the calculator journey, and
+ * everything else (mortgage/insurance/home-services/agent-referral) with
+ * the general buyer-result journey.
+ */
+function surfaceForVertical(vertical: Vertical): SurfaceKey {
+  if (vertical === "investor-tools") return "result-investor";
+  if (vertical === "tax-appeal") return "calculator";
+  return "result-buyer";
+}
 
 const FAQ_MAP: Record<string, { question: string; answer: string }[]> = {
   "how-to-make-an-offer-on-a-house-in-canada": [
@@ -34,6 +50,42 @@ const FAQ_MAP: Record<string, { question: string; answer: string }[]> = {
     { question: "How much above BC Assessment do homes typically list for?", answer: "In our sample of 15 matched listings, the median asking price was 7.4% above the BC Assessment value, and the mean was 7.5%. 80% of matched listings (12 of 15) were priced above assessment; 20% (3 of 15) were priced at or below it." },
     { question: "Does the assessment-to-asking gap vary by city?", answer: "Yes, even within Greater Victoria. In our sample, Victoria listings had a median gap of +9.0% above assessment (n=9), while Saanich listings had a median gap of -3.1%, meaning they trended slightly below assessment (n=4). Sample sizes are small, so these are directional, not definitive, municipal averages." },
     { question: "How was this assessment-to-asking gap data calculated?", answer: "We matched 15 of 250 live listings in our system to BC Assessment values by normalized street address, then compared asking price to assessed value for each matched pair. The snapshot was taken 2026-08-07. All matched pairs are in Greater Victoria, and BC Assessment values lag the market by about a year, so the gap reflects asking price versus a roughly one-year-old valuation, not today's fair value." },
+  ],
+  "what-is-fair-market-rent": [
+    { question: "What is Fair Market Rent (FMR)?", answer: "Fair Market Rent is HUD's annual estimate of what a standard-quality rental unit costs in a given county, set at roughly the 40th percentile of local gross rent (rent plus a utility allowance). It's calculated for every county, broken out by bedroom size, and is primarily used to set Section 8 housing voucher payment standards." },
+    { question: "What is the national median Fair Market Rent for a 2-bedroom in 2026?", answer: "Across 3,077 U.S. counties in our 2026 dataset, the national median 2-bedroom Fair Market Rent is $1,019/mo. County-level figures range from $776/mo in the lowest-cost counties to $4,214/mo in Santa Cruz County, California." },
+    { question: "Is Fair Market Rent the same as actual median rent?", answer: "No. FMR is calibrated to current market activity and targets the 40th percentile of a new lease. Census ACS median gross rent averages in every existing tenancy, including older, below-market leases. Across 3,069 counties with both figures, the median county's FMR runs 19.2% above its ACS median rent, and FMR is higher in 94.9% of counties." },
+    { question: "How is Fair Market Rent calculated?", answer: "HUD builds FMR mainly from Census ACS rent data, trended forward using recent CPI rent inflation, and republishes it every October for the following federal fiscal year. In low-population rural counties, HUD often groups several counties into one shared FMR area to get a reliable sample, which is why identical figures sometimes appear across neighboring counties." },
+  ],
+  "how-much-rent-should-i-charge": [
+    { question: "How much rent should I charge for my property?", answer: "Start with three anchors: your county's HUD Fair Market Rent for the bedroom count (national 2-bedroom median is $1,019/mo in 2026), the Census ACS median gross rent for what tenants are actually paying, and direct comps for similar units nearby. The county figures set your range; comps set the exact number." },
+    { question: "What's the difference between HUD Fair Market Rent and actual rents paid?", answer: "FMR reflects current-market pricing for a new lease. ACS median gross rent averages in existing tenancies, including older, below-market leases. In the median U.S. county, FMR runs about 19.2% above ACS median rent, and in extreme cases like Santa Cruz County, CA, the gap is 86% ($4,214 FMR vs. $2,264 ACS rent)." },
+    { question: "What does it cost to overprice or underprice a rental?", answer: "Using a $1,852/mo 2-bedroom (Travis County, TX FMR) as an example, pricing 10% above market and losing one extra month to vacancy erases almost the entire year's markup. Pricing 10% below market with no offsetting benefit costs roughly $2,220/year in foregone rent for the life of the tenancy. Small mispricing is forgivable; extended vacancy from major overpricing is the real cost." },
+    { question: "Should I check a per-address rent estimate instead of the county average?", answer: "County-level FMR and ACS figures are a good first pass, but once you have a specific address, especially with unusual features or renovations, a per-property estimate is more accurate than the county number alone. Property Insights surfaces a per-address rent estimate alongside its assessment-gap analysis when you run an address through the site." },
+  ],
+  "one-percent-rule-real-estate": [
+    { question: "What is the 1% rule in real estate?", answer: "The 1% rule is a quick screening test: a rental property roughly clears it when its monthly rent is at least 1% of the purchase price. A $150,000 house would need to rent for about $1,500/mo. It's a first-pass filter for cash flow potential, not a final verdict on any specific deal." },
+    { question: "Is the 1% rule realistic in 2026?", answer: "Mostly no. Using 2026 HUD Fair Market Rents against Census median home values, only 155 of 3,071 U.S. counties (5.0%) clear the 1% bar at the county level. The national median ratio is 0.572% monthly, which annualizes to a 6.86% gross yield. A 0.7% screen is passed by 818 counties (26.6%), which is a more realistic modern bar in most markets." },
+    { question: "Which counties pass the 1% rule?", answer: "Stonewall County, Texas leads at 2.088% monthly, followed by King County, TX (1.948%), Apache County, AZ (1.845%), Cochran County, TX (1.829%), and Oglala Lakota County, SD (1.756%). Texas has the most passing counties (43), followed by Georgia (25), Kansas (12), and Kentucky (12)." },
+    { question: "What should investors use instead of a strict 1% cutoff?", answer: "A blended screen. 149 of the 155 passing counties (96.1%) have median home values under $125,000, so the ratio mostly flags cheap homes rather than strong rental markets. Combining gross yield with 5-year appreciation, disaster risk, vacancy, and days on market, as our county investment scorecard does, gives a fuller picture than any single ratio." },
+  ],
+  "best-counties-rental-property-2026": [
+    { question: "What are the best counties to buy rental property in 2026?", answer: "By our 2,724-county investment scorecard, Heard County, GA leads with a score of 88.3, followed by Richardson County, NE (86.8), Bacon County, GA (85.7), Wilkinson County, GA (85.5), and Benton County, IN (85.3). These combine high gross rental yields with strong 5-year appreciation and low disaster risk." },
+    { question: "How is the county investment score calculated?", answer: "Each county is percentile-ranked on five factors and blended: gross rental yield (35%), 5-year home-price appreciation (25%), FEMA disaster risk inverted (20%), vacancy rate inverted (10%), and days on market inverted (10%). A county needs yield, appreciation, and risk data present to be scored; 2,724 counties qualify." },
+    { question: "What data sources feed the ranking?", answer: "All public: HUD Fair Market Rents (2026), Census ACS median home values and vacancy (2024), the FHFA House Price Index (1975 to 2025), the FEMA National Risk Index (2025), and realtor.com median days on market via FRED." },
+    { question: "Is this ranking investment advice?", answer: "No. It's a screening tool built from county-level public data. It can't see a specific property's condition, taxes, insurance costs, or local rules. Use it to shortlist markets, then underwrite individual deals with property-level numbers before making any offer." },
+  ],
+  "how-property-taxes-are-calculated": [
+    { question: "How are property taxes calculated?", answer: "Property tax = assessed value × mill rate, minus any exemptions. Assessed value is a government estimate of market value (sometimes a fraction of it, depending on the jurisdiction's assessment ratio); the mill rate is set by adding up the budgets of every local taxing authority (county, municipality, school district) and dividing by total assessed value in the area." },
+    { question: "What is the national median effective property tax rate?", answer: "Across 3,207 US counties with 2024 Census data, the median effective rate (annual tax bill divided by home value) is 0.79%, and the mean is 0.90%. The median annual bill is $1,595." },
+    { question: "Why did my property taxes go up if my home's value didn't change?", answer: "The most common cause is a taxing authority (school district, municipality) raising its rate to meet a new budget, or a change to an exemption you were previously claiming. A reassessment that raised your assessed value is the other common cause, and it's the one that can sometimes be appealed." },
+    { question: "What is a mill rate?", answer: "One mill equals $1 of tax per $1,000 of assessed value. A mill rate of 20 means $20 of tax per $1,000 of assessed value, or 2% of assessed value. Your total bill is the sum of the mill rates set by every taxing authority with a claim on your property." },
+  ],
+  "property-tax-rates-by-county": [
+    { question: "What US county has the highest property tax rate?", answer: "Among reliably-estimated counties in our 2024 dataset, Menominee County, Wisconsin has the highest effective property tax rate at 3.56%, with a $110,200 median home value and a $3,926 median annual bill." },
+    { question: "What US county has the lowest property tax rate?", answer: "Among reliably-estimated counties in our 2024 dataset, East Feliciana Parish, Louisiana has the lowest effective property tax rate at 0.15%, with a $228,100 median home value and a $339 median annual bill." },
+    { question: "What is the national median property tax rate by county?", answer: "0.79% (mean 0.90%), based on 3,207 US counties with 2024 Census ACS data. The median annual property tax bill across those counties is $1,595." },
+    { question: "Which states have the highest and lowest property tax rates?", answer: "By median county effective rate, New Jersey (2.10%), New York (2.04%), and Illinois (1.81%) rank highest; Hawaii (0.25%), Alabama (0.32%), and Colorado (0.39%) rank lowest, among states with at least 3 counties reporting." },
   ],
   "us-rent-to-price-ratio-by-county": [
     { question: "What is the national median rent-to-price ratio for U.S. counties?", answer: "Across 3,212 U.S. counties with both ACS median home value and median gross rent data for 2024, the median monthly rent-to-price ratio is 0.467%, which annualizes to a 5.60% gross rental yield before taxes, insurance, vacancy, or maintenance." },
@@ -153,6 +205,18 @@ export default async function BlogPostPage({
       <article className="prose-custom">
         <Content />
       </article>
+
+      {/* Topic-matched CTA — only renders once the registry sets ctaVertical for this post */}
+      {post.ctaVertical && (
+        <div className="mt-10 pt-6 border-t border-border">
+          <PartnerCta
+            country={post.ctaCountry ?? "CA"}
+            source="blog"
+            surface={surfaceForVertical(post.ctaVertical)}
+            heading="Tools for this topic"
+          />
+        </div>
+      )}
 
       {/* Browse analyzed listings */}
       <div className="mt-10 pt-6 border-t border-border">

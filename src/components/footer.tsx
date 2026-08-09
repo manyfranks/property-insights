@@ -23,6 +23,9 @@ export default function Footer() {
               <Link href="/pricing" className="block text-muted hover:text-foreground transition-colors">
                 Pricing
               </Link>
+              <Link href="/resources" className="block text-muted hover:text-foreground transition-colors">
+                Recommended Tools
+              </Link>
             </div>
           </div>
 

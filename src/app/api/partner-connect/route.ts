@@ -48,6 +48,8 @@ const VALID_SOURCES = [
   "county-page",
   "rent-page",
   "state-page",
+  "resources",
+  "blog",
 ] as const;
 type Source = (typeof VALID_SOURCES)[number];
 

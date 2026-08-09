@@ -55,7 +55,9 @@ export type AffiliateSource =
   | "discover"
   | "county-page"
   | "rent-page"
-  | "state-page";
+  | "state-page"
+  | "resources"
+  | "blog";
 
 export interface AffiliateVendor {
   /** env var key: NEXT_PUBLIC_AFFILIATE_URL_{ID} (uppercased, hyphens -> underscores) */
