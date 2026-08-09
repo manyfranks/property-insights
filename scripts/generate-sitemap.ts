@@ -100,7 +100,13 @@ async function main() {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;
   const out = join(process.cwd(), "public", "sitemap.xml");
   writeFileSync(out, xml);
-  console.log(`[sitemap] wrote ${out}: ${urls.length} URLs (${propertySlugs.length} unique properties from ${listings.length} listings)`);
+  // Identical copy at a fresh URL: GSC's sitemap pipeline can pin a stale
+  // failure state to a URL (this one failed since March even after the
+  // content became a static file, while live URL-inspection passed) — a
+  // never-before-submitted path gets a clean fetch state.
+  const out2 = join(process.cwd(), "public", "sitemap-main.xml");
+  writeFileSync(out2, xml);
+  console.log(`[sitemap] wrote ${out} + sitemap-main.xml: ${urls.length} URLs (${propertySlugs.length} unique properties from ${listings.length} listings)`);
 }
 
 main().catch((err) => {
