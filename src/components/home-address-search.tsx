@@ -334,10 +334,7 @@ export default function HomeAddressSearch() {
       </div>
 
       <p className="text-xs text-muted text-center mt-2.5">
-        Free &middot; No sign-up to search &middot; Results in seconds
-      </p>
-      <p className="text-xs text-muted/70 text-center mt-1">
-        Market data for 3,144 US counties and live Canadian listings
+        Free &middot; Results in seconds &middot; 3,144 US counties + Canada
       </p>
     </div>
   );
