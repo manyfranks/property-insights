@@ -6,6 +6,8 @@ import type { UsCompSupport } from "./pipeline/us-assess";
 import type { NarrativeLintResult } from "./pipeline/narrative-lint";
 import type { PropertyEvidenceSnapshot } from "./property-intelligence/evidence";
 import type { AssessmentSubject } from "./property-intelligence/subject";
+import type { PropertyClassification } from "./property-intelligence/classification";
+import type { PropertyCapabilities } from "./property-intelligence/capabilities";
 
 export interface PrecomputedOffer {
   anchor: number;
@@ -93,6 +95,10 @@ export interface Listing {
   // P2 subject-resolution envelope. Additive and shadow-only until the P4
   // goal/scope UI explicitly consumes it.
   assessmentSubject?: AssessmentSubject;
+  // P3 shadow artifacts. These are measured and persisted beside the legacy
+  // buyer output, but do not route journeys or alter visible modules.
+  propertyClassification?: PropertyClassification;
+  propertyCapabilities?: PropertyCapabilities;
 }
 
 // ---------------------------------------------------------------------------

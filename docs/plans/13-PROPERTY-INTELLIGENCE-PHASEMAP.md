@@ -67,7 +67,7 @@ These are release-blocking requirements, not preferences:
 | **P0 — Safety baseline** | `[x] Complete 2026-08-11` | Prevent address-only residential overclaims; lock vocabulary and fixtures | None | 14/14 P0 fixtures; 16/16 guard; 20/20 integration |
 | **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
 | **P2 — Subject resolution** | `[x] Complete 2026-08-11` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | 23/23 resolver fixtures + common subject envelope |
-| **P3 — Classification/capabilities** | `[ ]` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
+| **P3 — Classification/capabilities** | `[~] In progress — shadow built 2026-08-11; review pending` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
 | **P4 — Goal UX/instrumentation** | `[ ]` | Optional per-assessment goal, conditional scope clarification, manual view switching | P3 | Funnel events + flagged rollout |
 | **P5 — Investor/Landlord V1** | `[ ]` | Address-level US rental screen; capability-gated Canadian version | P4 | End-to-end journey QA + KPI baseline |
 | **P6 — Buyer/Owner convergence** | `[ ]` | Existing buyer parity plus current-owner/landlord view on shared contracts | P5 | Regression parity + owner journey QA |
@@ -234,8 +234,8 @@ Each result must include scope, source evidence, confidence, and an explanation 
 
 ### Build
 
-- [ ] **[A] Implement `PropertyClassification`** with deterministic, inferred, conflicting, and unknown states.
-- [ ] **[A] Implement `Capabilities`** separately from classification, including at minimum:
+- [x] **[A] Implement `PropertyClassification`** with deterministic, inferred, conflicting, and unknown states.
+- [x] **[A] Implement `Capabilities`** separately from classification, including at minimum:
   - Address-level sale valuation
   - Address-level rent estimate
   - Regional rent benchmark
@@ -245,25 +245,25 @@ Each result must include scope, source evidence, confidence, and an explanation 
   - County market/risk context
   - Whole-building commercial analysis
   - Insurance prefill
-- [ ] **[A] Add explicit capability reasons** (`available`, `missing_field`, `unsupported_scope`, `provider_exclusion`, `regional_proxy_only`, `conflicting_evidence`).
-- [ ] **[A] Run classification in shadow mode** and log/inspect outcomes before it affects visible modules.
-- [ ] **[A] Produce a coverage report** by country, province/state/county adapter, subject scope, classification confidence, and capability.
-- [ ] **[A] Add routing fixtures** proving that classification never mutates the user goal and never auto-switches a journey.
+- [x] **[A] Add explicit capability reasons** (`available`, `missing_field`, `unsupported_scope`, `provider_exclusion`, `regional_proxy_only`, `conflicting_evidence`).
+- [x] **[A] Run classification in shadow mode** and log/inspect outcomes before it affects visible modules.
+- [x] **[A] Produce a coverage report** by country, province/state/county adapter, subject scope, classification confidence, and capability.
+- [x] **[A] Add routing fixtures** proving that classification never mutates the user goal and never auto-switches a journey.
 - [ ] **[M] Obtain counsel/privacy direction before any occupancy-driven visible personalization, view suggestion, CTA routing, or intent-profile persistence.** Coordinate this with the existing GPC/Do-Not-Sell and profiling review rather than treating it as a mapper-only question.
 - [ ] **[M] Review shadow-mode false positives**, especially mixed-use, apartment-unit, land, and institutional cases.
 
 ### Exit gate
 
 - [ ] Every visible property-level module has a satisfied capability and traceable evidence.
-- [ ] Unknown and conflicting classifications degrade neutrally.
-- [ ] High-confidence unsupported results are tied to the verified assessment subject—not merely its containing building or geocoded address.
+- [x] Unknown and conflicting classifications degrade neutrally in the shadow capability contract.
+- [x] High-confidence unsupported results are tied to the verified assessment subject—not merely its containing building or geocoded address.
 - [ ] Shadow-mode review reaches an agreed launch bar by fixture category; no single global “accuracy” number hides geo gaps.
-- [ ] Typecheck, touched-file lint, and routing fixtures pass; the full lint baseline has no new findings.
+- [x] Typecheck, touched-file lint, and routing fixtures pass; the full lint baseline has no new findings.
 
 ### Evidence
 
-- Commit/PR: _TBD_
-- Coverage report: _TBD_
+- Commit/PR: P3 shadow implementation (pending commit in this change set)
+- Coverage report: `16-P3-SHADOW-COVERAGE.md`; 14/14 fixtures, zero provider calls
 - Shadow review decision: _TBD_
 
 ---

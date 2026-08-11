@@ -29,9 +29,11 @@
  *     presentation, plus a machine-readable reason for the degradation (no
  *     RentCast record means no basis for the US Advantage layer either).
  *
- * `assessmentSubject` is the additive P2 shadow envelope. It is computed
- * entirely from evidence already fetched for the assessment, never changes
- * the selected journey, and does not trigger provider calls.
+ * `assessmentSubject` is the additive P2 shadow envelope. P3 adds
+ * `propertyClassification` and `propertyCapabilities` beside it. All three
+ * are computed from already-fetched evidence, never change the selected
+ * journey, and never trigger a new external-provider call. The CA P3 path
+ * may read the already-ingested CMHC table for a regional-rent capability.
  *
  * Auth required (Clerk).
  * maxDuration: 60s (assessment lookup + LLM call).
@@ -49,7 +51,7 @@ import { isPro } from "@/lib/billing";
 import { slugify } from "@/lib/utils";
 import { geocodeUSAddress } from "@/lib/geo/census-geocoder";
 import { lookupAssessment } from "@/lib/assessment";
-import { getCountyMarketPanel } from "@/lib/db/regional-econ";
+import { getCmaFipsForCity, getCmaRent, getCountyMarketPanel } from "@/lib/db/regional-econ";
 import { getUSProperty } from "@/lib/rentcast";
 import { lookupCountyLive } from "@/lib/assessment/us-county";
 import {
@@ -75,7 +77,20 @@ import {
   addRentCastEvidence,
   createPropertyEvidenceSnapshot,
   mergePropertyEvidence,
+  type AvailableEvidence,
+  type PropertyEvidenceSnapshot,
 } from "@/lib/property-intelligence/evidence";
+import {
+  classifyProperty,
+  type PropertyClassification,
+  type PropertyClassificationFacts,
+} from "@/lib/property-intelligence/classification";
+import {
+  evaluatePropertyCapabilities,
+  type CapabilityEvidenceFact,
+  type CapabilityScope,
+  type PropertyCapabilityFacts,
+} from "@/lib/property-intelligence/capabilities";
 import type { USPropertyBundle } from "@/lib/rentcast";
 import type { Assessment } from "@/lib/types";
 
@@ -86,6 +101,82 @@ const RATE_LIMIT_RESPONSE = (resetMs: number) =>
   );
 
 export const maxDuration = 60;
+
+function shadowSubjectScope(
+  subject: AssessmentSubject,
+  classification: PropertyClassification
+): CapabilityScope {
+  if (subject.unit || classification.listingScope.value === "unit") return "unit";
+  if (classification.listingScope.value === "whole building" || subject.scope === "building") return "building";
+  if (classification.listingScope.value === "parcel" || subject.scope === "parcel") return "parcel";
+  return "unknown";
+}
+
+function hasLandImprovementSplit(evidence: PropertyEvidenceSnapshot): boolean {
+  const lands = evidence.landValues.filter(
+    (item): item is AvailableEvidence<number> => item.availability === "available"
+  );
+  const buildings = evidence.buildingValues.filter(
+    (item): item is AvailableEvidence<number> => item.availability === "available"
+  );
+  return lands.some((land) =>
+    buildings.some(
+      (building) =>
+        building.source === land.source &&
+        building.sourceRecordId === land.sourceRecordId
+    )
+  );
+}
+
+function buildPropertyIntelligenceShadow(args: {
+  subject: AssessmentSubject;
+  evidence: PropertyEvidenceSnapshot;
+  classificationFacts?: PropertyClassificationFacts;
+  saleValue?: { available: boolean; source: string; regionalOnly?: boolean };
+  rentEstimate?: { available: boolean; source: string };
+  regionalRent?: { available: boolean; source: string };
+  activeListing?: boolean;
+  offerComputed?: boolean;
+  countyMarketContext?: boolean;
+  countyRiskContext?: boolean;
+  insurancePrefillCore?: boolean;
+}) {
+  const propertyClassification = classifyProperty({
+    subject: args.subject,
+    evidence: args.evidence,
+    facts: args.classificationFacts,
+  });
+  const scope = shadowSubjectScope(args.subject, propertyClassification);
+  const scopedFact = (
+    fact: { available: boolean; source: string } | undefined,
+    factScope: CapabilityScope = scope
+  ): CapabilityEvidenceFact | undefined => fact
+    ? { available: fact.available, source: fact.source, scope: factScope }
+    : undefined;
+  const capabilityFacts: PropertyCapabilityFacts = {
+    addressSaleValue: args.saleValue
+      ? scopedFact(args.saleValue, args.saleValue.regionalOnly ? "regional" : scope)
+      : undefined,
+    addressRentEstimate: scopedFact(args.rentEstimate),
+    regionalRentBenchmark: scopedFact(args.regionalRent, "regional"),
+    activeListing: args.activeListing,
+    offerComputed: args.offerComputed,
+    landImprovementSplit: {
+      available: hasLandImprovementSplit(args.evidence),
+      source: "property_evidence",
+      scope: scope === "building" ? "building" : "parcel",
+    },
+    countyMarketContext: args.countyMarketContext,
+    countyRiskContext: args.countyRiskContext,
+    insurancePrefillCore: args.insurancePrefillCore,
+  };
+  const propertyCapabilities = evaluatePropertyCapabilities({
+    subject: args.subject,
+    classification: propertyClassification,
+    facts: capabilityFacts,
+  });
+  return { propertyClassification, propertyCapabilities };
+}
 
 // Region mapping: full names + common abbreviations → region codes.
 // Canadian provinces map to lowercase 2-letter codes (unchanged from the
@@ -457,6 +548,35 @@ async function handleUSAssessment({
       bundle,
       assessment,
     });
+    const regionalRentAvailable = !!marketPanel && [
+      marketPanel.medianGrossRent,
+      marketPanel.fmrStudio,
+      marketPanel.fmr1br,
+      marketPanel.fmr2br,
+      marketPanel.fmr3br,
+      marketPanel.fmr4br,
+    ].some((value) => value != null);
+    const { propertyClassification, propertyCapabilities } = buildPropertyIntelligenceShadow({
+      subject: assessmentSubject,
+      evidence: propertyEvidence,
+      saleValue: assessment?.source === "area_median"
+        ? { available: true, source: "area_median", regionalOnly: true }
+        : undefined,
+      regionalRent: { available: regionalRentAvailable, source: "county_market_panel" },
+      countyMarketContext: !!marketPanel,
+      countyRiskContext: !!marketPanel && (
+        marketPanel.femaRiskScore != null ||
+        marketPanel.femaEalScore != null ||
+        Object.keys(marketPanel.femaHazardScores).length > 0
+      ),
+      insurancePrefillCore: false,
+    });
+    log(
+      "property intelligence shadow",
+      `class=${propertyClassification.parcelUse.value} scope=${propertyClassification.listingScope.value} ` +
+        `confidence=${propertyClassification.overallConfidence} offer=${propertyCapabilities.items.offerAnalysis.reason} ` +
+        `rent=${propertyCapabilities.items.addressRentEstimate.reason}`
+    );
     log(
       "us data done (fallback)",
       `reason=${propertyDataUnavailableReason} assessment_found=${assessment?.found ?? false} panel=${marketPanel ? "yes" : "no"}`
@@ -482,6 +602,8 @@ async function handleUSAssessment({
       assessment,
       assessmentSubject,
       propertyEvidence,
+      propertyClassification,
+      propertyCapabilities,
       marketPanel,
       offerAvailable: false,
       offerUnavailableReason: "no_listing_data",
@@ -668,6 +790,50 @@ async function handleUSAssessment({
     // just logs for monitoring.
     logNarrativeLint(`${geo.matchedAddress}, ${city}`, lintUsNarrative(narrative, narrativeContext));
 
+    const regionalRentAvailable = !!marketPanel && [
+      marketPanel.medianGrossRent,
+      marketPanel.fmrStudio,
+      marketPanel.fmr1br,
+      marketPanel.fmr2br,
+      marketPanel.fmr3br,
+      marketPanel.fmr4br,
+    ].some((value) => value != null);
+    const { propertyClassification, propertyCapabilities } = buildPropertyIntelligenceShadow({
+      subject: assessmentSubject,
+      evidence: listing.propertyEvidence,
+      classificationFacts: {
+        activeListing: true,
+        lastSaleDate: bundle.record?.lastSaleDate,
+        hasSuite: listing.hasSuite,
+        yearBuilt: bundle.record?.yearBuilt ?? listing.yearBuilt,
+      },
+      saleValue: { available: !!bundle.avm, source: "rentcast_avm" },
+      rentEstimate: { available: !!bundle.rent, source: "rentcast_rent" },
+      regionalRent: { available: regionalRentAvailable, source: "county_market_panel" },
+      activeListing: true,
+      offerComputed: !!offer,
+      countyMarketContext: !!marketPanel,
+      countyRiskContext: !!marketPanel && (
+        marketPanel.femaRiskScore != null ||
+        marketPanel.femaEalScore != null ||
+        Object.keys(marketPanel.femaHazardScores).length > 0
+      ),
+      insurancePrefillCore: !!(
+        bundle.record?.propertyType &&
+        bundle.record.yearBuilt &&
+        bundle.record.squareFootage &&
+        (bundle.record.formattedAddress || bundle.record.addressLine1)
+      ),
+    });
+    listing.propertyClassification = propertyClassification;
+    listing.propertyCapabilities = propertyCapabilities;
+    log(
+      "property intelligence shadow",
+      `class=${propertyClassification.parcelUse.value} scope=${propertyClassification.listingScope.value} ` +
+        `confidence=${propertyClassification.overallConfidence} offer=${propertyCapabilities.items.offerAnalysis.reason} ` +
+        `rent=${propertyCapabilities.items.addressRentEstimate.reason}`
+    );
+
     log(
       "done (US, listed)",
       `${geo.matchedAddress} tier=${score.tier} offer=${offer?.finalOffer} anchor=${assessment?.source} ` +
@@ -685,6 +851,8 @@ async function handleUSAssessment({
       countyFips,
       assessment,
       assessmentSubject,
+      propertyClassification,
+      propertyCapabilities,
       anchorDecision: anchorDecision ?? null,
       marketPanel,
       offerAvailable: true as const,
@@ -759,6 +927,46 @@ async function handleUSAssessment({
     monthlyRent: bundle.rent?.value ?? null,
     marketPanel,
   });
+  const regionalRentAvailable = !!marketPanel && [
+    marketPanel.medianGrossRent,
+    marketPanel.fmrStudio,
+    marketPanel.fmr1br,
+    marketPanel.fmr2br,
+    marketPanel.fmr3br,
+    marketPanel.fmr4br,
+  ].some((value) => value != null);
+  const { propertyClassification, propertyCapabilities } = buildPropertyIntelligenceShadow({
+    subject: assessmentSubject,
+    evidence: propertyEvidence,
+    classificationFacts: {
+      activeListing: false,
+      lastSaleDate: bundle.record?.lastSaleDate,
+      yearBuilt: bundle.record?.yearBuilt,
+    },
+    saleValue: { available: !!bundle.avm, source: "rentcast_avm" },
+    rentEstimate: { available: !!bundle.rent, source: "rentcast_rent" },
+    regionalRent: { available: regionalRentAvailable, source: "county_market_panel" },
+    activeListing: false,
+    offerComputed: false,
+    countyMarketContext: !!marketPanel,
+    countyRiskContext: !!marketPanel && (
+      marketPanel.femaRiskScore != null ||
+      marketPanel.femaEalScore != null ||
+      Object.keys(marketPanel.femaHazardScores).length > 0
+    ),
+    insurancePrefillCore: !!(
+      bundle.record?.propertyType &&
+      bundle.record.yearBuilt &&
+      bundle.record.squareFootage &&
+      (bundle.record.formattedAddress || bundle.record.addressLine1)
+    ),
+  });
+  log(
+    "property intelligence shadow",
+    `class=${propertyClassification.parcelUse.value} scope=${propertyClassification.listingScope.value} ` +
+      `confidence=${propertyClassification.overallConfidence} offer=${propertyCapabilities.items.offerAnalysis.reason} ` +
+      `rent=${propertyCapabilities.items.addressRentEstimate.reason}`
+  );
 
   log(
     "done (US, off-market)",
@@ -777,6 +985,8 @@ async function handleUSAssessment({
     assessment,
     assessmentSubject,
     propertyEvidence,
+    propertyClassification,
+    propertyCapabilities,
     avm: bundle.avm
       ? { value: bundle.avm.value, rangeLow: bundle.avm.rangeLow, rangeHigh: bundle.avm.rangeHigh }
       : null,
@@ -981,6 +1191,44 @@ export async function POST(req: Request) {
   });
   enriched.assessmentSubject = assessmentSubject;
 
+  // P3 shadow capability check. This reads the already-ingested CMHC table;
+  // it is not a provider call and degrades to "missing" on any DB failure.
+  const cma = getCmaFipsForCity(enriched.city);
+  const cmaRent = cma
+    ? await getCmaRent(cma.fips, parseInt(enriched.beds) || 0).catch((err) => {
+        log("cmhc shadow lookup error", err instanceof Error ? err.message : String(err));
+        return null;
+      })
+    : null;
+  const { propertyClassification, propertyCapabilities } = buildPropertyIntelligenceShadow({
+    subject: assessmentSubject,
+    evidence: enriched.propertyEvidence!,
+    classificationFacts: {
+      activeListing: true,
+      hasSuite: enriched.hasSuite,
+      yearBuilt: enriched.yearBuilt,
+    },
+    regionalRent: { available: !!cmaRent, source: "cmhc_cma_rent" },
+    activeListing: true,
+    offerComputed: !!enriched.preOffer,
+    countyMarketContext: false,
+    countyRiskContext: false,
+    insurancePrefillCore: !!(
+      enriched.address &&
+      enriched.yearBuilt &&
+      parseInt(enriched.sqft) > 0 &&
+      enriched.propertyEvidence?.propertyTypes.some((item) => item.availability === "available")
+    ),
+  });
+  enriched.propertyClassification = propertyClassification;
+  enriched.propertyCapabilities = propertyCapabilities;
+  log(
+    "property intelligence shadow",
+    `class=${propertyClassification.parcelUse.value} scope=${propertyClassification.listingScope.value} ` +
+      `confidence=${propertyClassification.overallConfidence} offer=${propertyCapabilities.items.offerAnalysis.reason} ` +
+      `regional_rent=${propertyCapabilities.items.regionalRentBenchmark.reason}`
+  );
+
   // Tag source and enrichment time
   enriched.source = "user";
   enriched.enrichedAt = new Date().toISOString();
@@ -1034,6 +1282,8 @@ export async function POST(req: Request) {
     address: enriched.address,
     city: enriched.city,
     assessmentSubject,
+    propertyClassification,
+    propertyCapabilities,
     emailSent,
   });
 }

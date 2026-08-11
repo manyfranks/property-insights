@@ -2,6 +2,8 @@ import type { AnchorPlausibility, Assessment, Listing, OfferResult, ScoreResult 
 import type { CountyMarketPanel } from "@/lib/db/regional-econ";
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 import type { AssessmentSubject } from "@/lib/property-intelligence/subject";
+import type { PropertyClassification } from "@/lib/property-intelligence/classification";
+import type { PropertyCapabilities } from "@/lib/property-intelligence/capabilities";
 import type {
   EquityTenureSignal,
   ValuationTriangulation,
@@ -44,6 +46,8 @@ interface UsResultBase {
   countyFips: string;
   assessment: Assessment | null;
   assessmentSubject: AssessmentSubject;
+  propertyClassification: PropertyClassification;
+  propertyCapabilities: PropertyCapabilities;
   marketPanel: CountyMarketPanel | null;
   emailSent: boolean;
 }
@@ -1096,6 +1100,13 @@ export default function UsAssessmentResult({ data }: { data: UsAssessResult }) {
       data-assessment-subject-selected-by={data.assessmentSubject.selectedBy}
       data-assessment-subject-confidence={data.assessmentSubject.resolutionConfidence}
       data-assessment-subject-needs-clarification={String(data.assessmentSubject.requiresClarification)}
+      data-property-classification-confidence={data.propertyClassification.overallConfidence}
+      data-property-parcel-use={data.propertyClassification.parcelUse.value}
+      data-property-listing-scope={data.propertyClassification.listingScope.value}
+      data-capability-address-sale={data.propertyCapabilities.items.addressSaleValuation.reason}
+      data-capability-address-rent={data.propertyCapabilities.items.addressRentEstimate.reason}
+      data-capability-offer={data.propertyCapabilities.items.offerAnalysis.reason}
+      data-capability-insurance-prefill={data.propertyCapabilities.items.insurancePrefill.reason}
     >
       {data.offerAvailable ? (
         <UsListedView data={data} />
