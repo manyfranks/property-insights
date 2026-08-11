@@ -136,14 +136,14 @@ export function AssessmentGoalPreflight({
           type="button"
           disabled={!selected}
           onClick={() => start(selected)}
-          className="px-6 py-2.5 text-sm font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="min-h-11 px-6 py-2.5 text-sm font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
         >
           Start assessment
         </button>
         <button
           type="button"
           onClick={() => start(null)}
-          className="px-6 py-2.5 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-gray-50 transition-all"
+          className="min-h-11 px-6 py-2.5 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-gray-50 transition-all"
         >
           Skip for now
         </button>
@@ -245,7 +245,7 @@ export function AssessmentSubjectClarification({
         type="button"
         disabled={!choice || unitRequired}
         onClick={confirm}
-        className="w-full px-6 py-2.5 text-sm font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+        className="w-full min-h-11 px-6 py-2.5 text-sm font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
       >
         Continue to result
       </button>
@@ -346,7 +346,7 @@ export function AssessmentJourneyPanel({
               type="button"
               aria-pressed={goal === option}
               onClick={() => switchGoal(option)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              className={`min-h-11 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                 goal === option
                   ? "border-foreground bg-foreground text-white"
                   : "border-border bg-white text-foreground hover:border-foreground/40"

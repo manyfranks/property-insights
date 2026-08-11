@@ -70,6 +70,14 @@ The existing analytics-consent and Do-Not-Sell/Share gates apply. Journey payloa
 
 P3's `classification_result` and `capability_missing` remain in the separate anonymous operational stream introduced in P3.5.
 
+The read-only aggregate report is:
+
+```bash
+npx tsx scripts/report-property-journeys.ts 7
+```
+
+It selects no user ID, address, unit, slug, or raw event payload.
+
 ## Verification
 
 - P4 contract fixtures: 8/8, zero provider calls
@@ -81,12 +89,13 @@ P3's `classification_result` and `capability_missing` remain in the separate ano
 - Full P0-P4 regression and pipeline guard: pass
 - Integration: 20/20, seed `20260811`, RentCast quota `50 -> 50`
 - Full-repository lint: unchanged baseline of 26 errors and 20 warnings in untouched files
-- Mobile/desktop and signed-in production preview: pending
+- Signed-in production preview: Rental selected explicitly; Queens returned supported/high-confidence evidence with the existing `$999,000` list and `$969,000` offer; Explore switch required no refetch
+- Production funnel aggregate: `journey_selected`, `journey_result_viewed`, and `journey_switched` rows are queryable without selecting user or property identifiers
+- Responsive QA: no horizontal overflow at 390px or 1280px; result focus controls have a 44px minimum touch target
 
 ## Remaining P4 work
 
 - Persist goal and confirmed subject with a private assessment/saved-property record—not the shared listing.
-- Validate funnel rows in production under analytics consent and opt-out behavior.
-- Complete mobile and desktop browser QA.
+- Validate explicit opt-out suppression with a dedicated privacy test before cohort rollout; the existing `/api/track` consent/GPC gates remain in force.
 - Decide the internal/cohort/default-on launch bar after review of the preview.
 - Keep occupancy-driven suggestions blocked pending counsel/privacy review.

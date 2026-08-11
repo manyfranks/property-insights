@@ -324,8 +324,8 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 ### Evidence
 
 - Commit/PR: _Sprint A implementation pending release commit_
-- Event query/dashboard: _TBD_
-- Browser QA: `18-P4-GOAL-UX-SPRINT-A.md`; local flag-off and no-refetch preview checks pass
+- Event query/dashboard: `scripts/report-property-journeys.ts`; production aggregate verified 2026-08-11
+- Browser QA: `18-P4-GOAL-UX-SPRINT-A.md`; flag-off parity, signed-in production preview, no-refetch switching, and 390px/1280px responsive checks pass
 - Rollout decision: _TBD_
 
 ---
