@@ -94,7 +94,9 @@ Representative Queens result after canonical provider resolution:
 | Touched-file lint | **PASS** |
 | Full lint baseline | **UNCHANGED — 26 errors, 20 warnings in untouched files** |
 | Production build | **PASS** |
-| Production response | _Pending deployment verification_ |
+| Production response | **PASS — `b683df8`; Queens fixture resolved `listing` / `listing_match` / high confidence / no clarification** |
+
+The same production run retained the pre-P2 buyer result: active $999,000 listing, $969,000 recommended offer, live county market-value label, and no county-median fallback.
 
 ## Boundary for P3
 
