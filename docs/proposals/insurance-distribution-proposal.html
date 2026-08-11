@@ -1,0 +1,541 @@
+<title>Insurance Distribution — Full Proposal</title>
+<style>
+  :root {
+    --ground: #f7f7f6;
+    --surface: #ffffff;
+    --surface-sunk: #f1f1ef;
+    --ink: #16181a;
+    --ink-soft: #55595e;
+    --ink-faint: #85898f;
+    --rule: #e2e3e0;
+    --rule-strong: #cdcfcb;
+    --accent: #0f766e;
+    --accent-soft: #e6f1ef;
+    --ok: #15803d;
+    --ok-soft: #e8f3ea;
+    --warn: #a16207;
+    --warn-soft: #f7f0e0;
+    --stop: #b02a2a;
+    --stop-soft: #f7e9e8;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #131415;
+      --surface: #1a1c1d;
+      --surface-sunk: #202223;
+      --ink: #eceded;
+      --ink-soft: #a9adb1;
+      --ink-faint: #7b8085;
+      --rule: #2b2e30;
+      --rule-strong: #3d4143;
+      --accent: #4db6a9;
+      --accent-soft: #12312d;
+      --ok: #5cb877;
+      --ok-soft: #16301d;
+      --warn: #d0a34a;
+      --warn-soft: #322715;
+      --stop: #dd7d78;
+      --stop-soft: #34191a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #131415;
+    --surface: #1a1c1d;
+    --surface-sunk: #202223;
+    --ink: #eceded;
+    --ink-soft: #a9adb1;
+    --ink-faint: #7b8085;
+    --rule: #2b2e30;
+    --rule-strong: #3d4143;
+    --accent: #4db6a9;
+    --accent-soft: #12312d;
+    --ok: #5cb877;
+    --ok-soft: #16301d;
+    --warn: #d0a34a;
+    --warn-soft: #322715;
+    --stop: #dd7d78;
+    --stop-soft: #34191a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
+    margin: 0;
+    padding: 0 20px 100px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  .measure { max-width: 68ch; }
+
+  header.masthead {
+    padding: 56px 0 28px;
+    border-bottom: 1px solid var(--rule-strong);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  h1 {
+    font-size: clamp(28px, 4.6vw, 40px);
+    line-height: 1.12; letter-spacing: -.022em; font-weight: 600;
+    margin: 0; text-wrap: balance;
+  }
+  .standfirst { color: var(--ink-soft); font-size: 16.5px; margin: 0; max-width: 62ch; }
+
+  nav.toc {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--ground) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--rule);
+    margin: 0 -20px 40px; padding: 10px 20px;
+    overflow-x: auto;
+  }
+  nav.toc ol {
+    display: flex; gap: 4px; margin: 0 auto; padding: 0; list-style: none;
+    max-width: 860px; font-family: var(--mono); font-size: 11.5px;
+  }
+  nav.toc a {
+    display: block; padding: 5px 9px; border-radius: 5px;
+    color: var(--ink-soft); text-decoration: none; white-space: nowrap;
+  }
+  nav.toc a:hover { background: var(--surface-sunk); color: var(--ink); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+  section { padding-top: 46px; }
+  h2 {
+    font-size: 13px; font-family: var(--mono); font-weight: 500;
+    letter-spacing: .11em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 6px;
+  }
+  h3 {
+    font-size: clamp(20px, 2.6vw, 25px); letter-spacing: -.016em; font-weight: 600;
+    margin: 0 0 16px; text-wrap: balance; line-height: 1.22;
+  }
+  h4 {
+    font-size: 15.5px; font-weight: 600; margin: 30px 0 8px; letter-spacing: -.008em;
+  }
+  p { margin: 0 0 14px; }
+  ul, ol.body { margin: 0 0 14px; padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  strong { font-weight: 600; }
+  code {
+    font-family: var(--mono); font-size: .875em;
+    background: var(--surface-sunk); padding: 1.5px 5px; border-radius: 4px;
+    border: 1px solid var(--rule);
+  }
+
+  .lede {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    padding: 20px 22px; margin: 0 0 8px; border-radius: 3px;
+  }
+  .lede p:last-child { margin-bottom: 0; }
+
+  .scroller { overflow-x: auto; margin: 18px 0 22px; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 520px; }
+  th, td { text-align: left; padding: 9px 13px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-faint); font-weight: 500;
+    background: var(--surface-sunk); position: sticky; top: 0;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num, td .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .chip {
+    display: inline-block; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px;
+    border-radius: 3px; border: 1px solid transparent; white-space: nowrap;
+  }
+  .chip.ok { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 28%, transparent); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 28%, transparent); }
+  .chip.stop { background: var(--stop-soft); color: var(--stop); border-color: color-mix(in srgb, var(--stop) 28%, transparent); }
+  .chip.neutral { background: var(--surface-sunk); color: var(--ink-soft); border-color: var(--rule-strong); }
+
+  /* Seam diagram */
+  .seam { display: grid; gap: 14px; margin: 22px 0 26px; }
+  .seam-shared {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 16px 18px;
+  }
+  .seam-shared h5 { margin: 0 0 4px; font-size: 12px; font-family: var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; }
+  .seam-shared p { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+  .seam-arrow { text-align: center; color: var(--ink-faint); font-family: var(--mono); font-size: 15px; line-height: 1; }
+  .seam-terminals { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 700px) { .seam-terminals { grid-template-columns: repeat(3, 1fr); } }
+  .terminal {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 14px 15px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .terminal.live { border-color: color-mix(in srgb, var(--accent) 45%, var(--rule)); }
+  .terminal .t-stage { font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); }
+  .terminal .t-name { font-weight: 600; font-size: 14.5px; letter-spacing: -.01em; }
+  .terminal .t-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; }
+
+  .stage-block {
+    border: 1px solid var(--rule); border-radius: 4px; background: var(--surface);
+    padding: 20px 22px; margin: 0 0 14px;
+  }
+  .stage-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .stage-num {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em; color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    background: var(--accent-soft); padding: 2px 7px; border-radius: 3px;
+  }
+  .stage-title { font-weight: 600; font-size: 17px; letter-spacing: -.012em; }
+  .stage-meta { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); }
+  .stage-block p:last-child, .stage-block ul:last-child { margin-bottom: 0; }
+
+  details {
+    border: 1px solid var(--rule); border-radius: 4px; background: var(--surface);
+    padding: 0; margin: 0 0 10px;
+  }
+  summary {
+    cursor: pointer; padding: 12px 16px; font-weight: 600; font-size: 14.5px;
+    list-style: none; display: flex; justify-content: space-between; gap: 12px; align-items: center;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; font-family: var(--mono); color: var(--ink-faint); font-weight: 400; }
+  details[open] summary::after { content: "−"; }
+  details[open] summary { border-bottom: 1px solid var(--rule); }
+  .details-body { padding: 14px 16px 16px; }
+  .details-body p:last-child, .details-body ul:last-child { margin-bottom: 0; }
+
+  .callout {
+    border: 1px solid var(--rule); border-left: 3px solid var(--warn);
+    background: var(--surface); border-radius: 3px; padding: 15px 18px; margin: 18px 0;
+  }
+  .callout.stopish { border-left-color: var(--stop); }
+  .callout .c-label {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--ink-faint); display: block; margin-bottom: 5px;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+
+  footer.endnote {
+    margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--rule);
+    font-size: 12.5px; color: var(--ink-faint);
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <span class="kicker">Property Insights · Proposal · 9 Aug 2026</span>
+    <h1>Insurance distribution: the seam, the staged path, and the map</h1>
+    <p class="standfirst">A build plan for turning property-analysis traffic into insurance revenue — starting with what we can ship this week unlicensed, and ending with a structure that captures 16–23× more per policy. Written for critique.</p>
+  </header>
+
+  <nav class="toc" aria-label="Sections">
+    <ol>
+      <li><a href="#thesis">Thesis</a></li>
+      <li><a href="#seam">The seam</a></li>
+      <li><a href="#stages">Staged path</a></li>
+      <li><a href="#geography">Geography</a></li>
+      <li><a href="#economics">Economics</a></li>
+      <li><a href="#gates">Decision gates</a></li>
+      <li><a href="#build">Build now</a></li>
+      <li><a href="#risks">Risks</a></li>
+      <li><a href="#open">Open questions</a></li>
+    </ol>
+  </nav>
+
+  <section id="thesis">
+    <h2>Thesis</h2>
+    <h3>One architecture, three terminal states, unlocked by evidence</h3>
+    <div class="lede measure">
+      <p>Insurance is the highest-value vertical available to this product, and we are currently capped at roughly <strong>$25 per referral</strong> because we hold no licence. A licensed brokerage earns <strong>$414–575 gross on the same landlord policy</strong>. That gap — not the technology — is the whole strategic question.</p>
+      <p>The proposal is to build the funnel <em>once</em>, with a deliberately pluggable final step, so the same intake, routing, and data layer serves all three worlds: a plain affiliate link today, a pre-filled handoff to a licensed partner next, and an internal submission once a brokerage exists. Nothing gets rebuilt; only the terminal changes.</p>
+      <p>Sequencing is deliberately evidence-gated. We have <strong>zero data</strong> that property-analysis traffic converts to insurance intent. Stage 0 costs almost nothing and answers that question before any licensing, entity formation, or partner negotiation is committed.</p>
+    </div>
+  </section>
+
+  <section id="seam">
+    <h2>The seam</h2>
+    <h3>Insurance is a vertical in the registry we already built</h3>
+    <p class="measure">The affiliate registry already solves the hard part of this problem. It resolves a vendor by country, region, audience mode, and surface, with per-vendor state gating — that is precisely the machinery jurisdiction compliance needs. Insurance partners are not a new system; they are registry entries with one added capability.</p>
+
+    <h4>What already exists and carries over unchanged</h4>
+    <ul class="measure">
+      <li><code>country</code> + <code>stateCoverage</code> + <code>stateExclusions</code> — the exact mechanism keeping Kiavi out of its five excluded states becomes the mechanism keeping insurance CTAs out of Washington and Quebec.</li>
+      <li><code>getVendorsForSurface()</code> — journey-mapped vertical priority, so insurance slots into the right position per page type without new routing logic.</li>
+      <li>FTC disclosure, per-link <em>Sponsored</em> labelling, Do-Not-Sell/GPC opt-out handling, and <code>partner_clicks</code> attribution — all inherited.</li>
+    </ul>
+
+    <h4>The one addition: a pluggable terminal</h4>
+    <div class="seam">
+      <div class="seam-shared">
+        <h5>Shared upstream — built once, never rebuilt</h5>
+        <p>Property context (address, value, rent, year built, beds/baths/sqft, type, FEMA hazard) → coverage questions we can't derive → jurisdiction + line routing → eligibility gate.</p>
+      </div>
+      <div class="seam-arrow" aria-hidden="true">↓</div>
+      <div class="seam-terminals">
+        <div class="terminal live">
+          <span class="t-stage">Stage 0–1 · now</span>
+          <span class="t-name">Affiliate link</span>
+          <span class="t-desc">Plain outbound to partner. No profile collected. Flat referral fee. Zero new compliance surface.</span>
+        </div>
+        <div class="terminal">
+          <span class="t-stage">Stage 2 · interim</span>
+          <span class="t-name">Pre-filled handoff</span>
+          <span class="t-desc">Profile deep-links into the partner's licensed quote engine, pre-populated. Partner is broker of record. Better conversion, same fee ceiling.</span>
+        </div>
+        <div class="terminal">
+          <span class="t-stage">Stage 3 · licensed</span>
+          <span class="t-name">Internal submission</span>
+          <span class="t-desc">Same profile submits to our own brokerage. Full commission economics. Upstream untouched.</span>
+        </div>
+      </div>
+    </div>
+
+    <h4>Data model: what we already know vs. what we must ask</h4>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Derived from our data (zero user effort)</th><th>Must be asked (~6 questions)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Address, city, region, county, postal/ZIP<br>Property type, year built, beds, baths, sqft<br>Estimated value, estimated rent<br>FEMA hazard scores (flood, wildfire, wind) — US</td>
+            <td>Occupancy: owner / long-term rental / short-term rental / vacant / strata corp<br>Unit count<br>Claims in last 5 years<br>Current coverage expiry<br>Contact preference<br>Consent to be contacted</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="measure">This is the actual moat. Every competitor funnel — The Zebra, EverQuote, SmartFinancial — opens by asking for the address and property details. We already hold most of a submission before the user types a character. It is the Matic pattern: eliminate data entry, and quote turnaround collapses from days to minutes.</p>
+
+    <h4>Compliance expressed as code, not as a policy document</h4>
+    <p class="measure">The single highest-leverage legal finding is that solicitation is defined by <strong>behaviour, not payment</strong> in most statutes. A site can be exposed even when nobody pays it. So the constraint belongs in the codebase where it cannot drift:</p>
+    <ul class="measure">
+      <li>A prohibited-terms constant (<em>best, top-rated, recommended, cheapest, compare</em>) with a unit test that <strong>fails the build</strong> if insurance CTA copy contains them. This is what structurally prevents the Washington failure mode.</li>
+      <li>Line-specific exclusion lists — BC strata is not a note in a doc, it is an entry that removes the CTA.</li>
+      <li>Referral compensation capped in config at the safe-envelope figure, never a percentage.</li>
+    </ul>
+    <p class="measure">Framing follows the same rule: <em>"Build your property's coverage profile → get matched with a licensed broker"</em>, never <em>"compare quotes."</em> Retrofitting compliant copy onto a comparison product later is painful; starting compliant costs nothing.</p>
+  </section>
+
+  <section id="stages">
+    <h2>Staged path</h2>
+    <h3>Four stages, each gated on the previous one paying for itself</h3>
+
+    <div class="stage-block">
+      <div class="stage-head">
+        <span class="stage-num">Stage 0</span>
+        <span class="stage-title">Content modules</span>
+        <span class="stage-meta">this week · no partner needed · no PII</span>
+      </div>
+      <p>County landlord-insurance modules across the 3,144 county pages, using rent, value and hazard data we already hold, plus a data-backed blog post on landlord insurance cost by county. Monetised through existing affiliate CTAs.</p>
+      <p><strong>Why first:</strong> incumbents publish state-level cost tables and stop there — county grain is unclaimed. Zero new compliance surface, no partner agreement, no personal data collected. It produces the only thing that matters right now: <em>evidence that this traffic has insurance intent.</em></p>
+    </div>
+
+    <div class="stage-block">
+      <div class="stage-head">
+        <span class="stage-num">Stage 1</span>
+        <span class="stage-title">Partner slate + jurisdiction gating</span>
+        <span class="stage-meta">weeks · registry work only</span>
+      </div>
+      <p>Add insurance partners as registry vendors with jurisdiction gates live: Square One (already a partner, Canadian landlord), Steadily (Ambassador tier already held, US landlord), Obie (apply — best precedent for embedding with unlicensed platforms), APOLLO (Canadian embedded, 1,000+ integrations with unlicensed property managers). Encode the exclusion lists. Ship the prohibited-terms test.</p>
+    </div>
+
+    <div class="stage-block">
+      <div class="stage-head">
+        <span class="stage-num">Stage 2</span>
+        <span class="stage-title">Coverage profile + pre-filled handoff</span>
+        <span class="stage-meta">gated on Stage 0 evidence · needs privacy-policy update</span>
+      </div>
+      <p>The intake flow: confirm property (pre-filled), six questions, route by jurisdiction and line, hand off pre-populated. Profiles persist in Postgres.</p>
+      <p><strong>The stored profiles are the strategic asset</strong> — a warm pipeline to bring to a broker, and hard conversion proof for negotiating equity rather than accepting a per-lead fee. Requires: a settled compensation agreement, a named routing target per jurisdiction, and a privacy-policy amendment covering lead data (we just had these pages counsel-prepped, so this is a deliberate, reviewed change).</p>
+    </div>
+
+    <div class="stage-block">
+      <div class="stage-head">
+        <span class="stage-num">Stage 3</span>
+        <span class="stage-title">Licensed structure</span>
+        <span class="stage-meta">gated on Stage 2 volume · counsel required</span>
+      </div>
+      <p>Canadian entity first: partner serves as Level 3 nominee, Matt holds equity, dividend mechanics disciplined from day one. Then US, which requires a US-resident licensed producer as anchor — structurally mandatory, not optional. Carrier access via one or two MGA/wholesale relationships rather than direct appointments.</p>
+      <p>The terminal step swaps from <em>handoff</em> to <em>internal submission</em>. Everything upstream is already built and proven.</p>
+    </div>
+  </section>
+
+  <section id="geography">
+    <h2>Geography</h2>
+    <h3>Canada first, because the licensing maths is survivable there</h3>
+    <p class="measure">Canada is a <strong>portfolio problem</strong>: one licensed individual can cover multiple provinces through the CISRO/CCIR Reliance Model, where the host province relies on your home-province standard instead of re-testing you. The US is a <strong>headcount problem exactly once</strong> — and the person it requires cannot be Matt.</p>
+
+    <h4>Provinces, in build order</h4>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Province</th><th>Status</th><th>Why this position</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>BC</strong></td><td><span class="chip ok">First</span></td><td>Home province, easiest licensing path, existing audience from Victoria/Vancouver listings. <strong>Strata excluded</strong> — all other lines open.</td></tr>
+          <tr><td><strong>Alberta</strong></td><td><span class="chip ok">Second</span></td><td>Direct equivalency mapping from BC General Level 2 → AB General Level 2, so no re-examination. Calgary and Edmonton already in our city data. No line-specific ban found.</td></tr>
+          <tr><td><strong>Ontario</strong></td><td><span class="chip warn">Third — highest volume</span></td><td>Largest market and Toronto is in our data. Bill 2 "As of Right" (June 2025) lets an out-of-province agent start on application receipt, deemed certified 6 months. But RIBO demands full compensation disclosure and the unlicensed-referral rule is unconfirmed.</td></tr>
+          <tr><td><strong>Manitoba</strong></td><td><span class="chip neutral">Opportunistic</span></td><td>Cleanest confirmed rule in Canada: referral fee permitted if "in no way tied to the placing of a policy." Small market — take it if it's free, don't prioritise.</td></tr>
+          <tr><td><strong>Nova Scotia</strong></td><td><span class="chip warn">Hold</span></td><td>Referral provision could not be confirmed against primary text. Needs the legal-database pass before inclusion.</td></tr>
+          <tr><td><strong>New Brunswick</strong></td><td><span class="chip stop">Exclude at launch</span></td><td>2023 regime states licensing applies "regardless of whether the business is conducted in person, in writing, over the telephone or <em>online</em>" — the closest Canadian analogue to Washington's posture.</td></tr>
+          <tr><td><strong>Quebec</strong></td><td><span class="chip stop">Exclude</span></td><td>Civil-law AMF regime; their distribution-without-representative framework does not map onto referral fees at all. Bill 96 French-language requirements are an independent compliance layer.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>United States</h4>
+    <p class="measure">The funnel reaches all 50 states through the county pages regardless of priority, so for the US the <em>exclusion list matters more than a ranking</em>. Priority applies to partner coverage and eventual licensing, not to traffic.</p>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Jurisdiction</th><th>Posture</th><th>Reason</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Washington</strong></td><td><span class="chip stop">Exclude</span></td><td>The only jurisdiction found with documented <strong>double-sided</strong> enforcement — against the comparison site <em>and</em> the producer who accepted its referrals. Advisory TAA 2021-01 holds that content "urging" a consumer toward an insurer is licensable activity regardless of compensation. Separate $100 / 12-month cap.</td></tr>
+          <tr><td><strong>California</strong></td><td><span class="chip warn">Include, strictest copy</span></td><td>Referral compensation is permitted, but prohibited referral compensation is a <strong>misdemeanour</strong> enforceable by any district attorney at $1,000 per violation. Also rejected the NAIC anti-rebating modernisation, so it retains the stricter posture. Do not exclude — the market is too large — but treat copy discipline as non-negotiable.</td></tr>
+          <tr><td><strong>Tennessee / North Carolina</strong></td><td><span class="chip ok">Include, capped</span></td><td>Hard dollar caps of $25 and $50 respectively. Our safe envelope already sits under both.</td></tr>
+          <tr><td><strong>Texas, Florida, Arizona</strong></td><td><span class="chip ok">Content priority</span></td><td>Austin, Miami and Phoenix are already in our discover data, and all three are large rental markets. Best first targets for county landlord modules.</td></tr>
+          <tr><td><strong>Remaining states</strong></td><td><span class="chip neutral">Default rule</span></td><td>NAIC Producer Licensing Model Act §13(D): payment to a person who does not sell, solicit or negotiate is permitted, subject to non-contingency, no product discussion, and anti-rebating compliance. Not verified state-by-state — pattern-level inference.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout stopish">
+      <span class="c-label">The one structural wall</span>
+      <p><strong>Matt cannot personally hold a US resident producer licence.</strong> Every state's home-state definition requires actual US residence or principal place of business. The Designated Home State programmes that let someone borrow Florida or Texas as a base are adjuster-only and still require citizenship or work authorisation; Georgia and Alabama require citizenship affidavits and thirteen-plus more require proof of work authorisation. A US-resident licensed partner is therefore a <em>structural prerequisite</em> for Stage 3 in the US, not a convenience. Canada has no equivalent wall.</p>
+    </div>
+  </section>
+
+  <section id="economics">
+    <h2>Economics</h2>
+    <h3>The gap between referring and being licensed is 16–23×</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Policy</th><th>Typical premium</th><th>Gross commission (licensed)</th><th>Producer take</th><th>Unlicensed referral</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Landlord / rental</td><td class="num">$2,300/yr</td><td class="num">$414–575</td><td class="num">$145–288</td><td class="num">$25</td></tr>
+          <tr><td>Homeowner</td><td class="num">$1,800/yr</td><td class="num">$324–450</td><td class="num">$113–225</td><td class="num">$25</td></tr>
+          <tr><td>Small strata building</td><td class="num">$40,000/yr</td><td class="num">$7,200–10,000</td><td class="num">$2,520–5,000</td><td class="num">banned in BC</td></tr>
+          <tr><td>Large strata (hard market)</td><td class="num">$150,000/yr</td><td class="num">$27,000–37,500</td><td class="num">$9,450–18,750</td><td class="num">banned in BC</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="measure">Rates are drawn from primary carrier disclosures — Intact's own broker page states commissions run "5% to the high 20's"; Definity publishes Personal Property at 17.5–20%. The earlier "10–20% norm, strata ~9%" figure in our first research pass was wrong: it mixed US commercial sources with one brokerage's individually halved strata rate.</p>
+
+    <h4>Licensing pays for itself at trivial volume</h4>
+    <p class="measure">First-year licensed setup runs roughly <span class="num">$9,000–10,500</span> — courses, exams and fees (<span class="num">~$3,600</span>), errors &amp; omissions cover, entity formation and legal, annual licence fees. The delta per bound landlord policy is about <span class="num">$425</span>.</p>
+    <div class="callout">
+      <span class="c-label">Breakeven</span>
+      <p><strong>Roughly 22–25 bound policies in year one.</strong> At a 10% referral-to-bind conversion that implies about 250 referrals; at 5%, about 500. The licensing decision is therefore not gated on cost — it is gated on whether the funnel can produce a few hundred qualified referrals a year. That is the single number Stage 0 exists to estimate.</p>
+    </div>
+
+    <div class="callout">
+      <span class="c-label">Strata, reframed</span>
+      <p>BC banned strata referral fees <em>because</em> $7k–37k per building was flowing to unlicensed property managers. The ban is evidence of the size of the prize. It prohibits paying <strong>unlicensed</strong> referrers — a licensed broker placing strata earns that commission normally. Strata is simultaneously the one niche with a genuine SERP gap in Canada (no comparison experience exists) and the highest-value line available. It converts from "closed" to "the reason to get licensed" the moment a licence exists — which argues for building strata <em>content</em> now as a licensing-optioned asset that earns nothing today and a great deal later.</p>
+    </div>
+  </section>
+
+  <section id="gates">
+    <h2>Decision gates</h2>
+    <h3>What evidence unlocks the next commitment</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Gate</th><th>Question</th><th>Metric</th><th>If it fails</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>0 → 1</strong></td>
+            <td>Does property traffic have insurance intent?</td>
+            <td>Insurance CTA clicks per 1,000 county-page sessions, measured against our existing affiliate CTR baseline</td>
+            <td>Stop. Keep the content as SEO surface, drop the vertical.</td>
+          </tr>
+          <tr>
+            <td><strong>1 → 2</strong></td>
+            <td>Do partners convert our clicks?</td>
+            <td>Partner-reported conversion, or completed-application rate where visible</td>
+            <td>Stay on flat affiliate links; the intake build isn't justified.</td>
+          </tr>
+          <tr>
+            <td><strong>2 → 3</strong></td>
+            <td>Is referral volume worth licensing?</td>
+            <td>Qualified referrals per quarter, projected against the ~250-referral breakeven</td>
+            <td>Remain an unlicensed referrer indefinitely. Still profitable, just capped.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="measure">Every gate has a genuine "stop" branch. That is deliberate — the plan should be able to fail cheaply at any stage without stranded investment, which is exactly what the pluggable-terminal architecture buys.</p>
+  </section>
+
+  <section id="build">
+    <h2>Build now</h2>
+    <h3>Quick wins available this week, in dependency order</h3>
+    <ol class="body measure">
+      <li><strong>County landlord-insurance modules</strong> on the 3,144 county pages — rent, value and hazard data we hold, existing affiliate CTAs. No new compliance surface.</li>
+      <li><strong>Data-backed blog post:</strong> landlord insurance cost by county. Same hub-and-spoke pattern that the rent and tax clusters already use.</li>
+      <li><strong>Encode the exclusion lists</strong> — Washington, Quebec, New Brunswick, BC-strata — as registry gates now, before any insurance CTA ships.</li>
+      <li><strong>Prohibited-terms test</strong> that fails the build on solicitation language in insurance copy.</li>
+      <li><strong>BC strata content hub</strong> — the one confirmed SERP gap in Canada. Earns nothing today; becomes the highest-value asset we own the day a licence exists.</li>
+      <li><strong>Partner applications:</strong> escalate Steadily from Ambassador to Marketplace/PropTech tier, apply to Obie and APOLLO, and confirm whether Square One will extend to landlord/STR.</li>
+    </ol>
+    <p class="measure">Items 1–5 require no partner agreement, no new legal work, and no personal data. Item 6 is business development that runs in parallel and gates Stage 2.</p>
+  </section>
+
+  <section id="risks">
+    <h2>Risks</h2>
+    <h3>What could make this the wrong bet</h3>
+    <details>
+      <summary>The funnel simply doesn't convert</summary>
+      <div class="details-body"><p>Most likely failure, and the cheapest to discover. Someone researching county rent statistics may be nowhere near an insurance decision. Stage 0 costs a content module and answers it. Mitigation: the module is genuinely useful SEO content regardless of whether the CTA converts, so the downside is a partial write-off, not a total one.</p></div>
+    </details>
+    <details>
+      <summary>Partner terms cap us below the modelled economics</summary>
+      <div class="details-body"><p>Flat referral fees are legally capped, and the deeper "embedded" tiers buy conversion rather than a higher rate — the research was explicit that going from a link to a pre-filled handoff improves UX and partner relationship depth, <em>not</em> the compensation ceiling. If partners won't move past nominal fees, Stage 2 is worth building only as a bridge to Stage 3.</p></div>
+    </details>
+    <details>
+      <summary>The Canadian ownership question resolves badly</summary>
+      <div class="details-body"><p>The dividends-versus-commission distinction rests on a New York regulatory opinion; <strong>no BC equivalent was found</strong>. If BC counsel says an unlicensed owner cannot take distributions from a brokerage whose business originates from their own website, Stage 3's economics change materially and the fallback is personal licensing under the partner's sponsorship — slower and capped at Matt's own production.</p></div>
+    </details>
+    <details>
+      <summary>Regulatory posture tightens around lead generation</summary>
+      <div class="details-body"><p>Washington's advisory and New Brunswick's channel-agnostic language both point the same direction. If more jurisdictions adopt behaviour-based tests, the unlicensed envelope narrows. This argues for treating Stage 0–2 as explicitly transitional rather than a destination, and for the copy discipline being structural rather than a style preference.</p></div>
+    </details>
+    <details>
+      <summary>Attention cost to the core product</summary>
+      <div class="details-body"><p>This is a second business grafted onto a property-analysis tool, with its own regulator, its own partners, and its own compliance burden. The staged design exists partly to keep that cost proportional to demonstrated return — but it is a real risk that insurance work crowds out the assessment product that generates the traffic in the first place.</p></div>
+    </details>
+  </section>
+
+  <section id="open">
+    <h2>Open questions</h2>
+    <h3>What needs counsel before Stage 3, and what needs deciding now</h3>
+    <h4>For the regulatory lawyer</h4>
+    <ul class="measure">
+      <li>Is there a BC ruling equivalent to NY DFS OGC 02-11-27 distinguishing dividends from commission-sharing? <em>Highest-value Canadian question.</em></li>
+      <li>Could a genuine US entity with US-based officers establish home-state status even with no US-resident owner? <em>Highest-value US question — if a door exists here the whole US sequence changes.</em></li>
+      <li>Does BC apply controlled-business scrutiny where nearly all business originates from one shareholder's website?</li>
+      <li>Does Bill 14 reach <em>all</em> platform compensation touching strata, including flat service fees?</li>
+      <li>Alberta, Ontario, Nova Scotia and Quebec referral provisions — primary-source pass required.</li>
+      <li>Does converting US traffic into referrals trigger entity licensing for the platform state-by-state?</li>
+    </ul>
+    <h4>For Matt, before I build</h4>
+    <ul class="measure">
+      <li>Confirm Stage 0 scope — county modules and blog post only, or include the BC strata hub in the first pass?</li>
+      <li>Is the licensed path genuinely wanted, or is this a monetisation experiment that should stay unlicensed regardless of outcome? The answer changes how much is invested in the profile/persistence layer.</li>
+      <li>Who is the Canadian partner broker, and are they willing to be nominee of a new entity, or only to accept referrals into their existing brokerage?</li>
+      <li>Is there any existing US-resident relationship that could serve as the eventual anchor, or is that a cold search?</li>
+    </ul>
+  </section>
+
+  <footer class="endnote">
+    <p>Sources and full research in <code>docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md</code>. Commission figures from primary carrier disclosures (Intact, Definity, NFP regulated disclosure). Jurisdiction findings from regulator primary sources where reachable; Alberta, Ontario, Nova Scotia and Quebec remain unconfirmed against primary statutory text. Not legal advice.</p>
+  </footer>
+</div>
