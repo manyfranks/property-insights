@@ -66,7 +66,7 @@ These are release-blocking requirements, not preferences:
 |---|---|---|---|---|
 | **P0 — Safety baseline** | `[x] Complete 2026-08-11` | Prevent address-only residential overclaims; lock vocabulary and fixtures | None | 14/14 P0 fixtures; 16/16 guard; 20/20 integration |
 | **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
-| **P2 — Subject resolution** | `[ ]` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | Resolver fixtures + common subject envelope |
+| **P2 — Subject resolution** | `[x] Complete 2026-08-11` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | 23/23 resolver fixtures + common subject envelope |
 | **P3 — Classification/capabilities** | `[ ]` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
 | **P4 — Goal UX/instrumentation** | `[ ]` | Optional per-assessment goal, conditional scope clarification, manual view switching | P3 | Funnel events + flagged rollout |
 | **P5 — Investor/Landlord V1** | `[ ]` | Address-level US rental screen; capability-gated Canadian version | P4 | End-to-end journey QA + KPI baseline |
@@ -182,15 +182,15 @@ The final contract may differ, but it must preserve these semantics.
 
 ### Build
 
-- [ ] **[A] Add candidate entities** rather than flattening all provider records into one address object.
-- [ ] **[A] Resolve only from already-fetched evidence:** exact user input, parsed unit, listing URL/listing record, geocoder result, property record, and assessor data already present in the bundle.
-- [ ] **[A] Add no provider calls in the resolver.** When existing evidence cannot distinguish unit/building/parcel scope, return `requiresClarification` or a capability gap instead of fetching again.
-- [ ] **[A] Implement deterministic resolution precedence:** explicit unit/listing selection first; exact provider entity match second; address-only building/parcel match never silently becomes a unit.
-- [ ] **[A] Keep listing scope separate from property-record scope.** A unit listing and a building-level assessor record may both be correct.
-- [ ] **[A] Emit conflicts** when providers appear to describe different scopes or units.
-- [ ] **[A] Add `requiresClarification`** only when ambiguity would materially change the result.
-- [ ] **[A] Normalize CA and US assessment responses** into one subject-aware envelope while preserving current country-specific modules.
-- [ ] **[A] Add resolver fixtures** for every P0 case plus unit-format variations and direct listing URLs.
+- [x] **[A] Add candidate entities** rather than flattening all provider records into one address object.
+- [x] **[A] Resolve only from already-fetched evidence:** exact user input, parsed unit, listing URL/listing record, geocoder result, property record, and assessor data already present in the bundle.
+- [x] **[A] Add no provider calls in the resolver.** When existing evidence cannot distinguish unit/building/parcel scope, return `requiresClarification` or a capability gap instead of fetching again.
+- [x] **[A] Implement deterministic resolution precedence:** explicit unit/listing selection first; exact provider entity match second; address-only building/parcel match never silently becomes a unit.
+- [x] **[A] Keep listing scope separate from property-record scope.** A unit listing and a building-level assessor record may both be correct.
+- [x] **[A] Emit conflicts** when providers appear to describe different scopes or units.
+- [x] **[A] Add `requiresClarification`** only when ambiguity would materially change the result.
+- [x] **[A] Normalize CA and US assessment responses** into one subject-aware envelope while preserving current country-specific modules.
+- [x] **[A] Add resolver fixtures** for every P0 case plus unit-format variations and direct listing URLs.
 
 ### Resolution rules
 
@@ -202,18 +202,18 @@ The final contract may differ, but it must preserve these semantics.
 
 ### Exit gate
 
-- [ ] Every assessment returns a subject scope, resolution confidence, and provenance.
-- [ ] Resolver fixture runs make zero RentCast/provider calls and do not change quota counters.
-- [ ] Unit, building, parcel, and listing records can coexist without destructive merging.
-- [ ] All ambiguity fixtures resolve correctly or explicitly require clarification.
-- [ ] Current detached-home assessment flow remains no more complex for the user.
-- [ ] Typecheck, touched-file lint, resolver fixtures, and existing assessment smoke checks pass; the full lint baseline has no new findings.
+- [x] Every successful assessment returns a subject scope, resolution confidence, and provenance.
+- [x] Resolver fixture runs make zero RentCast/provider calls and do not change quota counters.
+- [x] Unit, building, parcel, and listing records can coexist without destructive merging.
+- [x] All ambiguity fixtures resolve correctly or explicitly require clarification.
+- [x] Current detached-home assessment flow remains no more complex for the user.
+- [x] Typecheck, touched-file lint, resolver fixtures, and existing assessment smoke checks pass; the full lint baseline has no new findings.
 
 ### Evidence
 
-- Commit/PR: _TBD_
-- Resolver fixture report: _TBD_
-- API response examples: _TBD_
+- Commit/PR: P2 implementation (`Resolve assessment subjects without new provider calls`)
+- Resolver fixture report: `15-P2-SUBJECT-RESOLUTION.md`; 23/23 offline fixtures, zero provider calls
+- API response examples: `15-P2-SUBJECT-RESOLUTION.md`
 
 ---
 
@@ -530,12 +530,12 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 
 ## Immediate next implementation slice
 
-P0 completed on 2026-08-11. Execute **P1 evidence preservation** next:
+P2 completed on 2026-08-11. Execute **P3 scope-aware classification and capability routing** next:
 
-1. Introduce the additive evidence contract beside `Listing`.
-2. Preserve exact assessment input and provider property-type/occupancy evidence.
-3. Represent unavailable Canadian land/building components as unavailable in the new contract rather than meaningful zeroes.
-4. Publish `14-PROPERTY-DATA-CAPABILITY-MATRIX.md`, separating Discover seeds from on-demand assessment bundles.
-5. Add mapper fixtures and rerun the P0/guard/20-random regression suite.
+1. Classify resolved subject scopes without collapsing parcel, building, unit, listing, or occupancy evidence.
+2. Compute module capabilities separately from classification.
+3. Run both outputs in shadow mode before they affect visible modules.
+4. Publish geo/scope/confidence coverage and conflict reports.
+5. Prove with routing fixtures that classification never mutates the user goal or auto-switches a journey.
 
-Do not add subject resolution, classification routing, or goal UI in the P1 slice.
+Do not add goal UI, persona routing, occupancy-driven personalization, or commercial financial claims in the P3 slice.

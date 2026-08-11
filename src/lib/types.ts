@@ -5,6 +5,7 @@ import type { UsAdvantageBundle } from "./pipeline/us-advantage";
 import type { UsCompSupport } from "./pipeline/us-assess";
 import type { NarrativeLintResult } from "./pipeline/narrative-lint";
 import type { PropertyEvidenceSnapshot } from "./property-intelligence/evidence";
+import type { AssessmentSubject } from "./property-intelligence/subject";
 
 export interface PrecomputedOffer {
   anchor: number;
@@ -89,6 +90,9 @@ export interface Listing {
   // fields so existing buyer surfaces remain backward compatible while raw
   // provider evidence keeps its source, scope, freshness, and availability.
   propertyEvidence?: PropertyEvidenceSnapshot;
+  // P2 subject-resolution envelope. Additive and shadow-only until the P4
+  // goal/scope UI explicitly consumes it.
+  assessmentSubject?: AssessmentSubject;
 }
 
 // ---------------------------------------------------------------------------

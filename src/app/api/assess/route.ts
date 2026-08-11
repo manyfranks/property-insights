@@ -5,14 +5,15 @@
  *
  * Canadian addresses: finds the listing on Zoocasa, enriches it (scoring +
  * offer model + LLM), saves to KV, and emails the result to the user. The
- * response is `{ ok, slug, address, city, emailSent }` — the frontend
+ * response is `{ ok, slug, address, city, assessmentSubject, emailSent }` — the frontend
  * redirects to /property/[slug] to render the full analysis.
  *
  * US addresses: RentCast (src/lib/rentcast.ts) plays Zoocasa's role — see
  * handleUSAssessment(). Rendered inline by the caller (no slug, no
  * redirect; there's no KV-persisted listing to send a /property/[slug] page
  * to). Three response shapes, all `{ ok, country: "US", address, city,
- * state, countyName, countyFips, assessment, marketPanel, ... }` plus:
+ * state, countyName, countyFips, assessment, assessmentSubject,
+ * marketPanel, ... }` plus:
  *   - Listed (RentCast has an active listing): `offerAvailable: true,
  *     listing, score, signals, offer, comparables`, plus the US Advantage
  *     layer (src/lib/pipeline/us-advantage.ts — signals with no CA
@@ -27,6 +28,10 @@
  *     propertyDataUnavailableReason` — the original county-median-only
  *     presentation, plus a machine-readable reason for the degradation (no
  *     RentCast record means no basis for the US Advantage layer either).
+ *
+ * `assessmentSubject` is the additive P2 shadow envelope. It is computed
+ * entirely from evidence already fetched for the assessment, never changes
+ * the selected journey, and does not trigger provider calls.
  *
  * Auth required (Clerk).
  * maxDuration: 60s (assessment lookup + LLM call).
@@ -61,11 +66,18 @@ import { scoreV2 } from "@/lib/scoring";
 import { offerModel, offerModelLanguage } from "@/lib/offer-model";
 import { decideUsAssessmentDataPath } from "@/lib/property-intelligence/p0-fallback";
 import {
+  extractUnitFromAddress,
+  resolveAssessmentSubject,
+  type AssessmentSubject,
+} from "@/lib/property-intelligence/subject";
+import {
   addAssessmentEvidence,
   addRentCastEvidence,
   createPropertyEvidenceSnapshot,
   mergePropertyEvidence,
 } from "@/lib/property-intelligence/evidence";
+import type { USPropertyBundle } from "@/lib/rentcast";
+import type { Assessment } from "@/lib/types";
 
 const RATE_LIMIT_RESPONSE = (resetMs: number) =>
   NextResponse.json(
@@ -209,6 +221,56 @@ function parseAddress(raw: string): {
   const country: "CA" | "US" = /^[A-Z]{2}$/.test(region) ? "US" : "CA";
 
   return { street, city, region, country, postalCode };
+}
+
+function buildUsAssessmentSubject(args: {
+  rawInput: string;
+  normalizedAddress: string;
+  selectedPlaceId?: string;
+  bundle: USPropertyBundle | null;
+  assessment: Assessment | null;
+}): AssessmentSubject {
+  const listing = args.bundle?.activeListing;
+  const record = args.bundle?.record;
+  const listingAddress =
+    listing?.formattedAddress || listing?.addressLine1 || args.bundle?.meta.canonicalAddress || null;
+  const recordAddress =
+    record?.formattedAddress || record?.addressLine1 || args.bundle?.meta.canonicalAddress || null;
+  const listingUnit = listingAddress ? extractUnitFromAddress(listingAddress).unit : null;
+  const recordUnit = recordAddress ? extractUnitFromAddress(recordAddress).unit : null;
+  const hasParcelAssessment =
+    !!args.assessment?.found &&
+    args.assessment.source !== "area_median" &&
+    args.assessment.source !== "avm";
+
+  return resolveAssessmentSubject({
+    rawInput: args.rawInput,
+    normalizedAddress: args.bundle?.meta.canonicalAddress || args.normalizedAddress,
+    parsedUnit: extractUnitFromAddress(args.rawInput).unit,
+    selectedPlaceId: args.selectedPlaceId,
+    listing: listing && listingAddress
+      ? {
+          address: listingAddress,
+          unit: listingUnit,
+          source: "rentcast_listing",
+          sourceRecordId: listing.mlsNumber,
+        }
+      : null,
+    propertyRecord: record && recordAddress
+      ? {
+          address: recordAddress,
+          unit: recordUnit,
+          propertyType: record.propertyType,
+        }
+      : null,
+    assessment: hasParcelAssessment
+      ? {
+          found: true,
+          sourceRecordId: args.assessment!.assessmentYear,
+          address: recordAddress || args.bundle?.meta.canonicalAddress || args.normalizedAddress,
+        }
+      : null,
+  });
 }
 
 /**
@@ -369,6 +431,7 @@ async function handleUSAssessment({
           surface: "assess_on_demand",
           rawInput,
           normalizedAddress: geo.matchedAddress,
+          parsedUnit: extractUnitFromAddress(rawInput).unit,
           selectedPlaceId,
         }),
         {
@@ -387,6 +450,13 @@ async function handleUSAssessment({
       assessment,
       geo.stateUsps
     );
+    const assessmentSubject = buildUsAssessmentSubject({
+      rawInput,
+      normalizedAddress: geo.matchedAddress,
+      selectedPlaceId,
+      bundle,
+      assessment,
+    });
     log(
       "us data done (fallback)",
       `reason=${propertyDataUnavailableReason} assessment_found=${assessment?.found ?? false} panel=${marketPanel ? "yes" : "no"}`
@@ -410,6 +480,7 @@ async function handleUSAssessment({
       countyName: geo.countyName,
       countyFips,
       assessment,
+      assessmentSubject,
       propertyEvidence,
       marketPanel,
       offerAvailable: false,
@@ -434,6 +505,7 @@ async function handleUSAssessment({
       surface: "assess_on_demand",
       rawInput,
       normalizedAddress: geo.matchedAddress,
+      parsedUnit: extractUnitFromAddress(rawInput).unit,
       selectedPlaceId,
       recordQueried: true,
       listingQueried: true,
@@ -446,6 +518,14 @@ async function handleUSAssessment({
         geo.stateUsps
       ),
     };
+    const assessmentSubject = buildUsAssessmentSubject({
+      rawInput,
+      normalizedAddress: geo.matchedAddress,
+      selectedPlaceId,
+      bundle,
+      assessment,
+    });
+    listing.assessmentSubject = assessmentSubject;
     const baseScore = scoreV2(listing);
     const comparables = buildUsCompSupport(bundle.avm, parseInt(listing.sqft) || 0);
 
@@ -604,6 +684,7 @@ async function handleUSAssessment({
       countyName: geo.countyName,
       countyFips,
       assessment,
+      assessmentSubject,
       anchorDecision: anchorDecision ?? null,
       marketPanel,
       offerAvailable: true as const,
@@ -638,6 +719,7 @@ async function handleUSAssessment({
         surface: "assess_on_demand",
         rawInput,
         normalizedAddress: geo.matchedAddress,
+        parsedUnit: extractUnitFromAddress(rawInput).unit,
         selectedPlaceId,
       }),
       {
@@ -651,6 +733,13 @@ async function handleUSAssessment({
     assessment,
     geo.stateUsps
   );
+  const assessmentSubject = buildUsAssessmentSubject({
+    rawInput,
+    normalizedAddress: geo.matchedAddress,
+    selectedPlaceId,
+    bundle,
+    assessment,
+  });
   const advantageAssessmentValue =
     assessment?.source === "government"
       ? assessment.totalValue
@@ -686,6 +775,7 @@ async function handleUSAssessment({
     countyName: geo.countyName,
     countyFips,
     assessment,
+    assessmentSubject,
     propertyEvidence,
     avm: bundle.avm
       ? { value: bundle.avm.value, rangeLow: bundle.avm.rangeLow, rangeHigh: bundle.avm.rangeHigh }
@@ -866,6 +956,31 @@ export async function POST(req: Request) {
   const enriched = await enrichListing(listing, { forceLlm: true, soldPool });
   log("enrich done", `tier=${enriched.preTier} score=${enriched.preScore} offer=${enriched.preOffer?.final_offer}`);
 
+  const assessmentSubject = resolveAssessmentSubject({
+    rawInput: submittedAddress,
+    normalizedAddress: enriched.address,
+    parsedUnit: enriched.unit,
+    directListingUrl: isZoocasaUrl ? rawAddress : null,
+    selectedPlaceId,
+    listing: {
+      address: enriched.address,
+      unit: enriched.unit,
+      source: "zoocasa_listing",
+      sourceRecordId: enriched.mlsNumber,
+    },
+    assessment:
+      enriched.preAssessment?.found &&
+      enriched.preAssessment.source !== "area_median" &&
+      enriched.preAssessment.source !== "avm"
+        ? {
+            found: true,
+            sourceRecordId: enriched.preAssessment.assessmentYear,
+            address: enriched.address,
+          }
+        : null,
+  });
+  enriched.assessmentSubject = assessmentSubject;
+
   // Tag source and enrichment time
   enriched.source = "user";
   enriched.enrichedAt = new Date().toISOString();
@@ -918,6 +1033,7 @@ export async function POST(req: Request) {
     slug,
     address: enriched.address,
     city: enriched.city,
+    assessmentSubject,
     emailSent,
   });
 }
