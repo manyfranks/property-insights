@@ -1,9 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, SignInButton } from "@clerk/nextjs";
 import UsAssessmentResult, { UsAssessResult } from "@/components/us-assessment-result";
+import {
+  AssessmentGoalPreflight,
+  AssessmentJourneyPanel,
+  AssessmentSubjectClarification,
+} from "@/components/assessment-journey";
+import type { AssessmentGoal } from "@/lib/property-intelligence/journey";
+import type { AssessmentSubject } from "@/lib/property-intelligence/subject";
 
 interface Step {
   label: string;
@@ -20,6 +27,12 @@ const STEPS: Step[] = [
 
 type StepStatus = "pending" | "active" | "complete";
 type ErrorKind = "parse" | "not-found" | "rate-limit" | "transient" | "network";
+
+interface CanadaAssessmentResult {
+  slug: string;
+  country?: "CA";
+  assessmentSubject?: AssessmentSubject;
+}
 
 function HouseIconCircle() {
   return (
@@ -41,7 +54,19 @@ function displayAddress(raw: string): string {
   return raw;
 }
 
-export default function AssessmentProgress({ address, placeId }: { address: string; placeId?: string }) {
+export default function AssessmentProgress({
+  address,
+  placeId,
+  journeyEnabled = false,
+  journeyPreview = false,
+  initialGoal = null,
+}: {
+  address: string;
+  placeId?: string;
+  journeyEnabled?: boolean;
+  journeyPreview?: boolean;
+  initialGoal?: AssessmentGoal | null;
+}) {
   const router = useRouter();
   const { isSignedIn, isLoaded } = useUser();
   const [stepStatuses, setStepStatuses] = useState<StepStatus[]>(
@@ -51,31 +76,45 @@ export default function AssessmentProgress({ address, placeId }: { address: stri
   const [apiDone, setApiDone] = useState(false);
   const [slug, setSlug] = useState("");
   const [retryCount, setRetryCount] = useState(0);
+  const [assessmentStarted, setAssessmentStarted] = useState(!journeyEnabled);
+  const [selectedGoal, setSelectedGoal] = useState<AssessmentGoal | null>(initialGoal);
+  const selectedGoalRef = useRef<AssessmentGoal | null>(initialGoal);
+  const [confirmedSubject, setConfirmedSubject] = useState<AssessmentSubject | null>(null);
+  const [pendingCanada, setPendingCanada] = useState<CanadaAssessmentResult | null>(null);
   // US addresses render inline (county assessment + market panel) instead
   // of redirecting to a /property/[slug] page — there's no Listing to
   // persist for a bare county-level lookup. See UsAssessmentResult.
   const [usResult, setUsResult] = useState<UsAssessResult | null>(null);
 
   // Complete all steps and redirect
-  const finishAll = useCallback((resultSlug: string) => {
+  const finishAll = useCallback((resultPath: string) => {
     setStepStatuses(STEPS.map(() => "complete"));
     setTimeout(() => {
-      router.push(`/property/${resultSlug}`);
+      router.push(resultPath);
     }, 800);
   }, [router]);
+
+  const propertyResultPath = useCallback((resultSlug: string, subjectScope?: string) => {
+    if (!journeyEnabled) return `/property/${resultSlug}`;
+    const params = new URLSearchParams({ assessmentOrigin: "1" });
+    if (journeyPreview) params.set("journeys", "1");
+    if (selectedGoalRef.current) params.set("assessmentGoal", selectedGoalRef.current);
+    if (subjectScope) params.set("subjectScope", subjectScope);
+    return `/property/${resultSlug}?${params.toString()}`;
+  }, [journeyEnabled, journeyPreview]);
 
   // Fire API call when authenticated.
   // No fetchedRef — React 18 Strict Mode runs effects twice in dev.
   // The first run's AbortController cleanup cancels it; the second run proceeds.
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
+    if (!isLoaded || !isSignedIn || !assessmentStarted) return;
 
     const controller = new AbortController();
 
     fetch("/api/assess", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address, placeId }),
+      body: JSON.stringify({ address, placeId, assessmentGoal: selectedGoalRef.current }),
       signal: controller.signal,
     })
       .then(async (res) => {
@@ -93,8 +132,14 @@ export default function AssessmentProgress({ address, placeId }: { address: stri
           setStepStatuses(STEPS.map(() => "complete"));
           setUsResult(data as UsAssessResult);
         } else if (data.slug) {
-          setSlug(data.slug);
-          setApiDone(true);
+          const canadaResult = data as CanadaAssessmentResult;
+          if (journeyEnabled && canadaResult.assessmentSubject?.requiresClarification) {
+            setStepStatuses(STEPS.map(() => "complete"));
+            setPendingCanada(canadaResult);
+          } else {
+            setSlug(propertyResultPath(data.slug, canadaResult.assessmentSubject?.scope));
+            setApiDone(true);
+          }
         } else {
           setErrorState({ kind: "transient", message: "Unexpected response from server." });
         }
@@ -106,11 +151,11 @@ export default function AssessmentProgress({ address, placeId }: { address: stri
       });
 
     return () => controller.abort();
-  }, [address, placeId, isLoaded, isSignedIn, retryCount]);
+  }, [address, assessmentStarted, isLoaded, isSignedIn, journeyEnabled, placeId, propertyResultPath, retryCount]);
 
   // Step timers (simulated progress)
   useEffect(() => {
-    if (errorState || usResult) return;
+    if (!assessmentStarted || errorState || usResult) return;
 
     const timers = STEPS.map((step, i) => {
       if (i === 0) return undefined; // step 0 starts active immediately
@@ -127,7 +172,7 @@ export default function AssessmentProgress({ address, placeId }: { address: stri
     });
 
     return () => timers.forEach((t) => t && clearTimeout(t));
-  }, [errorState, retryCount, usResult]);
+  }, [assessmentStarted, errorState, retryCount, usResult]);
 
   // When API completes, fast-forward all steps
   useEffect(() => {
@@ -142,7 +187,31 @@ export default function AssessmentProgress({ address, placeId }: { address: stri
     setStepStatuses(STEPS.map((_, i) => (i === 0 ? "active" : "pending")));
     setApiDone(false);
     setSlug("");
+    setPendingCanada(null);
+    setConfirmedSubject(null);
+    setUsResult(null);
     setRetryCount((c) => c + 1);
+  }
+
+  function handleStart(goal: AssessmentGoal | null) {
+    selectedGoalRef.current = goal;
+    setSelectedGoal(goal);
+    setStepStatuses(STEPS.map((_, i) => (i === 0 ? "active" : "pending")));
+    setAssessmentStarted(true);
+  }
+
+  function handleGoalChange(goal: AssessmentGoal) {
+    selectedGoalRef.current = goal;
+    setSelectedGoal(goal);
+  }
+
+  function handleSubjectConfirmation(subject: AssessmentSubject) {
+    setConfirmedSubject(subject);
+    if (pendingCanada) {
+      setPendingCanada(null);
+      setSlug(propertyResultPath(pendingCanada.slug, subject.scope));
+      setApiDone(true);
+    }
   }
 
   // Loading state — avoid flash before Clerk loads
@@ -172,11 +241,42 @@ export default function AssessmentProgress({ address, placeId }: { address: stri
     );
   }
 
+  if (journeyEnabled && !assessmentStarted) {
+    return <AssessmentGoalPreflight address={displayAddress(address)} initialGoal={selectedGoal} onStart={handleStart} />;
+  }
+
+  const unresolvedSubject = usResult?.assessmentSubject?.requiresClarification
+    ? usResult.assessmentSubject
+    : pendingCanada?.assessmentSubject?.requiresClarification
+      ? pendingCanada.assessmentSubject
+      : null;
+
+  if (journeyEnabled && unresolvedSubject && !confirmedSubject) {
+    return (
+      <AssessmentSubjectClarification
+        subject={unresolvedSubject}
+        country={usResult ? "US" : "CA"}
+        onConfirm={handleSubjectConfirmation}
+      />
+    );
+  }
+
   // US result — rendered inline, no redirect (see UsAssessmentResult).
   if (usResult) {
+    const result = confirmedSubject ? { ...usResult, assessmentSubject: confirmedSubject } : usResult;
     return (
       <main className="max-w-3xl mx-auto px-6 py-10 sm:py-16">
-        <UsAssessmentResult data={usResult} />
+        <AssessmentJourneyPanel
+          enabled={journeyEnabled}
+          initialGoal={result.assessmentGoal ?? selectedGoal}
+          country="US"
+          subjectScope={result.assessmentSubject.scope}
+          capabilities={result.propertyCapabilities}
+          onGoalChange={handleGoalChange}
+          gateUnsupported
+        >
+          <UsAssessmentResult data={result} />
+        </AssessmentJourneyPanel>
       </main>
     );
   }

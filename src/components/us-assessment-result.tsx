@@ -4,6 +4,7 @@ import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 import type { AssessmentSubject } from "@/lib/property-intelligence/subject";
 import type { PropertyClassification } from "@/lib/property-intelligence/classification";
 import type { PropertyCapabilities } from "@/lib/property-intelligence/capabilities";
+import type { AssessmentGoal } from "@/lib/property-intelligence/journey";
 import type {
   EquityTenureSignal,
   ValuationTriangulation,
@@ -48,6 +49,7 @@ interface UsResultBase {
   assessmentSubject: AssessmentSubject;
   propertyClassification: PropertyClassification;
   propertyCapabilities: PropertyCapabilities;
+  assessmentGoal: AssessmentGoal | null;
   marketPanel: CountyMarketPanel | null;
   emailSent: boolean;
 }

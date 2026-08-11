@@ -68,7 +68,7 @@ These are release-blocking requirements, not preferences:
 | **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
 | **P2 — Subject resolution** | `[x] Complete 2026-08-11` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | 23/23 resolver fixtures + common subject envelope |
 | **P3 — Classification/capabilities** | `[~] In progress — shadow built; P3.5 acceptance active 2026-08-11` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
-| **P4 — Goal UX/instrumentation** | `[ ]` | Optional per-assessment goal, conditional scope clarification, manual view switching | P3 | Funnel events + flagged rollout |
+| **P4 — Goal UX/instrumentation** | `[~] Sprint A built; release verification pending 2026-08-11` | Optional per-assessment goal, conditional scope clarification, manual view switching | P3 | Funnel events + flagged rollout |
 | **P5 — Investor/Landlord V1** | `[ ]` | Address-level US rental screen; capability-gated Canadian version | P4 | End-to-end journey QA + KPI baseline |
 | **P6 — Buyer/Owner convergence** | `[ ]` | Existing buyer parity plus current-owner/landlord view on shared contracts | P5 | Regression parity + owner journey QA |
 | **I1 — Insurance distribution test** | `[ ] Parallel after P4` | Measure intent-matched insurance demand without claiming underwriting | P4; preferably P5 | Pre-registered test + measured results |
@@ -296,12 +296,12 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Build
 
-- [ ] **[A] Add conditional scope clarification** driven by P2; do not show it for high-confidence straightforward subjects.
-- [ ] **[A] Add the optional assessment-goal selector** after address entry/resolution, with today’s buyer experience or Explore as the controlled rollout default.
-- [ ] **[A] Carry goal and subject** through the assessment request and result envelope.
-- [ ] **[A] Add manual result-view switching** without refetching the entire property bundle when existing evidence is sufficient.
-- [ ] **[A] Ensure suggestions are non-destructive:** “Investment data is also available” rather than “Switching you to Investment.”
-- [ ] **[A] Add events:**
+- [x] **[A] Add conditional scope clarification** driven by P2; do not show it for high-confidence straightforward subjects.
+- [x] **[A] Add the optional assessment-goal selector** after address entry/resolution, with today’s buyer experience or Explore as the controlled rollout default.
+- [x] **[A] Carry goal and subject** through the assessment request and result envelope.
+- [x] **[A] Add manual result-view switching** without refetching the entire property bundle when existing evidence is sufficient.
+- [x] **[A] Ensure suggestions are non-destructive:** “Investment data is also available” rather than “Switching you to Investment.”
+- [x] **[A] Add events:**
   - `assessment_subject_clarification_shown`
   - `assessment_subject_selected`
   - `journey_selected`
@@ -311,7 +311,7 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
   - `capability_missing`
 - [ ] **[A] Store goal with the assessment/saved property.** Do not add a permanent profile persona in V1.
 - [ ] **[A] Add an optional signed-in default** only after the assessment-level flow is stable; it may preselect, never lock.
-- [ ] **[A] Roll out behind a feature flag:** internal → opt-in/small cohort → default on.
+- [x] **[A] Put the UI behind a feature flag:** environment flag or internal per-assessment preview. Cohort/default-on rollout remains a later decision.
 
 ### Exit gate
 
@@ -323,9 +323,9 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Evidence
 
-- Commit/PR: _TBD_
+- Commit/PR: _Sprint A implementation pending release commit_
 - Event query/dashboard: _TBD_
-- Browser QA: _TBD_
+- Browser QA: `18-P4-GOAL-UX-SPRINT-A.md`; local flag-off and no-refetch preview checks pass
 - Rollout decision: _TBD_
 
 ---

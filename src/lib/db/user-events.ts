@@ -12,6 +12,7 @@
 
 import { sql, dbAvailable } from "@/lib/db";
 import { calculateIntentScore } from "@/lib/intent-score";
+import type { JourneyEventType } from "@/lib/property-intelligence/journey";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
@@ -25,7 +26,8 @@ export type EventType =
   | "assessment_request"
   | "search"
   | "city_subscribe"
-  | "partner_click";
+  | "partner_click"
+  | JourneyEventType;
 
 export interface UserEvent {
   type: EventType;

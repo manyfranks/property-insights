@@ -95,6 +95,7 @@ import {
 } from "@/lib/property-intelligence/capabilities";
 import type { USPropertyBundle } from "@/lib/rentcast";
 import type { Assessment } from "@/lib/types";
+import { parseAssessmentGoal, type AssessmentGoal } from "@/lib/property-intelligence/journey";
 
 const RATE_LIMIT_RESPONSE = (resetMs: number) =>
   NextResponse.json(
@@ -435,6 +436,7 @@ async function handleUSAssessment({
   postalCode,
   rawInput,
   selectedPlaceId,
+  assessmentGoal,
   log,
 }: {
   userId: string;
@@ -446,6 +448,7 @@ async function handleUSAssessment({
   postalCode?: string;
   rawInput: string;
   selectedPlaceId?: string;
+  assessmentGoal: AssessmentGoal | null;
   log: (step: string, extra?: string) => void;
 }) {
   log("us region", `${street} | ${city} | ${region}`);
@@ -643,6 +646,7 @@ async function handleUSAssessment({
       propertyEvidence,
       propertyClassification,
       propertyCapabilities,
+      assessmentGoal,
       marketPanel,
       offerAvailable: false,
       offerUnavailableReason: "no_listing_data",
@@ -896,6 +900,7 @@ async function handleUSAssessment({
       assessmentSubject,
       propertyClassification,
       propertyCapabilities,
+      assessmentGoal,
       anchorDecision: anchorDecision ?? null,
       marketPanel,
       offerAvailable: true as const,
@@ -1034,6 +1039,7 @@ async function handleUSAssessment({
     propertyEvidence,
     propertyClassification,
     propertyCapabilities,
+    assessmentGoal,
     avm: bundle.avm
       ? { value: bundle.avm.value, rangeLow: bundle.avm.rangeLow, rangeHigh: bundle.avm.rangeHigh }
       : null,
@@ -1087,6 +1093,10 @@ export async function POST(req: Request) {
   const submittedAddress = typeof body.address === "string" ? body.address : "";
   const rawAddress = submittedAddress.trim();
   const selectedPlaceId = typeof body.placeId === "string" ? body.placeId.trim() || undefined : undefined;
+  const assessmentGoal = parseAssessmentGoal(body.assessmentGoal);
+  if (body.assessmentGoal != null && !assessmentGoal) {
+    return NextResponse.json({ error: "Invalid assessment goal" }, { status: 400 });
+  }
   log("start", rawAddress);
 
   // Length check + reject control characters and obvious injection patterns
@@ -1147,6 +1157,7 @@ export async function POST(req: Request) {
         postalCode,
         rawInput: submittedAddress,
         selectedPlaceId,
+        assessmentGoal,
         log,
       });
     }
@@ -1335,6 +1346,7 @@ export async function POST(req: Request) {
     assessmentSubject,
     propertyClassification,
     propertyCapabilities,
+    assessmentGoal,
     emailSent,
   });
 }

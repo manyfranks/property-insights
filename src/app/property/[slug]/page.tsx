@@ -30,6 +30,8 @@ import type {
 import { computeInvestorYield } from "@/lib/pipeline/us-advantage";
 import { getCmaFipsForCity, getCmaMomentum, getCmaRent, type CmaMomentum } from "@/lib/db/regional-econ";
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
+import { AssessmentJourneyPanel } from "@/components/assessment-journey";
+import { parseAssessmentGoal, parseSubjectScope } from "@/lib/property-intelligence/journey";
 
 // ISR: serve cached page for 10 minutes, revalidate in background
 export const revalidate = 600;
@@ -219,12 +221,23 @@ function CaMarketMomentumCard({ momentum, cmaName }: { momentum: CmaMomentum | n
 
 export default async function PropertyPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slug } = await params;
+  const query = await searchParams;
   const listing = await getListingBySlug(slug);
   if (!listing) notFound();
+
+  const queryValue = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
+  const assessmentOrigin = queryValue(query.assessmentOrigin) === "1";
+  const journeyEnabled = assessmentOrigin && (
+    process.env.PROPERTY_JOURNEYS_ENABLED === "true" || queryValue(query.journeys) === "1"
+  );
+  const assessmentGoal = parseAssessmentGoal(queryValue(query.assessmentGoal));
+  const confirmedSubjectScope = parseSubjectScope(queryValue(query.subjectScope));
 
   // US listings (US Discover cron — src/lib/pipeline/us-discover.ts) go
   // through an entirely separate render path: analyzeListingAsync() below
@@ -279,6 +292,14 @@ export default async function PropertyPage({
         ]}
       />
       <TrackView slug={slugify(listing.address)} city={listing.city} price={listing.price} />
+      <AssessmentJourneyPanel
+        enabled={journeyEnabled}
+        initialGoal={assessmentGoal}
+        country="CA"
+        subjectScope={confirmedSubjectScope ?? listing.assessmentSubject?.scope ?? "unknown"}
+        capabilities={listing.propertyCapabilities}
+        gateUnsupported
+      >
       {/* A. Back link */}
       <Link
         href={`/discover/${cityToSlug(listing.city)}`}
@@ -707,6 +728,7 @@ export default async function PropertyPage({
           </a>
         </div>
       )}
+      </AssessmentJourneyPanel>
     </main>
   );
 }

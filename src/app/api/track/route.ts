@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { trackEvent, EventType } from "@/lib/db/user-events";
 import { hasAnalyticsConsent } from "@/lib/consent";
 import { isOptedOutRequest } from "@/lib/privacy";
+import { JOURNEY_EVENT_TYPES } from "@/lib/property-intelligence/journey";
 
 const VALID_TYPES: EventType[] = [
   "property_view",
@@ -17,6 +18,7 @@ const VALID_TYPES: EventType[] = [
   "search",
   "city_subscribe",
   "partner_click",
+  ...JOURNEY_EVENT_TYPES,
 ];
 
 const MAX_DATA_SIZE = 1024; // bytes
