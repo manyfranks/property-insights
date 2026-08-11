@@ -67,7 +67,7 @@ These are release-blocking requirements, not preferences:
 | **P0 — Safety baseline** | `[x] Complete 2026-08-11` | Prevent address-only residential overclaims; lock vocabulary and fixtures | None | 14/14 P0 fixtures; 16/16 guard; 20/20 integration |
 | **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
 | **P2 — Subject resolution** | `[x] Complete 2026-08-11` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | 23/23 resolver fixtures + common subject envelope |
-| **P3 — Classification/capabilities** | `[~] In progress — shadow built 2026-08-11; review pending` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
+| **P3 — Classification/capabilities** | `[~] In progress — shadow built; P3.5 acceptance active 2026-08-11` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
 | **P4 — Goal UX/instrumentation** | `[ ]` | Optional per-assessment goal, conditional scope clarification, manual view switching | P3 | Funnel events + flagged rollout |
 | **P5 — Investor/Landlord V1** | `[ ]` | Address-level US rental screen; capability-gated Canadian version | P4 | End-to-end journey QA + KPI baseline |
 | **P6 — Buyer/Owner convergence** | `[ ]` | Existing buyer parity plus current-owner/landlord view on shared contracts | P5 | Regression parity + owner journey QA |
@@ -264,6 +264,9 @@ Each result must include scope, source evidence, confidence, and an explanation 
 
 - Commit/PR: `745f4fb` (`Add P3 shadow classification and capabilities`)
 - Coverage report: `16-P3-SHADOW-COVERAGE.md`; 14/14 fixtures, zero provider calls
+- P3.5 acceptance: `17-P3.5-SHADOW-ACCEPTANCE.md`; anonymous operational telemetry plus a read-only replay of 2,325 persisted listings
+- Discover finding: 2,324/2,325 records predate P1 and lack an evidence envelope; replay made zero provider calls and RentCast quota remained `50 -> 50`
+- Rollout boundary: P4 may pilot on on-demand assessments behind its flag after production telemetry verification; Discover remains excluded from persona routing until evidence-envelope coverage is measured and sufficient
 - Shadow review decision: _TBD_
 
 ---
@@ -518,6 +521,7 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 | 2026-08-11 | Goal is explicit, optional, and per assessment | Users have different goals for different properties | Evidence that a profile default materially improves completion |
 | 2026-08-11 | Classification never auto-switches the journey | Building class does not identify the intended unit, asset scope, or user intent | None; this is a correctness invariant |
 | 2026-08-11 | Subject resolution precedes classification routing | Unit, building, parcel, and listing can share an address but require different evidence | None; contract may evolve but separation remains |
+| 2026-08-11 | P4 rollout is surface-specific | On-demand assessments can preserve property evidence; 2,324/2,325 persisted Discover records predate P1 | Re-measure after guarded Discover refreshes materially increase envelope coverage |
 | 2026-08-11 | `PropertySnapshot` is additive beside `Listing` initially | Avoid a high-risk big-bang rewrite of the live buyer flow | P6 buyer parity is complete |
 | 2026-08-11 | Investor/Landlord is the first new journey | Strongest existing US data/calculation/CTA foundation | P3 capability report finds insufficient coverage |
 | 2026-08-11 | Insurance distribution runs as an experiment; underwriting is deferred | Current data can prefill and contextualize, not price or determine eligibility | Separate data, partner, legal, and actuarial plan approved |

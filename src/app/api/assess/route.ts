@@ -40,11 +40,12 @@
  */
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { findAndFetchDetail, fetchDetailByUrl, parseZoocasaUrl, ZoocasaNotFoundError } from "@/lib/zoocasa";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { upsertListing } from "@/lib/kv/listings";
 import { trackEvent } from "@/lib/db/user-events";
+import { recordPropertyIntelligenceShadow } from "@/lib/db/property-intelligence-events";
 import { sendAssessmentEmail } from "@/lib/email";
 import { assessLimiter } from "@/lib/rate-limit";
 import { isPro } from "@/lib/billing";
@@ -89,6 +90,7 @@ import {
   evaluatePropertyCapabilities,
   type CapabilityEvidenceFact,
   type CapabilityScope,
+  type PropertyCapabilities,
   type PropertyCapabilityFacts,
 } from "@/lib/property-intelligence/capabilities";
 import type { USPropertyBundle } from "@/lib/rentcast";
@@ -176,6 +178,39 @@ function buildPropertyIntelligenceShadow(args: {
     facts: capabilityFacts,
   });
   return { propertyClassification, propertyCapabilities };
+}
+
+function observePropertyIntelligenceShadow(args: {
+  country: "US" | "CA";
+  region: string;
+  surface: "assess_on_demand" | "canada_listing";
+  resultVariant: "listed" | "off_market" | "regional_fallback";
+  subject: AssessmentSubject;
+  classification: PropertyClassification;
+  capabilities: PropertyCapabilities;
+  log: (step: string, extra?: string) => void;
+}): void {
+  args.log(
+    "property intelligence shadow",
+    `class=${args.classification.parcelUse.value} scope=${args.classification.listingScope.value} ` +
+      `confidence=${args.classification.overallConfidence} offer=${args.capabilities.items.offerAnalysis.reason} ` +
+      `rent=${args.capabilities.items.addressRentEstimate.reason}`
+  );
+  after(async () => {
+    try {
+      await recordPropertyIntelligenceShadow({
+        country: args.country,
+        region: args.region,
+        surface: args.surface,
+        resultVariant: args.resultVariant,
+        subject: args.subject,
+        classification: args.classification,
+        capabilities: args.capabilities,
+      });
+    } catch (err) {
+      args.log("property intelligence telemetry error", err instanceof Error ? err.message : String(err));
+    }
+  });
 }
 
 // Region mapping: full names + common abbreviations → region codes.
@@ -571,12 +606,16 @@ async function handleUSAssessment({
       ),
       insurancePrefillCore: false,
     });
-    log(
-      "property intelligence shadow",
-      `class=${propertyClassification.parcelUse.value} scope=${propertyClassification.listingScope.value} ` +
-        `confidence=${propertyClassification.overallConfidence} offer=${propertyCapabilities.items.offerAnalysis.reason} ` +
-        `rent=${propertyCapabilities.items.addressRentEstimate.reason}`
-    );
+    observePropertyIntelligenceShadow({
+      country: "US",
+      region: geo.stateUsps,
+      surface: "assess_on_demand",
+      resultVariant: "regional_fallback",
+      subject: assessmentSubject,
+      classification: propertyClassification,
+      capabilities: propertyCapabilities,
+      log,
+    });
     log(
       "us data done (fallback)",
       `reason=${propertyDataUnavailableReason} assessment_found=${assessment?.found ?? false} panel=${marketPanel ? "yes" : "no"}`
@@ -827,12 +866,16 @@ async function handleUSAssessment({
     });
     listing.propertyClassification = propertyClassification;
     listing.propertyCapabilities = propertyCapabilities;
-    log(
-      "property intelligence shadow",
-      `class=${propertyClassification.parcelUse.value} scope=${propertyClassification.listingScope.value} ` +
-        `confidence=${propertyClassification.overallConfidence} offer=${propertyCapabilities.items.offerAnalysis.reason} ` +
-        `rent=${propertyCapabilities.items.addressRentEstimate.reason}`
-    );
+    observePropertyIntelligenceShadow({
+      country: "US",
+      region: geo.stateUsps,
+      surface: "assess_on_demand",
+      resultVariant: "listed",
+      subject: assessmentSubject,
+      classification: propertyClassification,
+      capabilities: propertyCapabilities,
+      log,
+    });
 
     log(
       "done (US, listed)",
@@ -961,12 +1004,16 @@ async function handleUSAssessment({
       (bundle.record.formattedAddress || bundle.record.addressLine1)
     ),
   });
-  log(
-    "property intelligence shadow",
-    `class=${propertyClassification.parcelUse.value} scope=${propertyClassification.listingScope.value} ` +
-      `confidence=${propertyClassification.overallConfidence} offer=${propertyCapabilities.items.offerAnalysis.reason} ` +
-      `rent=${propertyCapabilities.items.addressRentEstimate.reason}`
-  );
+  observePropertyIntelligenceShadow({
+    country: "US",
+    region: geo.stateUsps,
+    surface: "assess_on_demand",
+    resultVariant: "off_market",
+    subject: assessmentSubject,
+    classification: propertyClassification,
+    capabilities: propertyCapabilities,
+    log,
+  });
 
   log(
     "done (US, off-market)",
@@ -1222,12 +1269,16 @@ export async function POST(req: Request) {
   });
   enriched.propertyClassification = propertyClassification;
   enriched.propertyCapabilities = propertyCapabilities;
-  log(
-    "property intelligence shadow",
-    `class=${propertyClassification.parcelUse.value} scope=${propertyClassification.listingScope.value} ` +
-      `confidence=${propertyClassification.overallConfidence} offer=${propertyCapabilities.items.offerAnalysis.reason} ` +
-      `regional_rent=${propertyCapabilities.items.regionalRentBenchmark.reason}`
-  );
+  observePropertyIntelligenceShadow({
+    country: "CA",
+    region: enriched.province,
+    surface: "canada_listing",
+    resultVariant: "listed",
+    subject: assessmentSubject,
+    classification: propertyClassification,
+    capabilities: propertyCapabilities,
+    log,
+  });
 
   // Tag source and enrichment time
   enriched.source = "user";

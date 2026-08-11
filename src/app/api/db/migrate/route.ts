@@ -124,5 +124,26 @@ export async function POST(request: Request) {
 
   await db`CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions (stripe_customer_id)`;
 
+  await db`
+    CREATE TABLE IF NOT EXISTS property_intelligence_events (
+      id                       BIGSERIAL PRIMARY KEY,
+      event_type               TEXT NOT NULL,
+      country                  VARCHAR(2) NOT NULL,
+      region                   VARCHAR(8) NOT NULL,
+      surface                  TEXT NOT NULL,
+      result_variant           TEXT NOT NULL,
+      subject_scope            TEXT NOT NULL,
+      subject_confidence       TEXT NOT NULL,
+      requires_clarification   BOOLEAN NOT NULL,
+      classification           JSONB NOT NULL DEFAULT '{}',
+      capabilities             JSONB NOT NULL DEFAULT '{}',
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT property_intelligence_event_type_check
+        CHECK (event_type IN ('classification_result', 'capability_missing'))
+    )
+  `;
+  await db`CREATE INDEX IF NOT EXISTS idx_property_intelligence_created ON property_intelligence_events (created_at DESC)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_property_intelligence_surface ON property_intelligence_events (surface, result_variant, created_at DESC)`;
+
   return NextResponse.json({ ok: true, message: "Migration complete" });
 }
