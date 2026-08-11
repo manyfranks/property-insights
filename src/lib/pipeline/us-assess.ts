@@ -34,6 +34,11 @@ import type { RentCastAvm, RentCastPropertyRecord, USPropertyBundle } from "../r
 import type { CountyAssessorResult } from "../assessment/us-county";
 import { assessmentBasisForState } from "../rentcast";
 import { fmt } from "../utils";
+import {
+  addRentCastEvidence,
+  createPropertyEvidenceSnapshot,
+  type EvidenceSurface,
+} from "../property-intelligence/evidence";
 
 // ---------------------------------------------------------------------------
 // Assessment
@@ -550,7 +555,20 @@ export function assessAnchorPlausibility(input: {
  * hasSuite, estateKeywords, cluster, url) are left at their honest empty
  * defaults — see the module doc comment for why.
  */
-export function buildUsListing(bundle: USPropertyBundle, city: string, state: string): Listing {
+export function buildUsListing(
+  bundle: USPropertyBundle,
+  city: string,
+  state: string,
+  evidence?: {
+    surface?: EvidenceSurface;
+    rawInput?: string | null;
+    normalizedAddress?: string | null;
+    parsedUnit?: string | null;
+    selectedPlaceId?: string | null;
+    recordQueried?: boolean;
+    listingQueried?: boolean;
+  }
+): Listing {
   const al = bundle.activeListing!;
   const record = bundle.record;
 
@@ -571,6 +589,22 @@ export function buildUsListing(bundle: USPropertyBundle, city: string, state: st
   }
 
   const latestTax = record?.propertyTaxes?.[0]?.total ?? record?.taxAssessments?.[0]?.value ?? null;
+  const propertyEvidence = addRentCastEvidence(
+    createPropertyEvidenceSnapshot({
+      surface: evidence?.surface ?? "assess_on_demand",
+      rawInput: evidence?.rawInput,
+      normalizedAddress: evidence?.normalizedAddress ?? al.formattedAddress ?? record?.formattedAddress ?? address,
+      parsedUnit: evidence?.parsedUnit,
+      selectedPlaceId: evidence?.selectedPlaceId,
+    }),
+    {
+      record,
+      listing: al,
+      recordQueried: evidence?.recordQueried ?? true,
+      listingQueried: evidence?.listingQueried ?? true,
+      unavailableReason: bundle.meta.quotaExhausted ? "quota_exhausted" : "field_missing",
+    }
+  );
 
   return {
     address,
@@ -594,6 +628,7 @@ export function buildUsListing(bundle: USPropertyBundle, city: string, state: st
     cluster: "",
     url: "",
     mlsNumber: al.mlsNumber || undefined,
+    propertyEvidence,
   };
 }
 

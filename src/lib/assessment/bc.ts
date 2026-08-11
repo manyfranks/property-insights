@@ -2,6 +2,12 @@ import { Assessment } from "../types";
 import { BC_ASSESSMENT_CACHE } from "../data/assessments";
 import { getBrowser } from "../browser";
 
+function bcComponentAvailability(values: { total: number; land: number; building: number }): "available" | "unavailable" {
+  return values.land + values.building === values.total && (values.land > 0 || values.building > 0)
+    ? "available"
+    : "unavailable";
+}
+
 // Street type abbreviations for BC Assessment search API
 const ABBREVS: [RegExp, string][] = [
   [/\bSTREET\b/gi, "ST"],
@@ -285,6 +291,7 @@ export async function lookupBC(
         totalValue: cached.total,
         landValue: cached.land,
         buildingValue: cached.building,
+        componentAvailability: bcComponentAvailability(cached),
         assessmentYear: "2026",
         found: true,
         source: "cache" as const,
@@ -312,6 +319,7 @@ export async function lookupBC(
       totalValue: result.total,
       landValue: result.land,
       buildingValue: result.building,
+      componentAvailability: bcComponentAvailability(result),
       assessmentYear: "2026",
       found: true,
       source: "government" as const,
@@ -341,6 +349,7 @@ export async function lookupBCWithScrape(
         totalValue: cached.total,
         landValue: cached.land,
         buildingValue: cached.building,
+        componentAvailability: bcComponentAvailability(cached),
         assessmentYear: "2026",
         found: true,
         source: "cache" as const,
@@ -360,6 +369,7 @@ export async function lookupBCWithScrape(
     totalValue: values.total,
     landValue: values.land,
     buildingValue: values.building,
+    componentAvailability: bcComponentAvailability(values),
     assessmentYear: "2026",
     found: true,
     source: "government" as const,
@@ -381,6 +391,7 @@ export function lookupBCSync(address: string, unit?: string): Assessment | null 
         totalValue: cached.total,
         landValue: cached.land,
         buildingValue: cached.building,
+        componentAvailability: bcComponentAvailability(cached),
         assessmentYear: "2026",
         found: true,
         source: "cache" as const,

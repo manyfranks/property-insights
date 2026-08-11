@@ -14,6 +14,10 @@ import { analyzeAndNarrate, deterministicNarrative } from "../llm";
 import { matchComparables } from "../comparables";
 import { ZoocasaSoldRaw } from "../zoocasa";
 import { fmt } from "../utils";
+import {
+  addAssessmentEvidence,
+  createPropertyEvidenceSnapshot,
+} from "../property-intelligence/evidence";
 
 export function offerToPrecomputed(offer: OfferResult): PrecomputedOffer {
   return {
@@ -120,6 +124,16 @@ export async function enrichListing(
   }
 
   // Write pre-computed fields
+  const propertyEvidence = addAssessmentEvidence(
+    listing.propertyEvidence ?? createPropertyEvidenceSnapshot({
+      surface: "canada_listing",
+      normalizedAddress: listing.address,
+      parsedUnit: listing.unit,
+    }),
+    assessment,
+    listing.province
+  );
+
   return {
     ...listing,
     preScore: score.total,
@@ -136,5 +150,6 @@ export async function enrichListing(
           : ""
         }`
       : undefined,
+    propertyEvidence,
   };
 }

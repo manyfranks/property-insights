@@ -12,6 +12,10 @@
  */
 
 import { Listing, ListingHistory } from "./types";
+import {
+  addZoocasaEvidence,
+  createPropertyEvidenceSnapshot,
+} from "./property-intelligence/evidence";
 
 // ---------------------------------------------------------------------------
 // Types — Zoocasa raw data shapes
@@ -335,7 +339,7 @@ export function parseHistory(
 // Search listing mapper (snake_case search results → Listing)
 // ---------------------------------------------------------------------------
 
-function mapSearchListing(
+export function mapSearchListing(
   r: ZoocasaSearchResult,
   city: string,
   province: string
@@ -346,9 +350,21 @@ function mapSearchListing(
     : buildDetailUrl(cleanSearchAddress(r.address), city, province);
 
   const sqft = r.square_footage?.gte || r.square_footage?.lt || 0;
+  const normalizedAddress = cleanSearchAddress(r.address);
+  const propertyEvidence = addZoocasaEvidence(
+    createPropertyEvidenceSnapshot({
+      surface: "canada_listing",
+      normalizedAddress,
+    }),
+    {
+      stage: "search",
+      propertyType: r.property_type,
+      sourceRecordId: String(r.id),
+    }
+  );
 
   return {
-    address: cleanSearchAddress(r.address),
+    address: normalizedAddress,
     city: r.sub_division || city,
     province: r.province || province,
     dom: computeDom(r.created_at),
@@ -367,6 +383,7 @@ function mapSearchListing(
     cluster: "",
     url,
     mlsNumber: r.mls,
+    propertyEvidence,
   };
 }
 
@@ -374,7 +391,7 @@ function mapSearchListing(
 // Detail listing mapper (camelCase detail page → Listing with full data)
 // ---------------------------------------------------------------------------
 
-function mapDetailListing(
+export function mapDetailListing(
   r: ZoocasaDetailResult,
   city: string,
   province: string,
@@ -460,6 +477,19 @@ function mapDetailListing(
     cluster: "",
     url,
     mlsNumber: r.mlsNum,
+    propertyEvidence: addZoocasaEvidence(
+      createPropertyEvidenceSnapshot({
+        surface: "canada_listing",
+        normalizedAddress: address,
+        parsedUnit: unit,
+      }),
+      {
+        stage: "detail",
+        propertyType: r.type,
+        propertySubType: r.propertySubType,
+        sourceRecordId: String(r.id),
+      }
+    ),
   };
 
   // Single-listing extraction boundary: a malformed detail page (missing
@@ -719,7 +749,7 @@ function tokenizeStreetAddress(line: string): { number: string | null; words: st
   // Normalize: lowercase, strip punctuation, drop trailing "Unit X" / "Suite X" hints,
   // turn "4-170" into "4 170" so the dual-number heuristic below catches Zoocasa's
   // unit-prefix format ("4-170 Celano Cres" → unit 4, street # 170).
-  let s = line
+  const s = line
     .toLowerCase()
     .replace(/[#,\.]/g, " ")
     .replace(/\s+(unit|suite|apt|apartment)\s+\w+\s*$/i, "")

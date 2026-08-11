@@ -4,6 +4,7 @@
 import type { UsAdvantageBundle } from "./pipeline/us-advantage";
 import type { UsCompSupport } from "./pipeline/us-assess";
 import type { NarrativeLintResult } from "./pipeline/narrative-lint";
+import type { PropertyEvidenceSnapshot } from "./property-intelligence/evidence";
 
 export interface PrecomputedOffer {
   anchor: number;
@@ -84,6 +85,10 @@ export interface Listing {
   // CA listings (untouched this pass) and for US listings scored before
   // this field existed.
   preRelativeDom?: RelativeDom;
+  // P1 property-intelligence envelope. Additive beside the legacy Listing
+  // fields so existing buyer surfaces remain backward compatible while raw
+  // provider evidence keeps its source, scope, freshness, and availability.
+  propertyEvidence?: PropertyEvidenceSnapshot;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +125,10 @@ export interface Assessment {
   totalValue: number;
   landValue: number;
   buildingValue: number;
+  // P1 availability marker for the legacy land/building numeric fields.
+  // Older adapters use 0 as a missing-value sentinel, so consumers of the
+  // evidence envelope must not infer availability from the number alone.
+  componentAvailability?: "available" | "unavailable";
   assessmentYear: string;
   found: boolean;
   // "avm" = a RentCast automated valuation model estimate, used as the US

@@ -40,6 +40,7 @@ export default function HomeAddressSearch() {
   const [open, setOpen] = useState(false);
   const [searched, setSearched] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState("");
+  const [selectedPlaceId, setSelectedPlaceId] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -51,21 +52,27 @@ export default function HomeAddressSearch() {
 
   useEffect(() => {
     if (detectedUrl || otherUrl) {
-      setResults([]);
-      setPlaces([]);
-      setSearched(false);
-      setSelectedAddress("");
-      setOpen(true);
-      return;
+      const resetTimer = setTimeout(() => {
+        setResults([]);
+        setPlaces([]);
+        setSearched(false);
+        setSelectedAddress("");
+        setSelectedPlaceId("");
+        setOpen(true);
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     if (query.length < 2) {
-      setResults([]);
-      setPlaces([]);
-      setSearched(false);
-      setSelectedAddress("");
-      setOpen(false);
-      return;
+      const resetTimer = setTimeout(() => {
+        setResults([]);
+        setPlaces([]);
+        setSearched(false);
+        setSelectedAddress("");
+        setSelectedPlaceId("");
+        setOpen(false);
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     clearTimeout(debounceRef.current);
@@ -106,6 +113,7 @@ export default function HomeAddressSearch() {
 
   function handleSelectPlace(place: PlaceSuggestion) {
     setSelectedAddress(place.address);
+    setSelectedPlaceId(place.placeId);
   }
 
   function handleRequestAssessment() {
@@ -113,7 +121,8 @@ export default function HomeAddressSearch() {
     if (!address) return;
     setQuery("");
     setOpen(false);
-    router.push(`/assess?address=${encodeURIComponent(address)}`);
+    const placeParam = selectedPlaceId ? `&placeId=${encodeURIComponent(selectedPlaceId)}` : "";
+    router.push(`/assess?address=${encodeURIComponent(address)}${placeParam}`);
   }
 
   /**
@@ -161,6 +170,7 @@ export default function HomeAddressSearch() {
             onChange={(e) => {
               setQuery(e.target.value);
               setSelectedAddress("");
+              setSelectedPlaceId("");
             }}
             onFocus={() => (query.length > 1 || detectedUrl || otherUrl) && setOpen(true)}
             onKeyDown={(e) => {

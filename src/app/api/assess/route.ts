@@ -60,6 +60,12 @@ import { getSignals } from "@/lib/signals";
 import { scoreV2 } from "@/lib/scoring";
 import { offerModel, offerModelLanguage } from "@/lib/offer-model";
 import { decideUsAssessmentDataPath } from "@/lib/property-intelligence/p0-fallback";
+import {
+  addAssessmentEvidence,
+  addRentCastEvidence,
+  createPropertyEvidenceSnapshot,
+  mergePropertyEvidence,
+} from "@/lib/property-intelligence/evidence";
 
 const RATE_LIMIT_RESPONSE = (resetMs: number) =>
   NextResponse.json(
@@ -230,6 +236,8 @@ async function handleUSAssessment({
   street,
   city,
   region,
+  rawInput,
+  selectedPlaceId,
   log,
 }: {
   userId: string;
@@ -238,6 +246,8 @@ async function handleUSAssessment({
   street: string;
   city: string;
   region: string;
+  rawInput: string;
+  selectedPlaceId?: string;
   log: (step: string, extra?: string) => void;
 }) {
   log("us region", `${street} | ${city} | ${region}`);
@@ -339,6 +349,30 @@ async function handleUSAssessment({
     const propertyDataUnavailableReason =
       dataPath.kind === "regional_fallback" ? dataPath.reason : "provider_error";
     const assessment = await lookupAssessment(street, region, city);
+    const propertyEvidence = addAssessmentEvidence(
+      addRentCastEvidence(
+        createPropertyEvidenceSnapshot({
+          surface: "assess_on_demand",
+          rawInput,
+          normalizedAddress: geo.matchedAddress,
+          selectedPlaceId,
+        }),
+        {
+          record: bundle?.record ?? null,
+          listing: bundle?.activeListing ?? null,
+          recordQueried: true,
+          listingQueried: true,
+          unavailableReason:
+            propertyDataUnavailableReason === "provider_quota_exhausted"
+              ? "quota_exhausted"
+              : propertyDataUnavailableReason === "provider_error"
+                ? "provider_error"
+                : "field_missing",
+        }
+      ),
+      assessment,
+      geo.stateUsps
+    );
     log(
       "us data done (fallback)",
       `reason=${propertyDataUnavailableReason} assessment_found=${assessment?.found ?? false} panel=${marketPanel ? "yes" : "no"}`
@@ -362,6 +396,7 @@ async function handleUSAssessment({
       countyName: geo.countyName,
       countyFips,
       assessment,
+      propertyEvidence,
       marketPanel,
       offerAvailable: false,
       offerUnavailableReason: "no_listing_data",
@@ -381,7 +416,22 @@ async function handleUSAssessment({
 
   // Listed variant — same pipeline as Canada.
   if (bundle.activeListing) {
-    const listing = buildUsListing(bundle, city, geo.stateUsps);
+    const mappedListing = buildUsListing(bundle, city, geo.stateUsps, {
+      surface: "assess_on_demand",
+      rawInput,
+      normalizedAddress: geo.matchedAddress,
+      selectedPlaceId,
+      recordQueried: true,
+      listingQueried: true,
+    });
+    const listing = {
+      ...mappedListing,
+      propertyEvidence: addAssessmentEvidence(
+        mappedListing.propertyEvidence!,
+        assessment,
+        geo.stateUsps
+      ),
+    };
     const baseScore = scoreV2(listing);
     const comparables = buildUsCompSupport(bundle.avm, parseInt(listing.sqft) || 0);
 
@@ -535,6 +585,7 @@ async function handleUSAssessment({
       marketPanel,
       offerAvailable: true as const,
       listing,
+      propertyEvidence: listing.propertyEvidence,
       score,
       signals,
       offer,
@@ -558,6 +609,25 @@ async function handleUSAssessment({
   // tenure, triangulation, yield, and risk/momentum using the AVM value as
   // the market reference (currentValueKind: "avm_estimate").
   const offMarketComparables = buildUsCompSupport(bundle.avm, bundle.record?.squareFootage ?? 0);
+  const propertyEvidence = addAssessmentEvidence(
+    addRentCastEvidence(
+      createPropertyEvidenceSnapshot({
+        surface: "assess_on_demand",
+        rawInput,
+        normalizedAddress: geo.matchedAddress,
+        selectedPlaceId,
+      }),
+      {
+        record: bundle.record,
+        listing: bundle.activeListing,
+        recordQueried: true,
+        listingQueried: true,
+        unavailableReason: bundle.meta.quotaExhausted ? "quota_exhausted" : "field_missing",
+      }
+    ),
+    assessment,
+    geo.stateUsps
+  );
   const advantage = buildUsAdvantageBundle({
     record: bundle.record,
     askingPrice: null,
@@ -584,6 +654,7 @@ async function handleUSAssessment({
     countyName: geo.countyName,
     countyFips,
     assessment,
+    propertyEvidence,
     avm: bundle.avm
       ? { value: bundle.avm.value, rangeLow: bundle.avm.rangeLow, rangeHigh: bundle.avm.rangeHigh }
       : null,
@@ -634,7 +705,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const rawAddress = typeof body.address === "string" ? body.address.trim() : "";
+  const submittedAddress = typeof body.address === "string" ? body.address : "";
+  const rawAddress = submittedAddress.trim();
+  const selectedPlaceId = typeof body.placeId === "string" ? body.placeId.trim() || undefined : undefined;
   log("start", rawAddress);
 
   // Length check + reject control characters and obvious injection patterns
@@ -685,7 +758,17 @@ export async function POST(req: Request) {
     log("parsed", `${street} | ${city} | ${region} (${country})`);
 
     if (country === "US") {
-      return handleUSAssessment({ userId, limiter, pro, street, city, region, log });
+      return handleUSAssessment({
+        userId,
+        limiter,
+        pro,
+        street,
+        city,
+        region,
+        rawInput: submittedAddress,
+        selectedPlaceId,
+        log,
+      });
     }
 
     try {
@@ -721,6 +804,17 @@ export async function POST(req: Request) {
   }
 
   const listing = detail.listing;
+  const assessmentInputEvidence = createPropertyEvidenceSnapshot({
+    surface: "assess_on_demand",
+    rawInput: submittedAddress,
+    normalizedAddress: listing.address,
+    parsedUnit: listing.unit,
+    directListingUrl: isZoocasaUrl ? rawAddress : undefined,
+    selectedPlaceId,
+  });
+  listing.propertyEvidence = listing.propertyEvidence
+    ? mergePropertyEvidence(listing.propertyEvidence, assessmentInputEvidence, "assess_on_demand")
+    : assessmentInputEvidence;
 
   // Fetch sold pool for comparables
   let soldPool: import("@/lib/zoocasa").ZoocasaSoldRaw[] = [];

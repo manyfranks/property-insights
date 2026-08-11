@@ -420,7 +420,13 @@ export async function fetchUSCityListings(
     buildUsListing(
       { record: null, avm: null, rent: null, activeListing: d, meta: { quotaExhausted: false, cacheHits: 0, liveCalls: 0, errors: [] } },
       cfg.name,
-      cfg.state
+      cfg.state,
+      {
+        surface: "discover_seed",
+        normalizedAddress: d.formattedAddress ?? d.addressLine1,
+        recordQueried: false,
+        listingQueried: true,
+      }
     )
   );
 

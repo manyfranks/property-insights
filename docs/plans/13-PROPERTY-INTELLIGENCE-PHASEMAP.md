@@ -41,7 +41,7 @@ A phase is complete only when every exit-gate item is checked. Updating a task r
 
 ### Validation baseline
 
-As of 2026-08-11, `npm exec tsc -- --noEmit` passes. The untouched repository-wide `npm run lint` baseline reports 31 errors and 20 warnings across existing scripts/components. Until that debt is cleared separately, every phase must pass lint on its touched code, keep TypeScript green, and introduce no additional full-repository lint findings. Do not mark a phase blocked solely by unrelated baseline findings.
+As of 2026-08-11, `npm exec tsc -- --noEmit` passes. P1 removed five existing findings in files it had to touch, so the repository-wide `npm run lint` baseline is now 26 errors and 20 warnings across untouched scripts/components (down from 31 errors and 20 warnings at P0). Until that debt is cleared separately, every phase must pass lint on its touched code, keep TypeScript green, and introduce no additional full-repository lint findings. Do not mark a phase blocked solely by unrelated baseline findings.
 
 ## Program invariants
 
@@ -65,7 +65,7 @@ These are release-blocking requirements, not preferences:
 | Track | Status | Outcome | Depends on | Exit evidence |
 |---|---|---|---|---|
 | **P0 — Safety baseline** | `[x] Complete 2026-08-11` | Prevent address-only residential overclaims; lock vocabulary and fixtures | None | 14/14 P0 fixtures; 16/16 guard; 20/20 integration |
-| **P1 — Evidence preservation** | `[ ]` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
+| **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
 | **P2 — Subject resolution** | `[ ]` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | Resolver fixtures + common subject envelope |
 | **P3 — Classification/capabilities** | `[ ]` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
 | **P4 — Goal UX/instrumentation** | `[ ]` | Optional per-assessment goal, conditional scope clarification, manual view switching | P3 | Funnel events + flagged rollout |
@@ -109,7 +109,7 @@ These are release-blocking requirements, not preferences:
 
 ### Evidence
 
-- Worktree: implementation complete; commit/PR not yet created
+- Commit: `ca30d1b` (`Ship property intelligence P0 baseline`)
 - Fixture report: `13A-P0-BASELINE-AND-VOCABULARY.md`; 14/14 offline fixtures
 - Operational guard: 16/16; no live RentCast call attempted
 - Integration: 20/20, seed `20260811`, RentCast quota `45 → 45`
@@ -123,34 +123,36 @@ These are release-blocking requirements, not preferences:
 
 ### Build
 
-- [ ] **[A] Add a generic evidence contract**, including value, source/provider, source record identifier where allowed, observed date, ingestion date, evidence kind (`observed | modeled | inferred | user_supplied`), and confidence/availability.
-- [ ] **[A] Preserve the exact assessment input:** raw address, selected autocomplete value/place ID when available, parsed unit, direct listing URL, and normalized address.
-- [ ] **[A] RentCast:** preserve property type and `ownerOccupied`; preserve land/improvement assessment components where returned.
-- [ ] **[A] Zoocasa:** preserve raw search `property_type`, detail `type`, and `propertySubType` without collapsing away the provider value.
-- [ ] **[A] Canadian assessments:** retain total/land/building values exactly where supplied; represent unavailable components as unavailable—not meaningful zeroes in the new evidence contract.
-- [ ] **[A] County adapters:** inventory class/use/tax-class fields seen internally and identify which can be safely normalized. Do not promise coverage merely because one adapter exposes a field.
-- [ ] **[A] Keep owner name and mailing address out of the normalized model** in this phase.
-- [ ] **[A] Create `14-PROPERTY-DATA-CAPABILITY-MATRIX.md`** with rows by source/geo and columns for subject scope, property type, occupancy, unit count, land/building split, address rent, regional rent, sales, tax, hazards, and known provider exclusions.
-- [ ] **[A] Split every US capability row by ingestion surface:**
+- [x] **[A] Add a generic evidence contract**, including value, source/provider, source record identifier where allowed, observed date, ingestion date, evidence kind (`observed | modeled | inferred | user_supplied`), and confidence/availability.
+- [x] **[A] Preserve the exact assessment input:** raw address, selected autocomplete value/place ID when available, parsed unit, direct listing URL, and normalized address.
+- [x] **[A] RentCast:** preserve property type and `ownerOccupied`; preserve land/improvement assessment components where returned.
+- [x] **[A] Zoocasa:** preserve raw search `property_type`, detail `type`, and `propertySubType` without collapsing away the provider value.
+- [x] **[A] Canadian assessments:** retain total/land/building values exactly where supplied; represent unavailable components as unavailable—not meaningful zeroes in the new evidence contract.
+- [x] **[A] County adapters:** inventory class/use/tax-class fields seen internally and identify which can be safely normalized. Do not promise coverage merely because one adapter exposes a field.
+- [x] **[A] Keep owner name and mailing address out of the normalized model** in this phase.
+- [x] **[A] Create `14-PROPERTY-DATA-CAPABILITY-MATRIX.md`** with rows by source/geo and columns for subject scope, property type, occupancy, unit count, land/building split, address rent, regional rent, sales, tax, hazards, and known provider exclusions.
+- [x] **[A] Split every US capability row by ingestion surface:**
   - **On-demand assess bundle:** may contain `/properties`, AVM, rent AVM, active-listing, and live county evidence, subject to cache/quota/source availability.
   - **Discover seed/listing page:** originates from city `/listings/sale` sweeps and does not inherently contain the per-address property record, `ownerOccupied`, land/improvement split, or address-level rent. Later enrichment must be represented as a separate evidence tier, not assumed across the corpus.
-- [ ] **[A] Add mapper fixtures** proving that source fields survive into the new envelope without changing current buyer output.
+- [x] **[A] Add mapper fixtures** proving that source fields survive into the new envelope without changing current buyer output.
 
 ### Exit gate
 
-- [ ] RentCast and Zoocasa type evidence reaches the assessment service with provider provenance intact.
-- [ ] `ownerOccupied` is available to classification but not presented as proof of investment use.
-- [ ] BC land/building split remains available; AB/ON/MB absence is explicit.
-- [ ] The capability matrix covers every live geo adapter and distinguishes address-level from regional evidence.
-- [ ] The capability matrix reports Discover-seed and on-demand-assess coverage separately; enriched fixtures cannot inflate the apparent capability of the seeded corpus.
-- [ ] Existing `Listing` consumers remain backward compatible.
-- [ ] Typecheck, touched-file lint, and mapper fixtures pass; the full lint baseline has no new findings.
+- [x] RentCast and Zoocasa type evidence reaches the assessment service with provider provenance intact.
+- [x] `ownerOccupied` is available to classification but not presented as proof of investment use.
+- [x] BC land/building split remains available; AB/ON/MB absence is explicit.
+- [x] The capability matrix covers every live geo adapter and distinguishes address-level from regional evidence.
+- [x] The capability matrix reports Discover-seed and on-demand-assess coverage separately; enriched fixtures cannot inflate the apparent capability of the seeded corpus.
+- [x] Existing `Listing` consumers remain backward compatible.
+- [x] Typecheck, touched-file lint, and mapper fixtures pass; the full lint baseline has no new findings.
 
 ### Evidence
 
-- Commit/PR: _TBD_
-- Capability matrix: _TBD_
-- Fixture results: _TBD_
+- Commit: P1 implementation (`Preserve property evidence across ingestion surfaces`)
+- Capability matrix: `14-PROPERTY-DATA-CAPABILITY-MATRIX.md`
+- Mapper fixtures: 12/12 (`scripts/test-property-intelligence-p1.ts`)
+- Regression: P0 14/14; pipeline guard 16/16; integration 20/20 with seed `20260811`, RentCast quota `45 → 45`
+- Quality: TypeScript passes; touched-file lint passes; full lint improves from 31 errors / 20 warnings to 26 errors / 20 warnings
 
 ---
 

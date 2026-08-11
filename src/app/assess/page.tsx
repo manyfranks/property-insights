@@ -3,9 +3,9 @@ import AssessmentProgress from "@/components/assessment-progress";
 export default async function AssessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ address?: string }>;
+  searchParams: Promise<{ address?: string; placeId?: string }>;
 }) {
-  const { address } = await searchParams;
+  const { address, placeId } = await searchParams;
 
   if (!address) {
     return (
@@ -15,5 +15,5 @@ export default async function AssessPage({
     );
   }
 
-  return <AssessmentProgress key={address} address={address} />;
+  return <AssessmentProgress key={`${address}:${placeId ?? ""}`} address={address} placeId={placeId} />;
 }

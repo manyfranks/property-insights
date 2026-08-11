@@ -34,6 +34,7 @@ export default function MobileSearch() {
   const [places, setPlaces] = useState<PlaceSuggestion[]>([]);
   const [searched, setSearched] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState("");
+  const [selectedPlaceId, setSelectedPlaceId] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const router = useRouter();
@@ -62,19 +63,25 @@ export default function MobileSearch() {
   // Debounced search
   useEffect(() => {
     if (detectedUrl || otherUrl) {
-      setResults([]);
-      setPlaces([]);
-      setSearched(false);
-      setSelectedAddress("");
-      return;
+      const resetTimer = setTimeout(() => {
+        setResults([]);
+        setPlaces([]);
+        setSearched(false);
+        setSelectedAddress("");
+        setSelectedPlaceId("");
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     if (query.length < 2) {
-      setResults([]);
-      setPlaces([]);
-      setSearched(false);
-      setSelectedAddress("");
-      return;
+      const resetTimer = setTimeout(() => {
+        setResults([]);
+        setPlaces([]);
+        setSearched(false);
+        setSelectedAddress("");
+        setSelectedPlaceId("");
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     clearTimeout(debounceRef.current);
@@ -102,6 +109,7 @@ export default function MobileSearch() {
     setPlaces([]);
     setSearched(false);
     setSelectedAddress("");
+    setSelectedPlaceId("");
   }
 
   function handleSelect(address: string) {
@@ -111,13 +119,15 @@ export default function MobileSearch() {
 
   function handleSelectPlace(place: PlaceSuggestion) {
     setSelectedAddress(place.address);
+    setSelectedPlaceId(place.placeId);
   }
 
   function handleRequestAssessment() {
     const address = detectedUrl || selectedAddress || query.trim();
     if (!address) return;
     handleClose();
-    router.push(`/assess?address=${encodeURIComponent(address)}`);
+    const placeParam = selectedPlaceId ? `&placeId=${encodeURIComponent(selectedPlaceId)}` : "";
+    router.push(`/assess?address=${encodeURIComponent(address)}${placeParam}`);
   }
 
   const hasLocal = results.length > 0;
@@ -330,7 +340,7 @@ export default function MobileSearch() {
               ref={inputRef}
               type="text"
               value={query}
-              onChange={(e) => { setQuery(e.target.value); setSelectedAddress(""); }}
+              onChange={(e) => { setQuery(e.target.value); setSelectedAddress(""); setSelectedPlaceId(""); }}
               onKeyDown={(e) => {
                 if (e.key === "Escape") handleClose();
                 if (e.key === "Enter" && detectedUrl) handleRequestAssessment();
@@ -340,7 +350,7 @@ export default function MobileSearch() {
             />
             {query && (
               <button
-                onClick={() => { setQuery(""); setSelectedAddress(""); setResults([]); setPlaces([]); setSearched(false); inputRef.current?.focus(); }}
+                onClick={() => { setQuery(""); setSelectedAddress(""); setSelectedPlaceId(""); setResults([]); setPlaces([]); setSearched(false); inputRef.current?.focus(); }}
                 className="p-1 text-muted hover:text-foreground transition-colors shrink-0"
                 aria-label="Clear"
               >

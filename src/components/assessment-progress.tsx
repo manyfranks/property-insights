@@ -41,7 +41,7 @@ function displayAddress(raw: string): string {
   return raw;
 }
 
-export default function AssessmentProgress({ address }: { address: string }) {
+export default function AssessmentProgress({ address, placeId }: { address: string; placeId?: string }) {
   const router = useRouter();
   const { isSignedIn, isLoaded } = useUser();
   const [stepStatuses, setStepStatuses] = useState<StepStatus[]>(
@@ -75,7 +75,7 @@ export default function AssessmentProgress({ address }: { address: string }) {
     fetch("/api/assess", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address }),
+      body: JSON.stringify({ address, placeId }),
       signal: controller.signal,
     })
       .then(async (res) => {
@@ -106,7 +106,7 @@ export default function AssessmentProgress({ address }: { address: string }) {
       });
 
     return () => controller.abort();
-  }, [address, isLoaded, isSignedIn, retryCount]);
+  }, [address, placeId, isLoaded, isSignedIn, retryCount]);
 
   // Step timers (simulated progress)
   useEffect(() => {
@@ -132,7 +132,8 @@ export default function AssessmentProgress({ address }: { address: string }) {
   // When API completes, fast-forward all steps
   useEffect(() => {
     if (apiDone && slug) {
-      finishAll(slug);
+      const finishTimer = setTimeout(() => finishAll(slug), 0);
+      return () => clearTimeout(finishTimer);
     }
   }, [apiDone, slug, finishAll]);
 

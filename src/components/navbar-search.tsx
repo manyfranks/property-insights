@@ -34,6 +34,7 @@ export default function NavbarSearch() {
   const [open, setOpen] = useState(false);
   const [searched, setSearched] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState("");
+  const [selectedPlaceId, setSelectedPlaceId] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const router = useRouter();
@@ -46,20 +47,26 @@ export default function NavbarSearch() {
   useEffect(() => {
     // Skip autocomplete when a listing URL is pasted
     if (detectedUrl || otherUrl) {
-      setResults([]);
-      setPlaces([]);
-      setSearched(false);
-      setSelectedAddress("");
-      setOpen(true);
-      return;
+      const resetTimer = setTimeout(() => {
+        setResults([]);
+        setPlaces([]);
+        setSearched(false);
+        setSelectedAddress("");
+        setSelectedPlaceId("");
+        setOpen(true);
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     if (query.length < 2) {
-      setResults([]);
-      setPlaces([]);
-      setSearched(false);
-      setSelectedAddress("");
-      return;
+      const resetTimer = setTimeout(() => {
+        setResults([]);
+        setPlaces([]);
+        setSearched(false);
+        setSelectedAddress("");
+        setSelectedPlaceId("");
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     clearTimeout(debounceRef.current);
@@ -96,6 +103,7 @@ export default function NavbarSearch() {
 
   function handleSelectPlace(place: PlaceSuggestion) {
     setSelectedAddress(place.address);
+    setSelectedPlaceId(place.placeId);
   }
 
   function handleRequestAssessment() {
@@ -103,7 +111,8 @@ export default function NavbarSearch() {
     if (!address) return;
     setQuery("");
     setOpen(false);
-    router.push(`/assess?address=${encodeURIComponent(address)}`);
+    const placeParam = selectedPlaceId ? `&placeId=${encodeURIComponent(selectedPlaceId)}` : "";
+    router.push(`/assess?address=${encodeURIComponent(address)}${placeParam}`);
   }
 
   useEffect(() => {
@@ -209,12 +218,13 @@ export default function NavbarSearch() {
         <input
           type="text"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setSelectedAddress(""); }}
+          onChange={(e) => { setQuery(e.target.value); setSelectedAddress(""); setSelectedPlaceId(""); }}
           onFocus={() => query.length > 1 && setOpen(true)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setOpen(false);
               setSelectedAddress("");
+              setSelectedPlaceId("");
               (e.target as HTMLInputElement).blur();
             }
           }}

@@ -42,6 +42,12 @@ import { scoreV2 } from "../scoring";
 import { offerModel, offerModelLanguage } from "../offer-model";
 import { offerToPrecomputed } from "./enrich";
 import { fmt } from "../utils";
+import {
+  addAssessmentEvidence,
+  addRentCastEvidence,
+  createPropertyEvidenceSnapshot,
+  mergePropertyEvidence,
+} from "../property-intelligence/evidence";
 
 /** Default 3 (free tier — see module doc). Foundation tier ($74/mo, 1,000
  * req/mo) => set to 50 to enrich every listing a city search returns. */
@@ -119,7 +125,28 @@ export async function enrichUSListing(
   const latestTax = bundle.record?.propertyTaxes?.[0]?.total ?? bundle.record?.taxAssessments?.[0]?.value ?? null;
   const taxes = latestTax != null ? String(Math.round(latestTax)) : listing.taxes;
 
-  const baseListing: Listing = { ...listing, yearBuilt, lotSize, sqft, taxes };
+  const enrichmentEvidence = addAssessmentEvidence(
+    addRentCastEvidence(
+      createPropertyEvidenceSnapshot({
+        surface: "discover_enriched",
+        normalizedAddress: bundle.record?.formattedAddress ?? listing.address,
+        parsedUnit: listing.unit,
+      }),
+      {
+        record: bundle.record,
+        listing: null,
+        recordQueried: true,
+        listingQueried: false,
+        unavailableReason: bundle.meta.quotaExhausted ? "quota_exhausted" : "field_missing",
+      }
+    ),
+    assessment,
+    listing.province
+  );
+  const propertyEvidence = listing.propertyEvidence
+    ? mergePropertyEvidence(listing.propertyEvidence, enrichmentEvidence, "discover_enriched")
+    : enrichmentEvidence;
+  const baseListing: Listing = { ...listing, yearBuilt, lotSize, sqft, taxes, propertyEvidence };
 
   const comparables = buildUsCompSupport(bundle.avm, parseInt(sqft) || 0);
 
