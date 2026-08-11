@@ -95,6 +95,25 @@ export interface UsNarrativeContext {
   anchorDecision?: AnchorPlausibility;
 }
 
+/**
+ * County feeds can expose an assessor's current market-value estimate rather
+ * than the taxable assessment. Keep the generated prose from collapsing those
+ * two government figures back into the same label after the structured input
+ * has correctly distinguished them.
+ */
+export function normalizeAssessmentTerminology(
+  narrative: string,
+  assessment: Assessment | null
+): string {
+  const isCountyMarketValue =
+    assessment?.liveCountySource && assessment.liveCountyValueKind === "market_value";
+  if (!isCountyMarketValue) return narrative;
+
+  return narrative
+    .replace(/\btax[- ]assessed value\b/gi, "county assessor market value")
+    .replace(/\btax assessment\b/gi, "county assessor market value");
+}
+
 // ---------------------------------------------------------------------------
 // Deterministic fallback (mirrors llm.ts's deterministicNarrative tone —
 // short, hedged, numbers-only, no LLM flourish) — used when the LLM call
@@ -289,7 +308,7 @@ You produce two outputs:
 
 2. NARRATIVE: 2-3 short paragraphs, talking directly to the buyer about this property as a trade opportunity, in the voice described above.
 
-This property has NO MLS listing remarks available (RentCast's free tier doesn't return them) — do not reference "the description" or invent language-based motivation. Instead, this input is richer than a typical listing in a different way: multiple independent valuation anchors (tax-assessed, AVM, asking, comp $/sqft) instead of the usual two, real sale-history-derived equity/tenure data, an investor yield read, and county-level risk/momentum context.
+This property has NO MLS listing remarks available (RentCast's free tier doesn't return them) — do not reference "the description" or invent language-based motivation. Instead, this input is richer than a typical listing in a different way: multiple independent valuation anchors (the government value exactly as labeled in the input, AVM, asking, comp $/sqft) instead of the usual two, real sale-history-derived equity/tenure data, an investor yield read, and county-level risk/momentum context.
 
 NARRATIVE — TALKING TO THE BUYER:
 Write 2-3 SHORT paragraphs separated by a blank line (\\n\\n), 2-3 sentences each. Don't lock the first sentence to a fixed template ("the valuation triangulation reveals...") — open with whatever's actually the most interesting or unusual thing about this property. Sometimes that's the price gap, sometimes it's how long it's sat, sometimes it's the seller's history. Lead with the story, not the methodology.
@@ -324,6 +343,7 @@ NEVER DO THESE:
 - NEVER hedge with "this might not work" or "the seller may not accept." Of course the seller might counter — that's how negotiation works. Present the position with conviction.
 - NEVER fabricate a number. Every number in your narrative must trace directly to a value given in the input below (rounded conversationally is fine — invented is not). When data is missing, acknowledge the gap and what it means for confidence — don't invent a figure to fill it.
 - NEVER invent tenure, sale-history, or equity detail beyond what the Seller equity/tenure block below actually states. When that block says no prior sale is on record, say plainly that there's no sales history to work from — never imply a purchase price, hold length, or equity position that isn't in the data.
+- NEVER call a "County assessor market value" a tax assessment or tax-assessed value. Those are different fields. Repeat the government-value label from the input exactly.
 - No exclamation marks. No hype, no fear-mongering, no stacked salesy adjectives. Plain color and one small metaphor are fine (see CREATIVE LATITUDE above) — a sales pitch is not.
 - Separate paragraphs with a blank line (\\n\\n). Do NOT write a wall of text.
 
@@ -415,7 +435,10 @@ async function callLlm(context: UsNarrativeContext): Promise<UsLLMAnalysis> {
   return {
     signals: Array.isArray(parsed.signals) ? parsed.signals : [],
     confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
-    narrative: typeof parsed.narrative === "string" ? parsed.narrative : "",
+    narrative:
+      typeof parsed.narrative === "string"
+        ? normalizeAssessmentTerminology(parsed.narrative, context.assessment)
+        : "",
   };
 }
 
