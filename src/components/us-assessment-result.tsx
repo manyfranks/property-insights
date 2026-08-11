@@ -1,6 +1,7 @@
 import type { AnchorPlausibility, Assessment, Listing, OfferResult, ScoreResult } from "@/lib/types";
 import type { CountyMarketPanel } from "@/lib/db/regional-econ";
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
+import type { AssessmentSubject } from "@/lib/property-intelligence/subject";
 import type {
   EquityTenureSignal,
   ValuationTriangulation,
@@ -42,6 +43,7 @@ interface UsResultBase {
   countyName: string;
   countyFips: string;
   assessment: Assessment | null;
+  assessmentSubject: AssessmentSubject;
   marketPanel: CountyMarketPanel | null;
   emailSent: boolean;
 }
@@ -1088,7 +1090,13 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
 
 export default function UsAssessmentResult({ data }: { data: UsAssessResult }) {
   return (
-    <div className="max-w-3xl mx-auto">
+    <div
+      className="max-w-3xl mx-auto"
+      data-assessment-subject-scope={data.assessmentSubject.scope}
+      data-assessment-subject-selected-by={data.assessmentSubject.selectedBy}
+      data-assessment-subject-confidence={data.assessmentSubject.resolutionConfidence}
+      data-assessment-subject-needs-clarification={String(data.assessmentSubject.requiresClarification)}
+    >
       {data.offerAvailable ? (
         <UsListedView data={data} />
       ) : data.offerUnavailableReason === "not_listed" ? (

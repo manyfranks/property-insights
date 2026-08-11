@@ -61,6 +61,7 @@ The live ingestion call graph is unchanged: subject resolution runs only after t
 
 - US listed, off-market, and regional-fallback success responses include `assessmentSubject`.
 - US listed responses also attach it to the returned `listing`.
+- The US result root exposes nonvisual `data-assessment-subject-*` attributes for production regression checks; they do not change rendered content or routing.
 - Canadian on-demand responses include it and persist it on the enriched listing before the KV write.
 - Existing response fields remain unchanged, so current consumers ignore the additive envelope safely.
 
