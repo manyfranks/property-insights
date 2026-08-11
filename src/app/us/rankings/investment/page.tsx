@@ -190,6 +190,7 @@ export default async function InvestmentRankingsPage() {
       {/* Funnel: partner CTA + internal cross-links */}
       <div className="mb-10">
         <PartnerCta
+          mode="investor"
           country="US"
           source="state-page"
           surface="state-page"

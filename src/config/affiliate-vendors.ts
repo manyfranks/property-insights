@@ -260,8 +260,8 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     vertical: "investor-tools",
     country: "US",
     url: "https://www.kiavi.com",
-    enabled: false,
-    affiliateReady: false,
+    enabled: true,
+    affiliateReady: true,
     cpaTier: 3,
     audienceMode: ["investor"],
     stateCoverage: "all",
@@ -271,7 +271,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     description: "Fast financing built for real estate investors",
     shortCta: "Get funded",
     notes:
-      "$1,000/closed loan (verified). Lending — needs >=30 investor referrals/yr capability; agents/brokers ineligible (note in application that this is a software tool). Confirm cross-border PartnerStack payout.",
+      "APPROVED Aug 2026. $1,000/closed loan (verified). Tracking link: try.kiavi.com/property-insights (set NEXT_PUBLIC_AFFILIATE_URL_KIAVI). Excluded states gated above. Confirm cross-border PartnerStack payout before first threshold.",
   },
   {
     id: "ownwell",
@@ -777,7 +777,11 @@ export const REVENUE_CRITICAL_IDS: string[] = [
   "squareone",
   "rentcast",
   "dealcheck",
+  "kiavi",
 ];
+
+/** Values that look like unreplaced setup placeholders rather than real links. */
+const PLACEHOLDER_URL_PATTERN = /YOUR_ID|YOUR_AFF|REPLACE_ME|CHANGEME|XXXX|example\.com/i;
 
 /**
  * Prod-only check: for every revenue-critical vendor that is currently
@@ -791,10 +795,24 @@ export function assertAffiliateHealth(): void {
     const vendor = AFFILIATE_VENDORS.find((v) => v.id === id);
     if (!vendor || !vendor.enabled || !vendor.affiliateReady) continue;
 
-    if (!ENV_URL_MAP[id]) {
+    const envName = vendor.envKey ?? `NEXT_PUBLIC_AFFILIATE_URL_${id.toUpperCase()}`;
+    const configured = ENV_URL_MAP[id];
+
+    if (!configured) {
       console.error(
         `[affiliate-health] Revenue-critical vendor "${id}" is enabled+affiliateReady but its env URL ` +
-          `(${vendor.envKey ?? `NEXT_PUBLIC_AFFILIATE_URL_${id.toUpperCase()}`}) is missing — falling back to ${vendor.url}.`
+          `(${envName}) is missing — falling back to ${vendor.url}.`
+      );
+      continue;
+    }
+
+    // A placeholder URL is worse than a missing one: the CTA still renders a
+    // "Sponsored" tag and the commission disclosure, but the link can never
+    // attribute. Ratehub shipped with `?ref=YOUR_ID` for months undetected.
+    if (PLACEHOLDER_URL_PATTERN.test(configured)) {
+      console.error(
+        `[affiliate-health] Revenue-critical vendor "${id}" has a PLACEHOLDER affiliate URL in ${envName} ` +
+          `(${configured}) — clicks are disclosed as commissioned but cannot be attributed. Replace with the real tracking link.`
       );
     }
   }

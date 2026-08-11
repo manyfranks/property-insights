@@ -185,6 +185,7 @@ export default async function RentToPriceStateRankingsPage({
 
       <div className="mb-10">
         <PartnerCta
+          mode="investor"
           country="US"
           state={state}
           source="state-page"

@@ -192,6 +192,7 @@ export default async function RentToPriceRankingsPage() {
       {/* Funnel: tools + internal links */}
       <div className="mb-10">
         <PartnerCta
+          mode="investor"
           country="US"
           source="state-page"
           surface="state-page"

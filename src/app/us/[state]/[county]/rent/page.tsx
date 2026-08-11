@@ -279,6 +279,7 @@ export default async function CountyRentPage({
           search box (matches the county page's CTA ordering convention). */}
       <div className="mb-10">
         <PartnerCta
+          mode="investor"
           country="US"
           state={county.state}
           source="rent-page"

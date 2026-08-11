@@ -129,6 +129,7 @@ export default async function StateInvestmentRankingsPage({
 
       <div className="mb-10">
         <PartnerCta
+          mode="investor"
           country="US"
           state={stateMeta.state}
           source="state-page"
