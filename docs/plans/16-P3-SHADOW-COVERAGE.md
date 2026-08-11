@@ -112,7 +112,9 @@ No single aggregate accuracy score will approve P3. Review is by subject scope, 
 | Production build | **PASS — 337 routes/pages generated** |
 | Full lint baseline | **UNCHANGED — 26 errors, 20 warnings in untouched files** |
 | 20-random integration / quota before-after | **PASS — 20/20, seed `20260811`, RentCast quota `50 → 50`** |
-| Production shadow response | _Pending deployment_ |
+| Production shadow response | **PASS — `745f4fb`; Queens regression classified residential / whole building / high confidence** |
+
+The production Queens assessment retained P2's `listing` / `listing_match` / high-confidence / no-clarification subject. P3 reported address sale, address rent, offer, and insurance prefill as `available`. The visible buyer result was unchanged: active $999,000 listing and $969,000 recommended offer.
 
 ## Remaining P3 gates
 

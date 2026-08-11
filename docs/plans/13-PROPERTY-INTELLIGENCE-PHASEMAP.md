@@ -262,7 +262,7 @@ Each result must include scope, source evidence, confidence, and an explanation 
 
 ### Evidence
 
-- Commit/PR: P3 shadow implementation (pending commit in this change set)
+- Commit/PR: `745f4fb` (`Add P3 shadow classification and capabilities`)
 - Coverage report: `16-P3-SHADOW-COVERAGE.md`; 14/14 fixtures, zero provider calls
 - Shadow review decision: _TBD_
 
