@@ -13,6 +13,11 @@ import PartnerCta from "@/components/partner-cta";
 import PartnerCtaRow from "@/components/partner-cta-row";
 import ExpandableSection from "@/components/expandable-section";
 import TierBadge from "@/components/tier-badge";
+import {
+  US_COUNTY_FALLBACK_LABEL,
+  usCountyFallbackDisclosure,
+  type UsPropertyDataUnavailableReason,
+} from "@/lib/property-intelligence/p0-fallback";
 
 /**
  * Response shapes for POST /api/assess when country==="US" — mirrors the
@@ -83,6 +88,8 @@ export interface UsOffMarketResult extends UsResultBase, UsAdvantageFields {
 export interface UsFallbackResult extends UsResultBase {
   offerAvailable: false;
   offerUnavailableReason: "no_listing_data";
+  /** Evidence-availability reason only; never a property classification. */
+  propertyDataUnavailableReason: UsPropertyDataUnavailableReason;
 }
 
 export type UsAssessResult = UsListedResult | UsOffMarketResult | UsFallbackResult;
@@ -1017,12 +1024,11 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
         {assessment?.found ? (
           <>
             <div className="text-xs uppercase tracking-widest text-muted mb-2">
-              County Median Home Value — Modeled Estimate
+              {US_COUNTY_FALLBACK_LABEL}
             </div>
             <div className="text-4xl sm:text-5xl font-mono font-bold mb-2">{fmt(assessment.totalValue)}</div>
             <p className="text-xs text-muted/70 max-w-sm mx-auto">
-              Based on US Census ACS county-level median ({assessment.assessmentYear}), not property-specific. Treat
-              as approximate.
+              {usCountyFallbackDisclosure(assessment.assessmentYear)}
             </p>
           </>
         ) : (

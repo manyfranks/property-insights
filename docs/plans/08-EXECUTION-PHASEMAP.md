@@ -1,13 +1,16 @@
-# Execution Phasemap v2 — US Expansion + Monetization
+# Execution Phasemap v3 — US Expansion + Monetization
 
-_Updated 2026-08-07 (v2 — post RentCast pivot). Supersedes v1. Tracks: **[M]** = Matt (accounts, approvals, legal, spend decisions), **[A]** = agentic dev. Related: `07-US-AFFILIATE-CTA-SPEC.md` (vendor slate), `09-US-ADVANTAGE-DESIGN.md` (US signal layer), `docs/legal/US-EXPANSION-LEGAL-BRIEFING.md` (counsel prep)._
+_Reconciled 2026-08-11 against `main`. Supersedes v2. Tracks: **[M]** = Matt (accounts, approvals, legal, spend decisions), **[A]** = agentic dev. Repository-backed work is marked complete only with commit evidence; external dashboard/account state remains explicitly unverified until checked by Matt. Related: `07-US-AFFILIATE-CTA-SPEC.md`, `09-US-ADVANTAGE-DESIGN.md`, `10-AFFILIATE-APPLICATION-KIT.md`, and `docs/legal/US-EXPANSION-LEGAL-BRIEFING.md`._
 
-## Recommended session split (fragmentation control)
+> **Next product/data program:** `13-PROPERTY-INTELLIGENCE-PHASEMAP.md` sequences evidence preservation, assessment-subject resolution, property classification/capabilities, explicit per-assessment goals, investor/landlord journeys, and the gated insurance-distribution track. It is the source of truth for that work; this document remains the source of truth for the existing US expansion and monetization backlog.
 
-- **Track 1 — Product & Data** (this session's lineage): US Advantage layer, HUD/data verification, deploy QA, Phase 5 evidence upgrades, SEO/content cadence.
-- **Track 2 — Monetization & Compliance** (spin up a fresh session): affiliate stack completion, Stripe pro tier, privacy-compliance engineering (GPC/Do-Not-Sell), FTC disclosure pass, email variants. Clean file boundary: `src/config/affiliate-vendors.ts`, `partner-cta`, billing, legal pages — minimal overlap with Track 1's pipeline files.
+## Program boundaries and file coordination
 
-Suggested Track 2 opening prompt: *"Read docs/plans/08-EXECUTION-PHASEMAP.md Track 2 backlog and docs/plans/07-US-AFFILIATE-CTA-SPEC.md, then execute the Track 2 items in order."*
+- **This document:** residual US expansion operations, external monetization activation, partner applications, production QA, and compliance follow-through.
+- **Phasemap 13:** all new subject-resolution, classification/capability, goal, persona-journey, and insurance-distribution product work.
+- **Shared-file rule:** work affecting `src/app/api/assess/route.ts`, assessment result components, email, CTA routing, billing entitlements, or pipeline persistence must have explicit file ownership before concurrent implementation. The former assumption of “minimal overlap” no longer holds.
+
+Suggested monetization-session opening prompt: *"Read docs/plans/08-EXECUTION-PHASEMAP.md remaining backlog, docs/plans/07-US-AFFILIATE-CTA-SPEC.md, and docs/plans/13-PROPERTY-INTELLIGENCE-PHASEMAP.md shared-file rules; claim file ownership before editing shared assessment paths."*
 
 ---
 
@@ -26,40 +29,49 @@ Suggested Track 2 opening prompt: *"Read docs/plans/08-EXECUTION-PHASEMAP.md Tra
 | — | LLM swap: qwen3.7-flash + reasoning-off (52x cheaper, 51% faster, schema parity) | 2941b94 |
 | — | **RentCast unified US flow (POC)**: cache-first client, quota guard, listed US properties run the full Canadian pipeline (signals/score/offer cascade), off-market AVM variant, county-median fallback | 56b245f |
 | — | LinkedIn sameAs, RentCast + DealCheck CTAs enabled | 1f27f59 + later |
+| — | US Advantage layer: equity/tenure, triangulation, yield, risk/momentum, and over-assessment signals | bb81793 |
+| — | HUD FMR read/ingest path plus county rent lookup product (3,076 pages) | df12c25, c6cf9b1 |
+| — | Rent-to-price data note and investment/property-tax tool suite | 9720d5d, bfc1816 |
+| — | US Discover V1 through mass seed: enrichment, guarded refresh, 45 metros / 2,250 listings / 29 states | 5400e57, a98f5da, 385c299 |
+| — | Live county assessment expansion: five metros plus basis-correctness rules | 9ddb628 |
+| — | Wipe-proof pipeline, sharded listing store, slow-fill engine, quota/floor guards | ed4fa5a |
+| — | Journey-mapped CTA system and adjacent FTC disclosure/affiliate hygiene | 89cb714, 9a941af |
+| — | GPC honoring, Do Not Sell/Share flow, opt-out enforcement, and unified US privacy-rights implementation | 81b0c93, 3f774af |
+| — | Stripe Pro scaffold: pricing, checkout/webhook/portal, subscription storage, and cap bypass; inert until production billing configuration | e6bd4c9 |
+| — | Kiavi approved and live with investor-mode routing and health guard | 8d2df69 |
+| — | Insurance distribution research and staged proposal | 68b8617, a749501, 282b628 |
 
 ## 🔄 IN FLIGHT
 
 | Item | Owner | State |
 |---|---|---|
-| US Advantage layer (equity/tenure signal, valuation triangulation, yield, risk/momentum, over-assessment flag) + `09-US-ADVANTAGE-DESIGN.md` | [A] agent running | Audit + commit on completion |
-| HUD FMR ingest (single clean run) | [A] background | Verify `source='hud'` rows; rerun `npx tsx scripts/ingest-us-hud-fmr.ts --commit` if dead |
-| Kiavi affiliate application | [M] | Under review |
 | DealMachine affiliate link | [M] | Reply drafted (name/email/promo code PROPERTYINSIGHTS + logo for co-branded page) |
-| GSC sitemap status | [M] | Recheck ~Aug 9; expect Success + resubmit after next deploy for US URLs |
+| GSC sitemap recovery | [M] | Fresh `sitemap-main.xml` route shipped in 71caf49; current Search Console acceptance/indexing state requires an external dashboard check |
+| Stripe Pro production activation | [M] | Scaffold is shipped but billing keys, price, webhook, and live checkout state are not verifiable from the repository |
+| Counsel review | [M] | Engineering privacy baseline is shipped; counsel still needs to review profiling, state-rights language, insurance distribution, and operating structure |
 
-## 🔲 TRACK 1 BACKLOG — Product & Data (priority order)
+## 🔲 PRODUCT / DATA RESIDUAL BACKLOG
 
 1. **Deploy QA pass**: after Vercel deploy, verify US flow end-to-end in prod (listed + off-market + quota-fallback), county pages, calculator; browser-test calculator interaction.
 2. **US assessment email variant** (Resend verified working): county/RentCast result email mirroring the CA assessment email; reuse `getAffiliateUrl(id, "email")`.
-3. **Disclaimer/attribution pass** (from legal briefing — engineering half): modeled-estimate disclaimer adjacent to every modeled number, FEMA "planning purposes only" on risk scores, "This product uses the Census Bureau Data" attribution, county-page methodology notes audit.
-4. **Phase 5 (reframed)**: RentCast already returns per-address tax-assessed values, so county assessor adapters are now an *evidence upgrade* (observed-government vs API-records) + RentCast-independence hedge, not a blocker. Start with NYC/Cook/King/Travis open portals when justified. Regrid decision stays revenue-gated.
-5. **Data note #2 (US)**: e.g. "counties where rents outrun home prices" (FHFA + HUD FMR) — linkbait + Qwoted ammunition.
-6. **Discover-mode US** (needs paid RentCast tier — /listings city queries): rank motivated sellers by equity/DOM/price-cut signals. Gate on quota economics.
-7. Semrush trial batch-export when 3+ domains ready [M+A].
+3. **Disclaimer/attribution residual audit**: modeled-estimate and county-median caveats exist in current result UI; verify FEMA “planning purposes only,” Census attribution, and methodology placement across every remaining surface rather than rebuilding already-correct fallback copy.
+4. **County evidence expansion**: five live metros are shipped. Treat any additional county adapter or Travis live-path work as a capability/coverage investment, not a blocker; coordinate it with Phasemap 13’s matrix.
+5. **US Discover operations**: V1 and mass seed are shipped. Further per-address enrichment remains quota-gated; preserve the no-fan-out and quota-reserve rules.
+6. **GSC recovery and indexing readout** [M]: check the fresh sitemap path, record accepted/discovered/indexed counts, and remove this item only with dashboard evidence.
+7. **Semrush trial batch-export** when 3+ domains are ready [M+A].
 
-## 🔲 TRACK 2 BACKLOG — Monetization & Compliance (priority order)
+## 🔲 MONETIZATION / COMPLIANCE RESIDUAL BACKLOG
 
-1. **Vercel env vars** [M]: `NEXT_PUBLIC_AFFILIATE_URL_RENTCAST`, `NEXT_PUBLIC_AFFILIATE_URL_DEALCHECK`, rotated `OPENROUTER_API_KEY`, confirm `RESEND_API_KEY` — nothing monetizes in prod until these are set.
-2. **Affiliate registrations completion** [M]: FlexOffers (it IS a marketplace — finish signup; unlocks Ownwell), The Zebra (direct), HomeLight affiliate arm, then CJ (LendingTree) when traffic justifies.
-3. **Privacy compliance engineering** [A, after counsel review]: "Do Not Sell or Share" footer link + GPC signal honoring (12 states, visible confirmation per CA/CO 2026 rules), unified US State Privacy Rights section, DSR intake via legal@.
-4. **FTC disclosure tightening** [A]: disclosure adjacent to every CTA cluster (email CTAs included), audit all affiliate link rel attributes.
-5. **Stripe pro tier** [A+M]: $19–49/mo — unlimited US assessments (funds RentCast paid tier; free users get N/day), saved analyses, exports. Now justified earlier than v1 planned because RentCast quota economics create a direct cost-to-revenue link. Includes pricing page, Stripe webhook, entitlement checks in assess route.
-6. **RentCast tier upgrade decision** [M]: Foundation $74/mo when demo/real traffic arrives (~250-300 assessments/mo); Scale ~$449-650/mo at ~10k lookups. Quota guard makes overage impossible meanwhile.
-7. **EPC review loop** [A]: partner_click data by vendor/vertical/state → reorder cpaTiers quarterly.
-8. **Lead-gen product** (intent-score dashboard): long game, revisit at volume.
+1. **Production environment audit** [M]: verify affiliate URLs, rotated OpenRouter key, Resend key, and all Stripe variables in Vercel; repository presence does not prove deployment configuration.
+2. **Partner follow-through** [M]: send the DealMachine reply; reconcile `10-AFFILIATE-APPLICATION-KIT.md` against current approvals; prioritize direct programs while network applications remain traffic-gated.
+3. **Activate or defer Stripe Pro** [A+M]: if activating, configure the product/price/webhook, perform live checkout/renewal/cancellation QA, and decide whether saved analyses/exports are required before marketing Pro. Do not count the inert scaffold as production activation.
+4. **Counsel/privacy follow-through** [M]: review the shipped US rights/GPC implementation and explicitly include occupancy-driven personalization, intent profiling, insurance intake, and affiliate routing. Engineering completion is not legal approval.
+5. **RentCast tier upgrade decision** [M]: Foundation buys volume, not better data quality. Upgrade only when observed assessment/discover demand and journey economics justify it.
+6. **EPC review loop** [A]: use `partner_clicks` by vendor/vertical/state/source when volume is sufficient; do not optimize on anecdotal clicks.
+7. **Lead-gen/intent-profile product**: deferred behind Phasemap 13’s subject/goal contracts and counsel profiling review.
 
 ## [M] STANDING ITEMS
 
-- Legal counsel review: privacy policy US section, ToS rider, LLC/tax questions (briefing in docs/legal/).
+- Legal counsel review: privacy profiling, insurance distribution, ToS, entity/tax questions, and shipped US-rights language.
 - Qwoted: say "scan Qwoted" in any session for a pitch pass against live journalist requests.
 - LinkedIn page: post the data notes when published.

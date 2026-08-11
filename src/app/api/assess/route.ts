@@ -23,9 +23,10 @@
  *     rent`, plus the same US Advantage fields (AVM value stands in for
  *     asking price).
  *   - Fallback (RentCast quota exhausted / API down / no record at all):
- *     `offerAvailable: false, offerUnavailableReason: "no_listing_data"` —
- *     the original county-median-only shape, unchanged (no RentCast record
- *     means no basis for the US Advantage layer either).
+ *     `offerAvailable: false, offerUnavailableReason: "no_listing_data",
+ *     propertyDataUnavailableReason` — the original county-median-only
+ *     presentation, plus a machine-readable reason for the degradation (no
+ *     RentCast record means no basis for the US Advantage layer either).
  *
  * Auth required (Clerk).
  * maxDuration: 60s (assessment lookup + LLM call).
@@ -58,6 +59,7 @@ import { lintUsNarrative, logNarrativeLint } from "@/lib/pipeline/narrative-lint
 import { getSignals } from "@/lib/signals";
 import { scoreV2 } from "@/lib/scoring";
 import { offerModel, offerModelLanguage } from "@/lib/offer-model";
+import { decideUsAssessmentDataPath } from "@/lib/property-intelligence/p0-fallback";
 
 const RATE_LIMIT_RESPONSE = (resetMs: number) =>
   NextResponse.json(
@@ -324,20 +326,22 @@ async function handleUSAssessment({
       : "call failed"
   );
 
-  // activeListing counts as usable on its own: Discover sweeps prime ONLY the
-  // per-address listing cache (they carry no tax/AVM data), so a seeded
-  // listing's first assess may have listing=hit while record/avm are
-  // quota-blocked — that must run the listed flow, not the county fallback.
-  const hasUsableRentcastData = bundle && (bundle.record || bundle.avm || bundle.activeListing);
+  // Decide only from the already-fetched bundle. P0 deliberately adds no
+  // provider retry or resolution call. activeListing counts as usable on its
+  // own because Discover sweeps prime only the per-address listing cache.
+  const dataPath = decideUsAssessmentDataPath(bundle);
 
   // Fallback path — quota exhausted, RentCast API down, or genuinely no
-  // record for this address. Identical to the original county-median-only
-  // behavior.
-  if (!hasUsableRentcastData) {
+  // record for this address. Presentation remains the original county-
+  // median-only behavior; propertyDataUnavailableReason makes the evidence
+  // gap machine-readable without classifying the property.
+  if (!bundle || dataPath.kind === "regional_fallback") {
+    const propertyDataUnavailableReason =
+      dataPath.kind === "regional_fallback" ? dataPath.reason : "provider_error";
     const assessment = await lookupAssessment(street, region, city);
     log(
       "us data done (fallback)",
-      `assessment_found=${assessment?.found ?? false} panel=${marketPanel ? "yes" : "no"}`
+      `reason=${propertyDataUnavailableReason} assessment_found=${assessment?.found ?? false} panel=${marketPanel ? "yes" : "no"}`
     );
 
     trackEvent(userId, "assessment_request", {
@@ -361,6 +365,7 @@ async function handleUSAssessment({
       marketPanel,
       offerAvailable: false,
       offerUnavailableReason: "no_listing_data",
+      propertyDataUnavailableReason,
       emailSent: false,
     });
   }

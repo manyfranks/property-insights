@@ -133,7 +133,7 @@ If a field asks "traffic incentive status" or similar (Yes/No) — answer **No**
 ### 7. DealMachine + Kiavi — status only, no research needed
 
 - **DealMachine**: reply drafted (name/email/promo code `PROPERTYINSIGHTS` + logo, for a co-branded landing page) — per `08-EXECUTION-PHASEMAP.md`. Awaiting Matt to send.
-- **Kiavi**: application submitted, **under review** on PartnerStack — per `08-EXECUTION-PHASEMAP.md`. No action pending; wait for decision.
+- **Kiavi**: **approved and live** with investor-mode routing and a configured-link health guard (`8d2df69`).
 
 ---
 
@@ -181,7 +181,7 @@ If the appeal fails, re-apply once GSC shows sustained impressions (same trigger
 
 ### General rule
 
-Network-level screens (FlexOffers, Impact Marketplace, **Awin — confirmed Aug 8**, and — by the same logic — CJ) gate on **traffic/track record**. Direct brand programs (Baselane, HomeLight, PropStream, Steadily, Policygenius) gate on **fit**, not volume, and are the right priority while the site is pre-traffic. Prioritize direct signups now; revisit network-level applications once Google Search Console shows sustained organic impressions and the affiliate profile has connected analytics. Scoreboard as of Aug 8: network screens 0-for-3 (Impact Marketplace, FlexOffers, Awin); direct programs 2 approved (RentCast, DealCheck), 4 in review (Easy Street, Lima One, SmartFinancial, Kiavi), 0 declined.
+Network-level screens (FlexOffers, Impact Marketplace, **Awin — confirmed Aug 8**, and — by the same logic — CJ) gate on **traffic/track record**. Direct brand programs (Baselane, HomeLight, PropStream, Steadily, Policygenius) gate on **fit**, not volume, and are the right priority while the site is pre-traffic. Prioritize direct signups now; revisit network-level applications once Google Search Console shows sustained organic impressions and the affiliate profile has connected analytics. Scoreboard reconciled Aug 11: network screens 0-for-3 (Impact Marketplace, FlexOffers, Awin); direct programs 3 approved (RentCast, DealCheck, Kiavi), 3 known in review (Easy Street, Lima One, SmartFinancial), 0 known declined.
 
 ---
 
@@ -196,6 +196,6 @@ Network-level screens (FlexOffers, Impact Marketplace, **Awin — confirmed Aug 
 | Steadily | `ambassador.steadily.com/register` | ⚠️ 403s to fetch; URL confirmed via on-page links | Direct |
 | Policygenius | `policygenius.hasoffers.com/signup` | ✅ live | Direct (TUNE) |
 | DealMachine | — | Reply drafted, awaiting send | Direct |
-| Kiavi | — | Under review | PartnerStack |
+| Kiavi | — | Approved and live (`8d2df69`) | PartnerStack |
 | FlexOffers (reapply) | email `support@flexoffers.com` | Declined Aug 8; reapply path confirmed | Network |
 | Ownwell (hedge) | `commerce.sovrn.com/merchants/223342/ownwell-affiliate-program` | Untried alternative network | Sovrn/VigLink |
