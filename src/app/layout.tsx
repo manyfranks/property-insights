@@ -96,6 +96,7 @@ export default function RootLayout({
             React hoists it into <head> — rather than metadata.other. */}
         <meta name="impact-site-verification" {...{ value: "0ace5bae-67e1-46b6-8692-148801f40b03" }} />
         <meta name="impact-site-verification" {...{ value: "eabea977-5970-488e-8500-e9900ed31327" }} />
+        <meta name="impact-site-verification" {...{ value: "1d89ecb8-4d2f-4c48-a3ca-4da67527c699" }} />
         {/* FlexOffers site verification (standard content= attribute). */}
         <meta name="fo-verify" content="f7a80bd4-10ee-4813-941a-6be2253e7186" />
         <OrganizationEntityJsonLd url={BASE_URL} />

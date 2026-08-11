@@ -26,7 +26,7 @@ import type {
   Country,
   SurfaceKey,
 } from "@/config/affiliate-vendors";
-import { getVendorsForRegion, getVendorsForSurface } from "@/config/affiliate-vendors";
+import { getVendorsForRegion, getVendorsForSurface, type Vertical } from "@/config/affiliate-vendors";
 import { FTC_DISCLOSURE, resolveUrl, trackClick, useOptedOut } from "@/lib/partner-cta-shared";
 
 interface PartnerCtaBlockProps {
@@ -45,6 +45,8 @@ interface PartnerCtaBlockProps {
   /** when set, orders vendors by this surface's vertical journey priority
    *  (see SURFACE_VERTICAL_PRIORITY) instead of plain cpaTier ordering */
   surface?: SurfaceKey;
+  /** hoist one vertical above the surface default (e.g. a blog post's own topic) */
+  preferVertical?: Vertical;
 }
 
 export default function PartnerCta({
@@ -56,11 +58,12 @@ export default function PartnerCta({
   city,
   heading = "Act on this analysis",
   surface,
+  preferVertical,
 }: PartnerCtaBlockProps) {
   const optedOut = useOptedOut();
 
   const vendors = surface
-    ? getVendorsForSurface(country, state, mode, surface)
+    ? getVendorsForSurface(country, state, mode, surface, preferVertical)
     : getVendorsForRegion(country, state, mode);
   if (vendors.length === 0) return null;
 

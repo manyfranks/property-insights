@@ -213,6 +213,7 @@ export default async function BlogPostPage({
             country={post.ctaCountry ?? "CA"}
             source="blog"
             surface={surfaceForVertical(post.ctaVertical)}
+          preferVertical={post.ctaVertical}
             heading="Tools for this topic"
           />
         </div>

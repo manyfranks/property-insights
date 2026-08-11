@@ -173,6 +173,29 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     legacyPartnerType: "insurance",
     envKey: "NEXT_PUBLIC_SQUAREONE_URL",
   },
+  {
+    id: "apollo",
+    name: "APOLLO Insurance",
+    vertical: "insurance",
+    country: "CA",
+    url: "https://apollocover.com",
+    enabled: true,
+    affiliateReady: true,
+    cpaTier: 1,
+    audienceMode: ["buyer", "investor"],
+    stateCoverage: "all",
+    // Precautionary jurisdiction gate — see docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §3.
+    // QC: civil-law AMF regime whose distribution-without-representative framework
+    // does not map onto referral compensation. NB: 2023 regime licenses intermediary
+    // activity "regardless of whether conducted... online". Both pending legal review.
+    stateExclusions: ["QC", "NB"],
+    network: "direct",
+    ctaLabel: "Get landlord or tenant coverage",
+    description: "Online quote and policy in minutes, no phone call needed",
+    shortCta: "Get quote",
+    notes:
+      "APPROVED (auto) Aug 2026. Co-branded landing page: apollocover.com/lp/propertyinsights (set NEXT_PUBLIC_AFFILIATE_URL_APOLLO). A second URL, covertrack.ca/propertyinsights, was also issued — confirm in the partner portal which carries attribution. Commission rate not disclosed publicly; cpaTier 1 is a conservative placeholder pending dashboard confirmation.",
+  },
 
   // ---------------------------------------------------------------------
   // US — Tier 1: self-serve, nationwide, fastest to revenue (apply first)
@@ -656,9 +679,19 @@ export function getVendorsForSurface(
   country: Country,
   state: string | undefined,
   mode: AudienceMode = "buyer",
-  surface: SurfaceKey
+  surface: SurfaceKey,
+  /**
+   * Hoist one vertical to the front of the surface's usual priority. Used where
+   * the *content* declares its own topic and should outrank the surface default
+   * — e.g. an insurance blog post must not lead with a mortgage CTA just because
+   * "result-buyer" is mortgage-first.
+   */
+  preferVertical?: Vertical
 ): AffiliateVendor[] {
-  const priority = SURFACE_VERTICAL_PRIORITY[surface];
+  const base = SURFACE_VERTICAL_PRIORITY[surface];
+  const priority = preferVertical
+    ? [preferVertical, ...base.filter((v) => v !== preferVertical)]
+    : base;
 
   return filterEligibleVendors(country, state, mode).sort((a, b) => {
     const aRank = priority.indexOf(a.vertical);
@@ -694,6 +727,7 @@ const ENV_URL_MAP: Record<string, string | undefined> = {
   ratehub: process.env.NEXT_PUBLIC_RATEHUB_URL,
   nesto: process.env.NEXT_PUBLIC_NESTO_URL,
   squareone: process.env.NEXT_PUBLIC_SQUAREONE_URL,
+  apollo: process.env.NEXT_PUBLIC_AFFILIATE_URL_APOLLO,
 
   // US — default NEXT_PUBLIC_AFFILIATE_URL_{ID} pattern, wired per vendor
   // as approvals land. Reading these now (even though every US vendor is
@@ -778,6 +812,7 @@ export const REVENUE_CRITICAL_IDS: string[] = [
   "rentcast",
   "dealcheck",
   "kiavi",
+  "apollo",
 ];
 
 /** Values that look like unreplaced setup placeholders rather than real links. */
