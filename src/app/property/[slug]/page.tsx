@@ -764,7 +764,11 @@ function usAssessmentSourceLabel(assessment: Assessment): string {
   // taxAssessments field — see Assessment.liveCountySource's doc comment
   // (src/lib/types.ts) for why the two share source:"government" but
   // aren't equally trustworthy (docs/plans/10-RENTCAST-DATA-QUALITY.md).
-  if (assessment.liveCountySource) return "County tax assessment (live)";
+  if (assessment.liveCountySource) {
+    return assessment.liveCountyValueKind === "market_value"
+      ? "County assessor market value (live)"
+      : "County tax assessment (live)";
+  }
   switch (assessment.source) {
     case "government":
     case "cache":

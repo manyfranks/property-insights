@@ -6,8 +6,8 @@
  * facts, an active-listing price/DOM signal, and comparable sales, feeding
  * the same scoring/offer-model pipeline (see src/app/api/assess/route.ts).
  *
- * CRITICAL CONSTRAINT: the account is on RentCast's free tier — 50 requests
- * per calendar month, expensive overage. Every call in this file goes
+ * CRITICAL CONSTRAINT: the account includes 50 successful requests per
+ * calendar month, with paid overage beyond that. Every call in this file goes
  * through two gates before it's allowed to hit the network:
  *
  *   1. Cache — property records + AVM value are cached 30 days (they move
@@ -15,15 +15,18 @@
  *      rent estimates 30 days. A cache hit costs zero RentCast requests.
  *   2. Quota guard — a KV counter (rentcast:quota:YYYY-MM) reserves a slot
  *      before every real call and hard-stops once RENTCAST_MONTHLY_QUOTA
- *      (default 45, leaving headroom under 50) is reached. Both cache and
+ *      (default 50, the included monthly allowance) is reached. Reservations
+ *      are released for 404s and errors because RentCast bills successful
+ *      HTTP 200 responses only. Both cache and
  *      quota fall back to an in-process Map when KV_REST_API_URL/TOKEN
  *      aren't configured (e.g. local dev) — non-persistent, but it still
  *      exercises the guard instead of silently disabling it. Production
  *      (Vercel, KV linked) gets real cross-request persistence.
  *
  * Callers (src/app/api/assess/route.ts) treat quota exhaustion and API
- * errors identically: degrade to the existing county-median path. Never
- * throw the user-facing request into a 500, never make the 51st call.
+ * errors identically: degrade to the existing county path. Never throw the
+ * user-facing request into a 500, and never enter paid overage unless an
+ * operator explicitly raises RENTCAST_MONTHLY_QUOTA above 50.
  */
 
 import type { Assessment } from "./types";
@@ -163,7 +166,7 @@ function quotaKey(namespace: string = "quota"): string {
 }
 
 function monthlyQuotaLimit(): number {
-  return Number(process.env.RENTCAST_MONTHLY_QUOTA) || 45;
+  return Number(process.env.RENTCAST_MONTHLY_QUOTA) || 50;
 }
 
 async function quotaIncr(key: string): Promise<number> {
@@ -287,9 +290,15 @@ async function cachedRentcastCall<T>(opts: {
 
   try {
     const data = await rentcastRequest<T>(opts.path, opts.params, opts.apiKeyOverride);
+    // RentCast counts/bills successful HTTP 200 responses. A 404 is a normal
+    // non-billable miss, so release the pessimistically reserved slot.
+    if (data === null) await quotaDecr(key);
     await cacheSet(opts.cacheKey, data, opts.ttlSeconds);
     return { data, cacheHit: false, quotaBlocked: false };
   } catch (err) {
+    // Timeouts and non-200 errors are also non-billable. Keep the local
+    // counter aligned with the provider's successful-request accounting.
+    await quotaDecr(key);
     return {
       data: null,
       cacheHit: false,
@@ -315,7 +324,7 @@ async function cachedRentcastCall<T>(opts: {
 // auditRentcastCall() below is a SEPARATE, explicitly-named entry point for
 // offline scripts (e.g. scripts/audit-rentcast-quality.ts) that need to
 // spend requests against a second, independently-provisioned free-tier key
-// (RENTCAST_API_KEY_2 in .env.local) without touching production's 45/mo
+// (RENTCAST_API_KEY_2 in .env.local) without touching production's counter
 // budget or its tracked usage counter. Every argument that matters —
 // apiKey, cache key, quota counter — is supplied explicitly by the caller;
 // this function reads no ambient env var of its own (not even
@@ -363,9 +372,11 @@ export async function auditRentcastCall<T>(opts: {
 
   try {
     const data = await rentcastRequest<T>(opts.path, opts.params, opts.apiKey);
+    if (data === null) await quotaDecr(key);
     await cacheSet(opts.cacheKey, data, opts.ttlSeconds);
     return { data, cacheHit: false, quotaBlocked: false };
   } catch (err) {
+    await quotaDecr(key);
     return {
       data: null,
       cacheHit: false,
@@ -602,6 +613,12 @@ export interface USPropertyBundle {
     cacheHits: number;
     liveCalls: number;
     errors: string[];
+    /** Address sent to the first property-record lookup. */
+    inputAddress?: string;
+    /** Address used for downstream listing/AVM/rent lookups. */
+    canonicalAddress?: string;
+    /** Whether RentCast's property record normalized the downstream target. */
+    addressResolution?: "input" | "provider_canonical";
   };
 }
 
@@ -726,38 +743,64 @@ function mapActiveListing(raw: RawListing | undefined): RentCastActiveListing | 
  * Never throws for "no data" (404s resolve to null fields); only throws if
  * RENTCAST_API_KEY is unset (a config error, not a runtime one).
  */
+function rentcastAddress(address: string, city: string, state: string, postalCode?: string): string {
+  return [address, city, state, postalCode].filter(Boolean).join(", ");
+}
+
 export async function getUSProperty(
   address: string,
   city: string,
-  state: string
+  state: string,
+  postalCode?: string
 ): Promise<USPropertyBundle> {
   const addrKey = normalizeAddressKey(address, city, state);
-  const fullAddress = `${address}, ${city}, ${state}`;
+  const inputAddress = rentcastAddress(address, city, state, postalCode);
 
-  const [propRes, avmRes, rentRes, listingRes] = await Promise.all([
-    cachedRentcastCall<RawPropertyRecord[]>({
-      cacheKey: `rentcast:property:${addrKey}`,
-      ttlSeconds: TTL_PROPERTY_SECONDS,
-      path: "/properties",
-      params: { address: fullAddress, limit: 1 },
-    }),
+  // Resolve identity first. RentCast's property endpoint accepts common
+  // locality/address variants that its listing endpoint does not. Queens is
+  // the production example: "51-20 69th Pl, Flushing" resolves to the
+  // provider's canonical "5120 69th Pl, Woodside" record. The successful
+  // record becomes the target for every dependent lookup; this is provider
+  // canonicalization, not an unbounded fuzzy match.
+  const propRes = await cachedRentcastCall<RawPropertyRecord[]>({
+    cacheKey: `rentcast:property:${addrKey}`,
+    ttlSeconds: TTL_PROPERTY_SECONDS,
+    path: "/properties",
+    // RentCast's exact-address query contract says to send the complete
+    // address and omit all other search filters.
+    params: { address: inputAddress },
+  });
+  const propRaw = Array.isArray(propRes.data) ? propRes.data[0] : undefined;
+  const canonicalAddress = propRaw?.formattedAddress?.trim() || inputAddress;
+  const canonicalKey = normalizeAddressKey(
+    propRaw?.addressLine1 || address,
+    propRaw?.city || city,
+    propRaw?.state || state
+  );
+
+  // Listing status is the product branch point, so reserve its slot before
+  // optional valuation enrichments. Near the monthly ceiling this preserves
+  // a confirmed active listing instead of letting AVM/rent win a race for
+  // the final slot and incorrectly rendering the property as off-market.
+  const listingRes = await cachedRentcastCall<RawListing[]>({
+    cacheKey: `rentcast:listing:${canonicalKey}`,
+    ttlSeconds: TTL_LISTING_SECONDS,
+    path: "/listings/sale",
+    params: { address: canonicalAddress },
+  });
+
+  const [avmRes, rentRes] = await Promise.all([
     cachedRentcastCall<RawAvm>({
-      cacheKey: `rentcast:avm:${addrKey}`,
+      cacheKey: `rentcast:avm:${canonicalKey}`,
       ttlSeconds: TTL_AVM_SECONDS,
       path: "/avm/value",
-      params: { address: fullAddress },
+      params: { address: canonicalAddress },
     }),
     cachedRentcastCall<RawRent>({
-      cacheKey: `rentcast:rent:${addrKey}`,
+      cacheKey: `rentcast:rent:${canonicalKey}`,
       ttlSeconds: TTL_RENT_SECONDS,
       path: "/avm/rent/long-term",
-      params: { address: fullAddress },
-    }),
-    cachedRentcastCall<RawListing[]>({
-      cacheKey: `rentcast:listing:${addrKey}`,
-      ttlSeconds: TTL_LISTING_SECONDS,
-      path: "/listings/sale",
-      params: { address: fullAddress, status: "Active", limit: 1 },
+      params: { address: canonicalAddress },
     }),
   ]);
 
@@ -777,7 +820,6 @@ export async function getUSProperty(
   tally(rentRes, "rent");
   tally(listingRes, "listing");
 
-  const propRaw = Array.isArray(propRes.data) ? propRes.data[0] : undefined;
   const listingRaw = Array.isArray(listingRes.data) ? listingRes.data[0] : undefined;
 
   return {
@@ -785,7 +827,15 @@ export async function getUSProperty(
     avm: mapAvm(avmRes.data ?? undefined),
     rent: mapRent(rentRes.data ?? undefined),
     activeListing: mapActiveListing(listingRaw),
-    meta: { quotaExhausted, cacheHits, liveCalls, errors },
+    meta: {
+      quotaExhausted,
+      cacheHits,
+      liveCalls,
+      errors,
+      inputAddress,
+      canonicalAddress,
+      addressResolution: canonicalAddress === inputAddress ? "input" : "provider_canonical",
+    },
   };
 }
 
@@ -859,15 +909,16 @@ export async function discoverActiveListingsByCity(
 export async function getUSActiveListing(
   address: string,
   city: string,
-  state: string
+  state: string,
+  postalCode?: string
 ): Promise<RentCastActiveListing | null> {
   const addrKey = normalizeAddressKey(address, city, state);
-  const fullAddress = `${address}, ${city}, ${state}`;
+  const fullAddress = rentcastAddress(address, city, state, postalCode);
   const res = await cachedRentcastCall<RawListing[]>({
     cacheKey: `rentcast:listing:${addrKey}`,
     ttlSeconds: TTL_LISTING_SECONDS,
     path: "/listings/sale",
-    params: { address: fullAddress, status: "Active", limit: 1 },
+    params: { address: fullAddress },
   });
   const raw = Array.isArray(res.data) ? res.data[0] : undefined;
   return mapActiveListing(raw);
@@ -937,7 +988,7 @@ export interface USPropertyLiteBundle {
  * from the same city-wide /listings/sale sweep), and the rent estimate is
  * skippable — enrichment prioritizes assessed value/taxes/yearBuilt/comps,
  * and every skipped call is quota headroom preserved (see this file's
- * module doc for the 45/mo free-tier constraint). Two requests per address
+ * module doc for the 50/mo included allowance). Two requests per address
  * on a cache miss instead of getUSProperty()'s four.
  *
  * Uses the exact same cache keys as getUSProperty() (cachedRentcastCall,

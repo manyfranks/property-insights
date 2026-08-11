@@ -144,6 +144,7 @@ export function buildUsAssessment(
       // assessmentBasisFromCountyLive's doc comment above.
       assessmentBasis: assessmentBasisFromCountyLive(countyLive.assessmentBasis, state),
       liveCountySource: true,
+      liveCountyValueKind: "market_value",
     };
   }
 
@@ -158,6 +159,7 @@ export function buildUsAssessment(
       evidenceClass: "observed",
       assessmentBasis: assessmentBasisFromCountyLive(countyLive.assessmentBasis, state),
       liveCountySource: true,
+      liveCountyValueKind: "assessed_value",
     };
   }
 

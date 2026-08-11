@@ -158,6 +158,10 @@ export interface Assessment {
   // (RentCast-tax-sourced, AVM, area-median, or any CA adapter) — UI source
   // labels use it to render "(live)" only when true.
   liveCountySource?: boolean;
+  // Which live county field became totalValue. Some assessors publish both
+  // a taxable assessed value and a market/full value; retaining the choice
+  // prevents the UI from labeling a market-value field as a tax assessment.
+  liveCountyValueKind?: "market_value" | "assessed_value";
 }
 
 // ---------------------------------------------------------------------------

@@ -233,7 +233,7 @@ async function main() {
     // Quota key format: rentcast:quota:YYYY-MM (quotaKey() in rentcast.ts).
     const now = new Date();
     const quotaKey = `rentcast:quota:${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-    const limit = Number(process.env.RENTCAST_MONTHLY_QUOTA) || 45;
+    const limit = Number(process.env.RENTCAST_MONTHLY_QUOTA) || 50;
     const reserve = Number(process.env.US_DISCOVER_QUOTA_RESERVE) || 10;
     // Headroom = limit - used. Set used so headroom == reserve exactly
     // (<=  reserve must skip, per quotaReserve()'s doc comment).

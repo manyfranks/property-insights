@@ -4,7 +4,8 @@
  * US Discover — cached, scored, browsable US listings by metro. The US
  * analogue of the CA cron pipeline (src/app/api/pipeline/refresh/route.ts),
  * but shaped around a hard constraint the CA side doesn't have: RentCast's
- * free tier is 45 requests/month (see src/lib/rentcast.ts's module doc),
+ * included allowance is 50 successful requests/month (see
+ * src/lib/rentcast.ts's module doc),
  * where the CA side's Zoocasa searches are free. So instead of "search
  * every city, detail-fetch every new listing" (the CA pattern), this module
  * spends exactly ONE RentCast request per city per refresh —
@@ -587,7 +588,7 @@ async function sweepOneMetro(cfg: USDiscoverCityConfig): Promise<{
  * headroom beyond the reserve PLUS one more sweep's estimated cost
  * (ESTIMATED_SWEEP_COST), activate exactly one new metro from
  * US_METRO_FILL_QUEUE and sweep it immediately — "one per cycle" growth.
- * FREE-TIER PACING MATH (45 req/mo, reserve 10 → ~35 spendable/mo): 3
+ * INCLUDED-ALLOWANCE PACING MATH (50 req/mo, reserve 10 → ~40 spendable/mo): 3
  * active metros refreshed every 3 days costs ~30 discover calls/mo alone
  * (enrichment is separately quota-guarded per listing and just degrades
  * sparse under pressure rather than failing) — on a typical month that

@@ -175,6 +175,7 @@ function parseAddress(raw: string): {
   city: string;
   region: string;
   country: "CA" | "US";
+  postalCode?: string;
 } | null {
   // Remove trailing country suffix (Canada or USA, in the forms Google
   // Places tends to emit)
@@ -188,6 +189,13 @@ function parseAddress(raw: string): {
   const street = parts[0];
   const city = parts[1];
 
+  // Preserve the postal/ZIP before removing it from the region token. It is
+  // part of the provider identity query even though it is not needed to map
+  // the state/province code.
+  const postalCode =
+    parts[2].match(/\b\d{5}(?:-\d{4})?\b/)?.[0] ??
+    parts[2].match(/\b[A-Z]\d[A-Z]\s*\d[A-Z]\d\b/i)?.[0]?.toUpperCase();
+
   // Region is in the third part, possibly with a postal/ZIP code attached
   const regionPart = parts[2]
     .replace(/[A-Z]\d[A-Z]\s*\d[A-Z]\d/i, "") // Strip CA postal code (A1A 1A1)
@@ -200,7 +208,7 @@ function parseAddress(raw: string): {
 
   const country: "CA" | "US" = /^[A-Z]{2}$/.test(region) ? "US" : "CA";
 
-  return { street, city, region, country };
+  return { street, city, region, country, postalCode };
 }
 
 /**
@@ -236,6 +244,7 @@ async function handleUSAssessment({
   street,
   city,
   region,
+  postalCode,
   rawInput,
   selectedPlaceId,
   log,
@@ -246,6 +255,7 @@ async function handleUSAssessment({
   street: string;
   city: string;
   region: string;
+  postalCode?: string;
   rawInput: string;
   selectedPlaceId?: string;
   log: (step: string, extra?: string) => void;
@@ -304,7 +314,7 @@ async function handleUSAssessment({
   // available," falling back to RentCast's taxAssessments exactly as before
   // this change (log prefix `[county-live]`, see that module for detail).
   const [bundle, marketPanel, countyLive] = await Promise.all([
-    getUSProperty(street, city, geo.stateUsps).catch((err) => {
+    getUSProperty(street, city, geo.stateUsps, postalCode).catch((err) => {
       log("rentcast error", err instanceof Error ? err.message : String(err));
       return null;
     }),
@@ -332,6 +342,8 @@ async function handleUSAssessment({
     bundle
       ? `record=${!!bundle.record} avm=${!!bundle.avm} rent=${!!bundle.rent} listing=${!!bundle.activeListing} ` +
         `cacheHits=${bundle.meta.cacheHits} liveCalls=${bundle.meta.liveCalls} quotaExhausted=${bundle.meta.quotaExhausted}` +
+        ` resolution=${bundle.meta.addressResolution ?? "unknown"}` +
+        (bundle.meta.canonicalAddress ? ` canonical=${bundle.meta.canonicalAddress}` : "") +
         (bundle.meta.errors.length ? ` errors=${bundle.meta.errors.join("; ")}` : "")
       : "call failed"
   );
@@ -342,13 +354,15 @@ async function handleUSAssessment({
   const dataPath = decideUsAssessmentDataPath(bundle);
 
   // Fallback path — quota exhausted, RentCast API down, or genuinely no
-  // record for this address. Presentation remains the original county-
-  // median-only behavior; propertyDataUnavailableReason makes the evidence
-  // gap machine-readable without classifying the property.
+  // record for this address. Preserve an already-fetched property-specific
+  // county result when one exists; only fall back to the regional ACS median
+  // when both provider and county property evidence are absent.
   if (!bundle || dataPath.kind === "regional_fallback") {
     const propertyDataUnavailableReason =
       dataPath.kind === "regional_fallback" ? dataPath.reason : "provider_error";
-    const assessment = await lookupAssessment(street, region, city);
+    const assessment =
+      buildUsAssessment(null, null, geo.stateUsps, countyLive) ??
+      (await lookupAssessment(street, region, city));
     const propertyEvidence = addAssessmentEvidence(
       addRentCastEvidence(
         createPropertyEvidenceSnapshot({
@@ -754,7 +768,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { street, city, region, country } = parsed;
+    const { street, city, region, country, postalCode } = parsed;
     log("parsed", `${street} | ${city} | ${region} (${country})`);
 
     if (country === "US") {
@@ -765,6 +779,7 @@ export async function POST(req: Request) {
         street,
         city,
         region,
+        postalCode,
         rawInput: submittedAddress,
         selectedPlaceId,
         log,

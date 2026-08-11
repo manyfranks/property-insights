@@ -128,7 +128,11 @@ function assessmentSourceLabel(assessment: Assessment): string {
   // us-county's lookupCountyLive, wired into src/lib/pipeline/us-assess.ts's
   // buildUsAssessment) rather than RentCast's taxAssessments field — see
   // Assessment.liveCountySource's doc comment (src/lib/types.ts).
-  if (assessment.liveCountySource) return "County tax assessment (live)";
+  if (assessment.liveCountySource) {
+    return assessment.liveCountyValueKind === "market_value"
+      ? "County assessor market value (live)"
+      : "County tax assessment (live)";
+  }
   switch (assessment.source) {
     case "government":
       return "County tax assessment";
@@ -232,7 +236,13 @@ function MarketPanelSection({ marketPanel }: { marketPanel: CountyMarketPanel | 
   );
 }
 
-function FooterCredits({ marketPanel }: { marketPanel: CountyMarketPanel | null }) {
+function FooterCredits({
+  marketPanel,
+  includeRentCast = true,
+}: {
+  marketPanel: CountyMarketPanel | null;
+  includeRentCast?: boolean;
+}) {
   const hasFema = marketPanel && (marketPanel.femaRiskScore != null || marketPanel.femaEalScore != null);
   const hasFmr =
     marketPanel &&
@@ -245,7 +255,7 @@ function FooterCredits({ marketPanel }: { marketPanel: CountyMarketPanel | null 
       {marketPanel?.vintages["hpi"] ? " · FHFA House Price Index" : ""}
       {hasFema ? " · FEMA National Risk Index" : ""}
       {hasFmr ? " · HUD Fair Market Rents" : ""}
-      {" · RentCast property, valuation, and listing data"}
+      {includeRentCast ? " · RentCast property, valuation, and listing data" : ""}
     </p>
   );
 }
@@ -927,7 +937,7 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
         {assessment?.found ? (
           <>
             <div className="text-xs uppercase tracking-widest text-muted mb-2">
-              {assessment.source === "avm" ? "Estimated Value — RentCast AVM" : "County Tax Assessment"}
+              {assessment.source === "avm" ? "Estimated Value — RentCast AVM" : assessmentSourceLabel(assessment)}
             </div>
             <div className="text-4xl sm:text-5xl font-mono font-bold mb-2">{fmt(assessment.totalValue)}</div>
             {avm && (assessment.source !== "avm" || avm.rangeLow || avm.rangeHigh) && avm.rangeLow != null && avm.rangeHigh != null && (
@@ -938,7 +948,11 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
             <p className="text-xs text-muted/70 max-w-sm mx-auto">
               {assessment.source === "avm"
                 ? "Modeled estimate from RentCast's automated valuation model. Not a government-verified assessment — treat as approximate."
-                : `${assessment.assessmentYear} county tax assessment.`}
+                : assessment.liveCountySource
+                  ? `${assessment.assessmentYear} property-specific ${
+                      assessment.liveCountyValueKind === "market_value" ? "market value" : "tax-assessed value"
+                    } published by the county assessor.`
+                  : `${assessment.assessmentYear} county tax assessment.`}
             </p>
           </>
         ) : (
@@ -1024,11 +1038,15 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
         {assessment?.found ? (
           <>
             <div className="text-xs uppercase tracking-widest text-muted mb-2">
-              {US_COUNTY_FALLBACK_LABEL}
+              {assessment.liveCountySource ? assessmentSourceLabel(assessment) : US_COUNTY_FALLBACK_LABEL}
             </div>
             <div className="text-4xl sm:text-5xl font-mono font-bold mb-2">{fmt(assessment.totalValue)}</div>
             <p className="text-xs text-muted/70 max-w-sm mx-auto">
-              {usCountyFallbackDisclosure(assessment.assessmentYear)}
+              {assessment.liveCountySource
+                ? `${assessment.assessmentYear} property-specific ${
+                    assessment.liveCountyValueKind === "market_value" ? "market value" : "tax-assessed value"
+                  } published by the county assessor. It is not an active listing or appraisal.`
+                : usCountyFallbackDisclosure(assessment.assessmentYear)}
             </p>
           </>
         ) : (
@@ -1041,8 +1059,9 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
       </div>
 
       <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-sm text-amber-800">
-        Offer modeling isn&apos;t available here — it needs a specific listing (asking price, days on market), and
-        this is a county-level lookup with no listing attached.
+        {assessment?.liveCountySource
+          ? "Offer modeling isn't available because we couldn't attach an active sale listing. The value above is property-specific county assessor data."
+          : "Offer modeling isn't available here — it needs a specific listing (asking price, days on market), and this is a county-level lookup with no listing attached."}
       </div>
 
       <MarketPanelSection marketPanel={marketPanel} />
@@ -1058,7 +1077,7 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
         />
       </div>
 
-      <FooterCredits marketPanel={marketPanel} />
+      <FooterCredits marketPanel={marketPanel} includeRentCast={false} />
     </div>
   );
 }
