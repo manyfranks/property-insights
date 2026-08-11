@@ -267,6 +267,7 @@ Each result must include scope, source evidence, confidence, and an explanation 
 - P3.5 acceptance: `17-P3.5-SHADOW-ACCEPTANCE.md`; anonymous operational telemetry plus a read-only replay of 2,325 persisted listings
 - Discover finding: 2,324/2,325 records predate P1 and lack an evidence envelope; replay made zero provider calls and RentCast quota remained `50 -> 50`
 - Rollout boundary: P4 may pilot on on-demand assessments behind its flag after production telemetry verification; Discover remains excluded from persona routing until evidence-envelope coverage is measured and sufficient
+- Production proof: commit `8c0c1ab`; live US listed assessment emitted queryable `classification_result` and `capability_missing` rows while preserving the current buyer output
 - Shadow review decision: _TBD_
 
 ---
