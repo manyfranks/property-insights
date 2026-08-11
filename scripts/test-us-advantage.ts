@@ -213,6 +213,28 @@ console.log("\n═══ Valuation Triangulation ═══\n");
   assert("tight spread: spreadPct <= 10%", (t.spreadPct ?? 1) <= 0.1, String(t.spreadPct));
 }
 
+// --- Live county market-value label ---
+{
+  const t = triangulateValuation({
+    taxAssessedValue: 922_000,
+    assessmentAnchorLabel: "County assessor market value",
+    assessmentBasis: "assessed_ratio",
+    avmValue: 988_000,
+    askingPrice: 999_000,
+    compImpliedValue: 1_201_000,
+  });
+  assert(
+    "county market anchor: retains market-value label",
+    t.anchors[0]?.label === "County assessor market value",
+    t.anchors[0]?.label
+  );
+  assert(
+    "county market anchor: stale RentCast tax value is absent",
+    !t.anchors.some((anchor) => anchor.value === 55_320),
+    JSON.stringify(t.anchors)
+  );
+}
+
 // --- Wide disagreement ---
 {
   const t = triangulateValuation({
@@ -440,6 +462,29 @@ console.log("\n═══ buildUsAdvantageBundle (integration) ═══\n");
   assert("off-market: investor yield null (no rent)", bundle.investorYield === null);
   assert("off-market: risk momentum unknown (no market panel)", bundle.riskMomentum.momentum === "unknown");
   assert("off-market: over-assessment does not trigger (avm above assessed)", bundle.overAssessment.triggered === false);
+}
+
+{
+  const bundle = buildUsAdvantageBundle({
+    record: null,
+    askingPrice: 700_000,
+    avmValue: 700_000,
+    taxAssessedValue: 922_000,
+    assessmentAnchorLabel: "County assessor market value",
+    taxAssessmentEligible: false,
+    assessmentBasis: "assessed_ratio",
+    compImpliedValue: null,
+    monthlyRent: null,
+    marketPanel: null,
+  });
+  assert(
+    "county market integration: anchor is labeled truthfully",
+    bundle.triangulation.anchors.some((anchor) => anchor.label === "County assessor market value")
+  );
+  assert(
+    "county market integration: market-value field cannot trigger a tax appeal",
+    bundle.overAssessment.triggered === false && bundle.overAssessment.taxAssessedValue === null
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -506,11 +506,20 @@ async function handleUSAssessment({
     // over-assessment, all computed from data already fetched above (zero
     // extra RentCast calls). The equity signal's score bump is applied here,
     // outside scoring.ts, so CA's scoreV2 weights are untouched.
+    const advantageAssessmentValue =
+      assessment?.source === "government"
+        ? assessment.totalValue
+        : bundle.record?.taxAssessments?.[0]?.value ?? null;
     const advantage = buildUsAdvantageBundle({
       record: bundle.record,
       askingPrice: listing.price || null,
       avmValue: bundle.avm?.value ?? null,
-      taxAssessedValue: bundle.record?.taxAssessments?.[0]?.value ?? null,
+      taxAssessedValue: advantageAssessmentValue,
+      assessmentAnchorLabel:
+        assessment?.liveCountyValueKind === "market_value"
+          ? "County assessor market value"
+          : "Tax-assessed value",
+      taxAssessmentEligible: assessment?.liveCountyValueKind !== "market_value",
       assessmentBasis: assessment?.assessmentBasis,
       compImpliedValue: comparables.impliedValue,
       monthlyRent: bundle.rent?.value ?? null,
@@ -642,11 +651,20 @@ async function handleUSAssessment({
     assessment,
     geo.stateUsps
   );
+  const advantageAssessmentValue =
+    assessment?.source === "government"
+      ? assessment.totalValue
+      : bundle.record?.taxAssessments?.[0]?.value ?? null;
   const advantage = buildUsAdvantageBundle({
     record: bundle.record,
     askingPrice: null,
     avmValue: bundle.avm?.value ?? null,
-    taxAssessedValue: bundle.record?.taxAssessments?.[0]?.value ?? null,
+    taxAssessedValue: advantageAssessmentValue,
+    assessmentAnchorLabel:
+      assessment?.liveCountyValueKind === "market_value"
+        ? "County assessor market value"
+        : "Tax-assessed value",
+    taxAssessmentEligible: assessment?.liveCountyValueKind !== "market_value",
     assessmentBasis: assessment?.assessmentBasis,
     compImpliedValue: offMarketComparables.impliedValue,
     monthlyRent: bundle.rent?.value ?? null,

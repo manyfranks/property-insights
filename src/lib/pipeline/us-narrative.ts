@@ -160,8 +160,15 @@ function buildAssessmentBlock(assessment: Assessment | null): string {
   if (!assessment || !assessment.found) {
     return "Tax-assessed value: Not available for this address.";
   }
-  const sourceLabel = assessment.source === "avm" ? "RentCast AVM estimate (modeled, not government-verified)" : "county tax assessment (government)";
-  let block = `Tax/assessed value (${assessment.assessmentYear}, ${sourceLabel}): ${fmt(assessment.totalValue)}`;
+  const isCountyMarketValue =
+    assessment.liveCountySource && assessment.liveCountyValueKind === "market_value";
+  const sourceLabel =
+    assessment.source === "avm"
+      ? "RentCast AVM estimate (modeled, not government-verified)"
+      : isCountyMarketValue
+        ? "county assessor market value (government)"
+        : "county tax assessment (government)";
+  let block = `${isCountyMarketValue ? "County assessor market value" : "Tax/assessed value"} (${assessment.assessmentYear}, ${sourceLabel}): ${fmt(assessment.totalValue)}`;
   if (assessment.landValue > 0 && assessment.buildingValue > 0) {
     block += ` (land ${fmt(assessment.landValue)}, building ${fmt(assessment.buildingValue)})`;
   }

@@ -329,6 +329,9 @@ const TRIANGULATION_MEDIUM_CONFIDENCE_SPREAD = 0.25;
  */
 export function triangulateValuation(opts: {
   taxAssessedValue: number | null;
+  /** Defaults to "Tax-assessed value". Live county adapters can instead
+   * supply a market/full-value field, which must retain its real label. */
+  assessmentAnchorLabel?: string;
   assessmentBasis: Assessment["assessmentBasis"] | null | undefined;
   avmValue: number | null;
   /** True asking price only — null when there's no active listing (pass
@@ -345,7 +348,11 @@ export function triangulateValuation(opts: {
   const excludedAnchors: TriangulationAnchor[] = [];
 
   if (opts.taxAssessedValue != null && opts.assessmentBasis !== "acquisition_value") {
-    const anchor: TriangulationAnchor = { label: "Tax-assessed value", value: opts.taxAssessedValue, kind: "tax_assessed" };
+    const anchor: TriangulationAnchor = {
+      label: opts.assessmentAnchorLabel ?? "Tax-assessed value",
+      value: opts.taxAssessedValue,
+      kind: "tax_assessed",
+    };
     if (opts.taxAssessedDemoted) excludedAnchors.push(anchor);
     else anchors.push(anchor);
   }
@@ -643,6 +650,10 @@ export function buildUsAdvantageBundle(opts: {
   askingPrice: number | null;
   avmValue: number | null;
   taxAssessedValue: number | null;
+  assessmentAnchorLabel?: string;
+  /** False when the anchor is a county-published market/full value rather
+   * than the taxable assessed value. It can support valuation, not appeal. */
+  taxAssessmentEligible?: boolean;
   assessmentBasis: Assessment["assessmentBasis"] | null | undefined;
   compImpliedValue: number | null;
   monthlyRent: number | null;
@@ -665,6 +676,7 @@ export function buildUsAdvantageBundle(opts: {
 
   const triangulation = triangulateValuation({
     taxAssessedValue: opts.taxAssessedValue,
+    assessmentAnchorLabel: opts.assessmentAnchorLabel,
     assessmentBasis: opts.assessmentBasis,
     avmValue: opts.avmValue,
     askingPrice: opts.askingPrice,
@@ -685,7 +697,8 @@ export function buildUsAdvantageBundle(opts: {
   });
 
   const overAssessment = computeOverAssessmentFlag({
-    taxAssessedValue: opts.taxAssessedDemoted ? null : opts.taxAssessedValue,
+    taxAssessedValue:
+      opts.taxAssessedDemoted || opts.taxAssessmentEligible === false ? null : opts.taxAssessedValue,
     assessmentBasis: opts.assessmentBasis,
     marketReference: triangulation.triangulatedValue ?? currentValueEstimate,
   });
