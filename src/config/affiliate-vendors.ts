@@ -244,8 +244,8 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     vertical: "investor-tools",
     country: "US",
     url: "https://www.dealmachine.com",
-    enabled: false,
-    affiliateReady: false,
+    enabled: true,
+    affiliateReady: true,
     cpaTier: 2,
     audienceMode: ["investor"],
     stateCoverage: "all",
@@ -253,8 +253,9 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     ctaLabel: "Find off-market deals",
     description: "Drive for dollars, skip trace owners, send mail — one app",
     shortCta: "Find deals",
+    offerText: "Use code PROPERTYINSIGHTS at checkout",
     notes:
-      "20-50% lifetime recurring, apply direct. Requires explicit 'Paid link' disclosure wording per their affiliate ToS.",
+      "APPROVED Aug 2026. 20-50% lifetime recurring. Link: dealmachine.com/partner/propertyinsights (set NEXT_PUBLIC_AFFILIATE_URL_DEALMACHINE). Payout via Gusto — W-8BEN needed (see docs/plans/10-AFFILIATE-APPLICATION-KIT.md). Their ToS requires explicit paid-link disclosure: satisfied by the per-card Sponsored label + cluster FTC line.",
   },
   {
     id: "propstream",
@@ -693,16 +694,58 @@ export function getVendorsForSurface(
     ? [preferVertical, ...base.filter((v) => v !== preferVertical)]
     : base;
 
-  return filterEligibleVendors(country, state, mode).sort((a, b) => {
-    const aRank = priority.indexOf(a.vertical);
-    const bRank = priority.indexOf(b.vertical);
-    const aIndex = aRank === -1 ? priority.length : aRank;
-    const bIndex = bRank === -1 ? priority.length : bRank;
-    if (aIndex !== bIndex) return aIndex - bIndex;
-    if (b.cpaTier !== a.cpaTier) return b.cpaTier - a.cpaTier;
-    return Number(b.affiliateReady) - Number(a.affiliateReady);
-  });
+  return rotateTies(
+    filterEligibleVendors(country, state, mode).sort((a, b) => {
+      const aRank = priority.indexOf(a.vertical);
+      const bRank = priority.indexOf(b.vertical);
+      const aIndex = aRank === -1 ? priority.length : aRank;
+      const bIndex = bRank === -1 ? priority.length : bRank;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      if (b.cpaTier !== a.cpaTier) return b.cpaTier - a.cpaTier;
+      return Number(b.affiliateReady) - Number(a.affiliateReady);
+    })
+  );
 }
+
+/** Day of year (UTC) — deterministic, stable within a calendar day, no RNG. */
+function dayOfYearUTC(d: Date = new Date()): number {
+  const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 0);
+  const today = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return Math.floor((today - startOfYear) / 86_400_000);
+}
+
+/**
+ * Rotate vendors that sort identically (same vertical + cpaTier) by day of year.
+ *
+ * Once approvals outnumber the 3 rendered slots — as they did the day DealMachine
+ * joined Kiavi/RentCast/DealCheck in US investor-tools — a strict sort makes the
+ * newest partner permanently invisible, and a vendor that never renders can never
+ * earn the click data needed to rank it properly. Rotating only the ties keeps
+ * vertical priority and tier ordering intact while giving every approved partner
+ * exposure. Replace with EPC-driven ordering once partner_clicks has volume.
+ */
+function rotateTies(sorted: AffiliateVendor[]): AffiliateVendor[] {
+  const out: AffiliateVendor[] = [];
+  const day = dayOfYearUTC();
+
+  for (let i = 0; i < sorted.length; ) {
+    let j = i + 1;
+    while (
+      j < sorted.length &&
+      sorted[j].vertical === sorted[i].vertical &&
+      sorted[j].cpaTier === sorted[i].cpaTier
+    ) {
+      j++;
+    }
+    const run = sorted.slice(i, j);
+    const offset = run.length > 1 ? day % run.length : 0;
+    out.push(...run.slice(offset), ...run.slice(0, offset));
+    i = j;
+  }
+
+  return out;
+}
+
 
 // ---------------------------------------------------------------------------
 // URL resolver
@@ -813,6 +856,7 @@ export const REVENUE_CRITICAL_IDS: string[] = [
   "dealcheck",
   "kiavi",
   "apollo",
+  "dealmachine",
 ];
 
 /** Values that look like unreplaced setup placeholders rather than real links. */
