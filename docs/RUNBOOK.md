@@ -79,11 +79,12 @@ POST /api/assess
 
 ### 1.2 RentCast bundle — cache, quota, per-field tolerance
 
-`src/lib/rentcast.ts`. The included allowance is **50 successful
-requests/month**, with paid overage available; this app self-limits to
-`RENTCAST_MONTHLY_QUOTA` (default **50**, so paid overage remains disabled)
-via a KV counter `rentcast:quota:YYYY-MM`
-(`rentcast.ts:160-163`).
+`src/lib/rentcast.ts`. Each configured credential includes **50 successful
+requests/month**. Production consumes remaining allowance on keys 2 and 3
+before the primary credential. Secondary credentials are limited by
+`RENTCAST_SECONDARY_MONTHLY_QUOTA` (default **50**, no overage); the primary
+is limited by `RENTCAST_MONTHLY_QUOTA` (default **50**, operator-overridable).
+Each credential has its own KV counter.
 
 - **Cache layer** (`cachedRentcastCall`, `rentcast.ts:262-291`): checked
   first, zero quota cost on a hit. TTLs (`rentcast.ts:395-398`): property
@@ -449,7 +450,7 @@ failure-surfacing mechanism, since there's no external alerting layer (see
 | **Lethbridge ArcGIS** (gis.lethbridge.ca) | `lookupAB()` for Lethbridge | Live | Same as above | Swallowed by outer try/catch, no shape-error class, no dedicated log line |
 | **Winnipeg SODA** (data.winnipeg.ca, d4mq-wa44) | `lookupMB()` | Live only, no cache | MB (Winnipeg) assessments miss entirely on outage | `[mb-soda-shape]`; **no canary probe** |
 | **Census Geocoder** (geocoding.geo.census.gov) | US `/api/assess` path, `assessment/us.ts` fallback | Live every call, no cache | US `/api/assess` returns 502 (network error) or 404 (no match) — **the entire US assessment flow is blocked**, no fallback exists for this step | `[assess] geocode error` / `geocode no match` logs; **no canary probe covers the US path at all** |
-| **RentCast** (api.rentcast.io) | US property/AVM/rent/listing (`rentcast.ts`) | Cached 24h (listing) – 30d (property/AVM/rent); guarded at 50 successful calls/mo by default | Degrades to property-specific county evidence when available, otherwise county median — **never fails the request** | `rentcast:quota:YYYY-MM` KV counter; `bundle.meta.errors[]` in `[assess] rentcast done` log |
+| **RentCast** (api.rentcast.io) | US property/AVM/rent/listing (`rentcast.ts`) | Cached 24h (listing) – 30d (property/AVM/rent); per-key guarded pool, 50 included calls/key by default | Degrades to property-specific county evidence when available, otherwise county median — **never fails the request** | `getRentcastQuotaPoolStatus()`; `bundle.meta.errors[]` in `[assess] rentcast done` log |
 | **Census ACS** (batch, via `ingest-us-acs.ts`) | `regional_econ.median_home_value/gross_rent/vacancy/income` | Ingested to Neon; not live at request time | Stale/missing county rows → those `CountyMarketPanel` fields are `null`; irrelevant to live availability | Ingest script console output only |
 | **FHFA HPI** (batch, via `ingest-us-fhfa.ts`) | `regional_econ.hpi` | Ingested; not live | Missing HPI → `hpiTrend5y` null → equity/tenure HPI corroboration and risk/momentum "momentum" both degrade to `"no_hpi_data"`/`"unknown"` | Ingest script console output |
 | **HUD FMR** (batch, via `ingest-us-hud-fmr.ts`) | `regional_econ.fmr_*` | Ingested; not live | Missing FMR → investor-yield's `fmr2brDeltaPct` null; county page FMR section hidden | Ingest script console output |
@@ -490,15 +491,16 @@ failure-surfacing mechanism, since there's no external alerting layer (see
 
 | Key | Meaning | Read via |
 |---|---|---|
-| `rentcast:quota:YYYY-MM` | Successful RentCast HTTP 200 responses this calendar month (production) | `getRentcastQuotaStatus()` |
-| `rentcast:quota2:YYYY-MM` | Same, for the isolated audit key (`RENTCAST_API_KEY_2`) — never touches production's counter | `getRentcastQuotaStatus("quota2")` |
+| `rentcast:quota:YYYY-MM` | Primary-key successful RentCast responses; may include explicitly capped overage | `getRentcastQuotaStatus()` / `getRentcastQuotaPoolStatus()` |
+| `rentcast:quota2:YYYY-MM` | Key 2 successful responses; shared by audit and production rotation | `getRentcastQuotaPoolStatus()` |
+| `rentcast:quota-rentcast-api-key-3:YYYY-MM` | Key 3 successful responses | `getRentcastQuotaPoolStatus()` |
 | `us-discover:last-refresh:{citySlug}` | Last time a Discover metro was swept — gates the `US_DISCOVER_REFRESH_DAYS` cadence | `getMetaValue()` (`kv/listings.ts:311-322`) |
 
 ### 7.3 Symptom → diagnosis table
 
 | Symptom | Check first | Then check | Notes |
 |---|---|---|---|
-| US `/api/assess` always returns `offerAvailable:false, no_listing_data` | `rentcast:quota:YYYY-MM` counter vs. `RENTCAST_MONTHLY_QUOTA` (default 50) | `[assess] rentcast done` log line for `bundle.meta.errors` and `propertyDataUnavailableReason` in the response | Quota exhaustion, provider errors, and clean misses are machine-distinguishable; the UI still degrades safely |
+| US `/api/assess` always returns `offerAvailable:false, no_listing_data` | All rows from `getRentcastQuotaPoolStatus()` | `[assess] rentcast done` log line for `bundle.meta.errors` and `propertyDataUnavailableReason` in the response | Quota exhaustion, provider errors, and clean misses are machine-distinguishable; the UI still degrades safely |
 | US `/api/assess` 500s | Recent deploy touching `route.ts`/`rentcast.ts` | Is `DATABASE_URL` set but Neon unreachable? (`getCountyMarketPanel`/`lookupUS`'s `getAcsCountyMedian` are unguarded — §8) | Not a RentCast issue if the failure is a hard 500 rather than a graceful `no_listing_data` |
 | CA site 500s / listings look wrong | `[kv-shape]` logs | `listings:meta` KV key for `updatedAt` staleness | If KV is unreachable, `getAllListings()` silently serves static `PRELOADED_LISTINGS` — no error, but data is frozen at build time |
 | County pages (`/us/[state]/[county]`) 404ing | Is `DATABASE_URL` set at all? | If set, is Neon actually reachable? | Unset → clean `notFound()`. Set-but-down → unhandled 500, not a 404 — different code path, same user complaint |

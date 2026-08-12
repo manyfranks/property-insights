@@ -17,7 +17,10 @@ import assert from "node:assert/strict";
 async function main() {
   const priorEnv = {
     apiKey: process.env.RENTCAST_API_KEY,
+    apiKey2: process.env.RENTCAST_API_KEY_2,
+    apiKey3: process.env.RENTCAST_API_KEY_3,
     quota: process.env.RENTCAST_MONTHLY_QUOTA,
+    secondaryQuota: process.env.RENTCAST_SECONDARY_MONTHLY_QUOTA,
     kvUrl: process.env.KV_REST_API_URL,
     kvToken: process.env.KV_REST_API_TOKEN,
   };
@@ -25,6 +28,9 @@ async function main() {
 
   process.env.RENTCAST_API_KEY = "offline-fixture-key";
   process.env.RENTCAST_MONTHLY_QUOTA = "50";
+  delete process.env.RENTCAST_API_KEY_2;
+  delete process.env.RENTCAST_API_KEY_3;
+  delete process.env.RENTCAST_SECONDARY_MONTHLY_QUOTA;
   delete process.env.KV_REST_API_URL;
   delete process.env.KV_REST_API_TOKEN;
 
@@ -138,8 +144,14 @@ async function main() {
     global.fetch = originalFetch;
     if (priorEnv.apiKey === undefined) delete process.env.RENTCAST_API_KEY;
     else process.env.RENTCAST_API_KEY = priorEnv.apiKey;
+    if (priorEnv.apiKey2 === undefined) delete process.env.RENTCAST_API_KEY_2;
+    else process.env.RENTCAST_API_KEY_2 = priorEnv.apiKey2;
+    if (priorEnv.apiKey3 === undefined) delete process.env.RENTCAST_API_KEY_3;
+    else process.env.RENTCAST_API_KEY_3 = priorEnv.apiKey3;
     if (priorEnv.quota === undefined) delete process.env.RENTCAST_MONTHLY_QUOTA;
     else process.env.RENTCAST_MONTHLY_QUOTA = priorEnv.quota;
+    if (priorEnv.secondaryQuota === undefined) delete process.env.RENTCAST_SECONDARY_MONTHLY_QUOTA;
+    else process.env.RENTCAST_SECONDARY_MONTHLY_QUOTA = priorEnv.secondaryQuota;
     if (priorEnv.kvUrl === undefined) delete process.env.KV_REST_API_URL;
     else process.env.KV_REST_API_URL = priorEnv.kvUrl;
     if (priorEnv.kvToken === undefined) delete process.env.KV_REST_API_TOKEN;

@@ -6,16 +6,16 @@
  * facts, an active-listing price/DOM signal, and comparable sales, feeding
  * the same scoring/offer-model pipeline (see src/app/api/assess/route.ts).
  *
- * CRITICAL CONSTRAINT: the account includes 50 successful requests per
- * calendar month, with paid overage beyond that. Every call in this file goes
+ * CRITICAL CONSTRAINT: each configured credential includes 50 successful
+ * requests per calendar month, with paid overage beyond that. Every call goes
  * through two gates before it's allowed to hit the network:
  *
  *   1. Cache — property records + AVM value are cached 30 days (they move
  *      slowly), active-listing lookups 24h (freshness matters for DOM),
  *      rent estimates 30 days. A cache hit costs zero RentCast requests.
- *   2. Quota guard — a KV counter (rentcast:quota:YYYY-MM) reserves a slot
- *      before every real call and hard-stops once RENTCAST_MONTHLY_QUOTA
- *      (default 50, the included monthly allowance) is reached. Reservations
+ *   2. Quota guard — a per-credential KV counter reserves a slot before every
+ *      real call. Keys 2/3 use included allowance only; the primary stops at
+ *      RENTCAST_MONTHLY_QUOTA (default 50, operator-overridable). Reservations
  *      are released for 404s and errors because RentCast bills successful
  *      HTTP 200 responses only. Both cache and
  *      quota fall back to an in-process Map when KV_REST_API_URL/TOKEN
@@ -44,14 +44,9 @@ const FETCH_TIMEOUT_MS = 8000;
  * Callers must not call this directly outside cachedRentcastCall() —
  * bypassing that wrapper bypasses both the cache and the quota guard.
  *
- * `apiKeyOverride` is an explicit, opt-in escape hatch for offline
- * audit/diagnostic scripts that must hit RentCast with a DIFFERENT key than
- * production (see auditRentcastCall() below for the only sanctioned
- * caller). No production code path passes this argument, and this function
- * never reads it from the environment itself — the only way a call reaches
- * a non-production key is a caller passing one explicitly, one call at a
- * time. Omitted (the default for every existing call site), behavior is
- * byte-for-byte identical to before this parameter existed.
+ * `apiKeyOverride` lets the guarded caller select a credential from the
+ * production pool and also supports explicitly isolated audit calls. This
+ * low-level function never chooses a key or touches counters itself.
  */
 async function rentcastRequest<T>(
   path: string,
@@ -169,6 +164,45 @@ function monthlyQuotaLimit(): number {
   return Number(process.env.RENTCAST_MONTHLY_QUOTA) || 50;
 }
 
+function secondaryQuotaLimit(): number {
+  return Number(process.env.RENTCAST_SECONDARY_MONTHLY_QUOTA) || 50;
+}
+
+interface RentcastCredentialSlot {
+  apiKey: string;
+  namespace: string;
+  limit: number;
+}
+
+/**
+ * Production consumes unused included calls on keys 2 and 3 before the
+ * primary key's operator-approved allowance. Counters remain per credential
+ * so free-tier headroom and paid exposure cannot be accidentally combined.
+ */
+function productionCredentialSlots(): RentcastCredentialSlot[] {
+  const candidates: Array<RentcastCredentialSlot | null> = [
+    process.env.RENTCAST_API_KEY_2
+      ? { apiKey: process.env.RENTCAST_API_KEY_2, namespace: "quota2", limit: secondaryQuotaLimit() }
+      : null,
+    process.env.RENTCAST_API_KEY_3
+      ? {
+          apiKey: process.env.RENTCAST_API_KEY_3,
+          namespace: "quota-rentcast-api-key-3",
+          limit: secondaryQuotaLimit(),
+        }
+      : null,
+    process.env.RENTCAST_API_KEY
+      ? { apiKey: process.env.RENTCAST_API_KEY, namespace: "quota", limit: monthlyQuotaLimit() }
+      : null,
+  ];
+  const seen = new Set<string>();
+  return candidates.filter((slot): slot is RentcastCredentialSlot => {
+    if (!slot || seen.has(slot.apiKey)) return false;
+    seen.add(slot.apiKey);
+    return true;
+  });
+}
+
 async function quotaIncr(key: string): Promise<number> {
   if (kvAvailable()) {
     try {
@@ -249,6 +283,23 @@ export async function getRentcastQuotaStatus(namespace: string = "quota"): Promi
   return { used, limit, exhausted: used >= limit, persistedInKv: kvAvailable() };
 }
 
+export async function getRentcastQuotaPoolStatus(): Promise<
+  Array<RentcastQuotaStatus & { namespace: string }>
+> {
+  return Promise.all(
+    productionCredentialSlots().map(async (slot) => {
+      const used = await quotaPeek(quotaKey(slot.namespace));
+      return {
+        namespace: slot.namespace,
+        used,
+        limit: slot.limit,
+        exhausted: used >= slot.limit,
+        persistedInKv: kvAvailable(),
+      };
+    })
+  );
+}
+
 export interface CachedCallResult<T> {
   data: T | null;
   cacheHit: boolean;
@@ -280,25 +331,38 @@ async function cachedRentcastCall<T>(opts: {
   if (opts.apiKeyOverride && !opts.quotaNamespace) {
     throw new Error("apiKeyOverride requires an explicit quotaNamespace — per-key spend must be tracked against its own counter");
   }
-  const key = quotaKey(opts.quotaNamespace);
-  const limit = monthlyQuotaLimit();
-  const count = await quotaIncr(key);
-  if (count > limit) {
+
+  let reserved: { key: string; apiKey: string } | null = null;
+  const slots = opts.apiKeyOverride
+    ? [{
+        apiKey: opts.apiKeyOverride,
+        namespace: opts.quotaNamespace as string,
+        limit: monthlyQuotaLimit(),
+      }]
+    : productionCredentialSlots();
+
+  for (const slot of slots) {
+    const key = quotaKey(slot.namespace);
+    const count = await quotaIncr(key);
+    if (count <= slot.limit) {
+      reserved = { key, apiKey: slot.apiKey };
+      break;
+    }
     await quotaDecr(key);
-    return { data: null, cacheHit: false, quotaBlocked: true };
   }
+  if (!reserved) return { data: null, cacheHit: false, quotaBlocked: true };
 
   try {
-    const data = await rentcastRequest<T>(opts.path, opts.params, opts.apiKeyOverride);
+    const data = await rentcastRequest<T>(opts.path, opts.params, reserved.apiKey);
     // RentCast counts/bills successful HTTP 200 responses. A 404 is a normal
     // non-billable miss, so release the pessimistically reserved slot.
-    if (data === null) await quotaDecr(key);
+    if (data === null) await quotaDecr(reserved.key);
     await cacheSet(opts.cacheKey, data, opts.ttlSeconds);
     return { data, cacheHit: false, quotaBlocked: false };
   } catch (err) {
     // Timeouts and non-200 errors are also non-billable. Keep the local
     // counter aligned with the provider's successful-request accounting.
-    await quotaDecr(key);
+    await quotaDecr(reserved.key);
     return {
       data: null,
       cacheHit: false,
@@ -311,21 +375,15 @@ async function cachedRentcastCall<T>(opts: {
 // ---------------------------------------------------------------------------
 // Audit override path — offline diagnostic scripts ONLY
 //
-// Everything above this point is production's only path to RentCast
-// (getUSProperty, getUSPropertyLite, getUSActiveListing,
-// discoverActiveListingsByCity — all funnel through cachedRentcastCall(),
-// which always uses process.env.RENTCAST_API_KEY and always increments
-// the "quota" namespace counter). None of those functions gained a new
-// parameter, so production's call sites (src/app/api/assess/route.ts,
-// src/lib/pipeline/us-enrich.ts, src/lib/pipeline/us-discover.ts) are
-// structurally unable to reach a different key or counter — there is
-// nothing to opt out of.
+// Everything above this point is production's only path to RentCast.
+// Production rotates through the configured credential pool with truthful
+// per-key counters; callers cannot select a credential or bypass its guard.
 //
 // auditRentcastCall() below is a SEPARATE, explicitly-named entry point for
 // offline scripts (e.g. scripts/audit-rentcast-quality.ts) that need to
 // spend requests against a second, independently-provisioned free-tier key
 // (RENTCAST_API_KEY_2 in .env.local) without touching production's counter
-// budget or its tracked usage counter. Every argument that matters —
+// budget or its cache namespace. Every argument that matters —
 // apiKey, cache key, quota counter — is supplied explicitly by the caller;
 // this function reads no ambient env var of its own (not even
 // RENTCAST_API_KEY_2 — the script owns that lookup and passes the string
