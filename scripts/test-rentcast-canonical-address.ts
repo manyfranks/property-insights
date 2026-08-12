@@ -111,6 +111,8 @@ async function main() {
     assert.equal(bundle.meta.inputAddress, "51-20 69th Pl, Flushing, NY, 11377");
     assert.equal(bundle.meta.canonicalAddress, "5120 69th Pl, Woodside, NY 11377");
     assert.equal(bundle.meta.addressResolution, "provider_canonical");
+    assert.equal(bundle.meta.propertyLookup, "completed");
+    assert.equal(bundle.meta.listingLookup, "completed");
     assert.equal(calls.length, 4);
     assert.equal(calls[1].pathname, "/v1/listings/sale", "listing lookup must get quota priority");
 
@@ -118,6 +120,8 @@ async function main() {
     assert.equal(seattle.record?.formattedAddress, "1625 Federal Ave E, Seattle, WA 98102");
     assert.equal(seattle.activeListing?.price, 8_750_000);
     assert.equal(seattle.meta.addressResolution, "provider_canonical");
+    assert.equal(seattle.meta.propertyLookup, "completed");
+    assert.equal(seattle.meta.listingLookup, "completed");
     assert.equal(calls.length, 8);
 
     const afterSuccess = await getRentcastQuotaStatus();

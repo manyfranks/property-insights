@@ -607,7 +607,9 @@ async function handleUSAssessment({
               ? "quota_exhausted"
               : propertyDataUnavailableReason === "provider_error"
                 ? "provider_error"
-                : "field_missing",
+                : propertyDataUnavailableReason === "property_identity_not_found"
+                  ? "scope_unresolved"
+                  : "field_missing",
         }
       ),
       assessment,

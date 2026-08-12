@@ -613,6 +613,10 @@ export interface USPropertyBundle {
     cacheHits: number;
     liveCalls: number;
     errors: string[];
+    /** Whether the identity lookup completed, was quota-blocked, or failed. */
+    propertyLookup?: "completed" | "quota_blocked" | "error";
+    /** Whether the active-listing lookup completed, was quota-blocked, or failed. */
+    listingLookup?: "completed" | "quota_blocked" | "error";
     /** Address sent to the first property-record lookup. */
     inputAddress?: string;
     /** Address used for downstream listing/AVM/rent lookups. */
@@ -820,6 +824,12 @@ export async function getUSProperty(
   tally(rentRes, "rent");
   tally(listingRes, "listing");
 
+  function lookupOutcome<T>(res: CachedCallResult<T>): "completed" | "quota_blocked" | "error" {
+    if (res.quotaBlocked) return "quota_blocked";
+    if (res.error) return "error";
+    return "completed";
+  }
+
   const listingRaw = Array.isArray(listingRes.data) ? listingRes.data[0] : undefined;
 
   return {
@@ -832,6 +842,8 @@ export async function getUSProperty(
       cacheHits,
       liveCalls,
       errors,
+      propertyLookup: lookupOutcome(propRes),
+      listingLookup: lookupOutcome(listingRes),
       inputAddress,
       canonicalAddress,
       addressResolution: canonicalAddress === inputAddress ? "input" : "provider_canonical",

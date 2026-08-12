@@ -199,6 +199,13 @@ export async function lookupByAddress(street: string, _city?: string): Promise<C
   if (rows.length !== 1) return null;
   const chosen = rows[0];
 
+  // A single exact-address result can still be one condo/apartment unit,
+  // not the containing building or parcel. Production example: King County
+  // returns only UNIT_NUM="102" for 1122 BROADWAY E. This adapter does not
+  // receive an explicit unit identifier, so using that row would silently
+  // attach unit 102's assessed value to the whole-building request.
+  if (typeof chosen.UNIT_NUM === "string" && chosen.UNIT_NUM.trim()) return null;
+
   const taxLand = typeof chosen.TAX_LNDVAL === "number" ? chosen.TAX_LNDVAL : 0;
   const taxImpr = typeof chosen.TAX_IMPR === "number" ? chosen.TAX_IMPR : 0;
   const assessedValue = taxLand + taxImpr;

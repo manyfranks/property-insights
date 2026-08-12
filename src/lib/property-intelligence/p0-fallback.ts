@@ -9,6 +9,7 @@
 
 export type UsPropertyDataUnavailableReason =
   | "property_record_not_found"
+  | "property_identity_not_found"
   | "provider_quota_exhausted"
   | "provider_error";
 
@@ -19,6 +20,8 @@ interface UsBundleAvailability {
   meta: {
     quotaExhausted: boolean;
     errors: readonly string[];
+    propertyLookup?: "completed" | "quota_blocked" | "error";
+    listingLookup?: "completed" | "quota_blocked" | "error";
   };
 }
 
@@ -39,14 +42,40 @@ export function decideUsAssessmentDataPath(
   bundle: UsBundleAvailability | null
 ): UsAssessmentDataPathDecision {
   if (bundle?.activeListing) return { kind: "listed" };
-  if (bundle?.record || bundle?.avm) return { kind: "off_market" };
-
   if (!bundle) return { kind: "regional_fallback", reason: "provider_error" };
-  if (bundle.meta.quotaExhausted) {
+
+  // A missing listing is evidence of "off market" only when that endpoint
+  // actually completed. Without this distinction, a cached property record
+  // plus a quota-blocked listing lookup is incorrectly presented as not listed.
+  if (bundle.meta.listingLookup === "quota_blocked") {
     return { kind: "regional_fallback", reason: "provider_quota_exhausted" };
   }
-  if (bundle.meta.errors.length > 0) {
+  if (bundle.meta.listingLookup === "error") {
     return { kind: "regional_fallback", reason: "provider_error" };
+  }
+  if (bundle.meta.propertyLookup === "quota_blocked") {
+    return { kind: "regional_fallback", reason: "provider_quota_exhausted" };
+  }
+  if (bundle.meta.propertyLookup === "error") {
+    return { kind: "regional_fallback", reason: "provider_error" };
+  }
+
+  // Backward-compatible handling for bundles cached/constructed before the
+  // per-endpoint lookup outcome was added.
+  const hasEndpointOutcomes = !!bundle.meta.propertyLookup || !!bundle.meta.listingLookup;
+  if (!hasEndpointOutcomes && bundle.meta.quotaExhausted) {
+    return { kind: "regional_fallback", reason: "provider_quota_exhausted" };
+  }
+  if (!hasEndpointOutcomes && bundle.meta.errors.length > 0) {
+    return { kind: "regional_fallback", reason: "provider_error" };
+  }
+
+  // Only an identity-bearing property record can establish that an address
+  // is a specific off-market property. Address-level AVM/rent responses may
+  // refer to a unit, building, or parcel and are unsafe without that identity.
+  if (bundle.record) return { kind: "off_market" };
+  if (bundle.avm) {
+    return { kind: "regional_fallback", reason: "property_identity_not_found" };
   }
   return { kind: "regional_fallback", reason: "property_record_not_found" };
 }
@@ -83,6 +112,12 @@ export function usPropertyDataUnavailableMessage(
     return {
       title: "Property and listing lookup is temporarily unavailable",
       detail: `RentCast could not complete this lookup, so we could not confirm whether an active listing exists. ${fallback}`,
+    };
+  }
+  if (reason === "property_identity_not_found") {
+    return {
+      title: "Property identity could not be confirmed",
+      detail: `RentCast returned modeled values without a matching property record, so those values were withheld because they may describe a unit, building, or parcel. ${fallback}`,
     };
   }
   return {

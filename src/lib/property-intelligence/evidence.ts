@@ -8,6 +8,7 @@ export type EvidenceUnavailableReason =
   | "not_provided"
   | "not_queried"
   | "field_missing"
+  | "scope_unresolved"
   | "source_does_not_supply"
   | "quota_exhausted"
   | "provider_error";

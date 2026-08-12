@@ -59,12 +59,15 @@ The offline harness is `scripts/test-property-intelligence-p0.ts`. These are evi
 | Provider quota exhausted | Regional fallback | `provider_quota_exhausted`; no retry/new call | Provider economics remain external |
 | Provider error/bundle failure | Regional fallback | `provider_error`; no retry/new call | Operational monitoring |
 | Rent-only bundle | Regional fallback | Rent alone does not become a valuation/offer | Capability routing in P3 |
+| AVM without property identity | Regional fallback | Withhold modeled value; scope may be unit, building, or parcel | Clarification/evidence expansion |
+| Property record with listing lookup blocked | Regional fallback | Do not claim the property is off market | Provider availability |
 
 ## Machine-readable fallback reasons
 
 | Reason | Meaning | User-visible behavior in P0 |
 |---|---|---|
 | `property_record_not_found` | Provider calls completed without usable record, AVM, or listing evidence | Existing regional fallback |
+| `property_identity_not_found` | Modeled values were returned without a matching property identity record | Withhold ambiguous values and explain unresolved unit/building/parcel scope |
 | `provider_quota_exhausted` | One or more required lookups were blocked by the quota guard and no usable property evidence remained | Explicitly says RentCast was not checked; regional fallback remains clearly labeled |
 | `provider_error` | Provider call/bundle failed and no usable property evidence remained | Explicitly says listing status could not be confirmed; regional fallback remains clearly labeled |
 
@@ -74,7 +77,8 @@ These reasons explain evidence availability. They do not classify the property.
 
 | Check | Result | Evidence |
 |---|---|---|
-| P0 offline fixtures | **PASS — 16/16** | `npx tsx scripts/test-property-intelligence-p0.ts`; includes visible quota-vs-miss copy contracts added 2026-08-12 |
+| P0 offline fixtures | **PASS — 19/19** | `npx tsx scripts/test-property-intelligence-p0.ts`; includes quota-vs-miss, endpoint outcome, and identity/scope contracts added 2026-08-12 |
+| King County unit-scope fixtures | **PASS — 3/3** | `npx tsx scripts/test-king-unit-scope.ts`; unit-tagged exact match is not treated as the whole property |
 | Pipeline guard | **PASS — 16/16** | `npx tsx scripts/test-pipeline-guard.ts`; fake KV; live RentCast calls blocked |
 | TypeScript | **PASS** | `npm exec tsc -- --noEmit` |
 | Touched-file lint | **PASS** | `npm exec eslint -- src/app/api/assess/route.ts src/components/us-assessment-result.tsx src/lib/property-intelligence/p0-fallback.ts scripts/test-property-intelligence-p0.ts` |

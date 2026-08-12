@@ -22,7 +22,12 @@ interface FixtureBundle {
   avm: object | null;
   rent: object | null;
   activeListing: object | null;
-  meta: { quotaExhausted: boolean; errors: string[] };
+  meta: {
+    quotaExhausted: boolean;
+    errors: string[];
+    propertyLookup?: "completed" | "quota_blocked" | "error";
+    listingLookup?: "completed" | "quota_blocked" | "error";
+  };
 }
 
 interface BaselineFixture {
@@ -39,7 +44,12 @@ function bundle(overrides: Partial<FixtureBundle> = {}): FixtureBundle {
     avm: null,
     rent: null,
     activeListing: null,
-    meta: { quotaExhausted: false, errors: [] },
+    meta: {
+      quotaExhausted: false,
+      errors: [],
+      propertyLookup: "completed",
+      listingLookup: "completed",
+    },
     ...overrides,
   };
 }
@@ -122,6 +132,23 @@ const fixtures: BaselineFixture[] = [
     expected: { kind: "regional_fallback", reason: "property_record_not_found" },
     p0Boundary: "Rent alone cannot support a property valuation or offer.",
   },
+  {
+    id: "avm_without_property_identity",
+    description: "Address-level modeled value exists without a property identity record",
+    bundle: bundle({ avm: {} }),
+    expected: { kind: "regional_fallback", reason: "property_identity_not_found" },
+    p0Boundary: "Modeled values are withheld when unit/building/parcel scope cannot be established.",
+  },
+  {
+    id: "record_with_listing_quota_blocked",
+    description: "A cached property record exists but the active-listing lookup did not run",
+    bundle: bundle({
+      record: {},
+      meta: { quotaExhausted: true, errors: [], listingLookup: "quota_blocked" },
+    }),
+    expected: { kind: "regional_fallback", reason: "provider_quota_exhausted" },
+    p0Boundary: "A skipped listing lookup cannot support an off-market claim.",
+  },
 ];
 
 let passed = 0;
@@ -181,6 +208,13 @@ check(
   missCopy.title === "No matching property record or active listing was returned" &&
     missCopy.detail.includes("completed the lookup") &&
     missCopy.detail.includes("property-specific county assessor data")
+);
+const identityCopy = usPropertyDataUnavailableMessage("property_identity_not_found", false);
+check(
+  "unresolved property identity withholds ambiguous modeled values",
+  identityCopy.title === "Property identity could not be confirmed" &&
+    identityCopy.detail.includes("unit, building, or parcel") &&
+    identityCopy.detail.includes("were withheld")
 );
 check("fixture harness made zero provider calls", providerCalls === 0, `calls=${providerCalls}`);
 
