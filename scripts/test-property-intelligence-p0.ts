@@ -13,6 +13,7 @@ import {
   decideUsAssessmentDataPath,
   US_COUNTY_FALLBACK_LABEL,
   usCountyFallbackDisclosure,
+  usOfferModelUnavailableMessage,
   usPropertyDataUnavailableMessage,
   type UsAssessmentDataPathDecision,
 } from "../src/lib/property-intelligence/p0-fallback";
@@ -215,6 +216,11 @@ check(
   identityCopy.title === "Property identity could not be confirmed" &&
     identityCopy.detail.includes("unit, building, or parcel") &&
     identityCopy.detail.includes("were withheld")
+);
+check(
+  "unresolved identity offer copy describes scope instead of an incomplete lookup",
+  usOfferModelUnavailableMessage("property_identity_not_found", false).includes("unit, building, or parcel") &&
+    !usOfferModelUnavailableMessage("property_identity_not_found", false).includes("did not complete")
 );
 check("fixture harness made zero provider calls", providerCalls === 0, `calls=${providerCalls}`);
 

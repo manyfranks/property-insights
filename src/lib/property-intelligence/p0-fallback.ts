@@ -125,3 +125,21 @@ export function usPropertyDataUnavailableMessage(
     detail: `RentCast completed the lookup but did not return usable property or active-listing evidence for this address. ${fallback}`,
   };
 }
+
+export function usOfferModelUnavailableMessage(
+  reason: UsPropertyDataUnavailableReason,
+  hasPropertySpecificCountyValue: boolean
+): string {
+  if (reason === "property_identity_not_found") {
+    return "Offer modeling isn't available because RentCast could not confirm whether its modeled values describe a unit, building, or parcel.";
+  }
+  if (reason === "property_record_not_found") {
+    return hasPropertySpecificCountyValue
+      ? "Offer modeling isn't available because RentCast did not return a matching active sale listing. The value above is property-specific county assessor data."
+      : "Offer modeling isn't available because RentCast did not return the property and active-listing evidence it requires.";
+  }
+  if (reason === "provider_quota_exhausted") {
+    return "Offer modeling isn't available because the property and active-listing lookup was not run.";
+  }
+  return "Offer modeling isn't available because the property and active-listing lookup could not complete.";
+}

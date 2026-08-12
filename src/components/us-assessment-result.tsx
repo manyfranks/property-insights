@@ -20,6 +20,7 @@ import TierBadge from "@/components/tier-badge";
 import {
   US_COUNTY_FALLBACK_LABEL,
   usCountyFallbackDisclosure,
+  usOfferModelUnavailableMessage,
   usPropertyDataUnavailableMessage,
   type UsPropertyDataUnavailableReason,
 } from "@/lib/property-intelligence/p0-fallback";
@@ -1081,11 +1082,10 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
       </div>
 
       <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-sm text-amber-800">
-        {data.propertyDataUnavailableReason === "property_record_not_found"
-          ? assessment?.liveCountySource
-            ? "Offer modeling isn't available because RentCast did not return a matching active sale listing. The value above is property-specific county assessor data."
-            : "Offer modeling isn't available because RentCast did not return the property and active-listing evidence it requires."
-          : "Offer modeling isn't available because the property and active-listing lookup did not complete."}
+        {usOfferModelUnavailableMessage(
+          data.propertyDataUnavailableReason,
+          !!assessment?.liveCountySource
+        )}
       </div>
 
       <MarketPanelSection marketPanel={marketPanel} />

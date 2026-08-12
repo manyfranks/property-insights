@@ -77,7 +77,7 @@ These reasons explain evidence availability. They do not classify the property.
 
 | Check | Result | Evidence |
 |---|---|---|
-| P0 offline fixtures | **PASS — 19/19** | `npx tsx scripts/test-property-intelligence-p0.ts`; includes quota-vs-miss, endpoint outcome, and identity/scope contracts added 2026-08-12 |
+| P0 offline fixtures | **PASS — 20/20** | `npx tsx scripts/test-property-intelligence-p0.ts`; includes quota-vs-miss, endpoint outcome, and identity/scope copy contracts added 2026-08-12 |
 | King County unit-scope fixtures | **PASS — 3/3** | `npx tsx scripts/test-king-unit-scope.ts`; unit-tagged exact match is not treated as the whole property |
 | Pipeline guard | **PASS — 16/16** | `npx tsx scripts/test-pipeline-guard.ts`; fake KV; live RentCast calls blocked |
 | TypeScript | **PASS** | `npm exec tsc -- --noEmit` |

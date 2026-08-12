@@ -64,7 +64,7 @@ These are release-blocking requirements, not preferences:
 
 | Track | Status | Outcome | Depends on | Exit evidence |
 |---|---|---|---|---|
-| **P0 — Safety baseline** | `[x] Complete; quota/scope regressions hardened 2026-08-12` | Prevent address-only residential overclaims; lock vocabulary and fixtures | None | 19/19 P0 fixtures; 3/3 King unit-scope; 16/16 guard; 20/20 integration |
+| **P0 — Safety baseline** | `[x] Complete; quota/scope regressions hardened 2026-08-12` | Prevent address-only residential overclaims; lock vocabulary and fixtures | None | 20/20 P0 fixtures; 3/3 King unit-scope; 16/16 guard; 20/20 integration |
 | **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
 | **P2 — Subject resolution** | `[x] Complete 2026-08-11` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | 23/23 resolver fixtures + common subject envelope |
 | **P3 — Classification/capabilities** | `[~] In progress — shadow built; P3.5 acceptance active 2026-08-11` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
@@ -110,7 +110,7 @@ These are release-blocking requirements, not preferences:
 ### Evidence
 
 - Commit: `ca30d1b` (`Ship property intelligence P0 baseline`)
-- Fixture report: `13A-P0-BASELINE-AND-VOCABULARY.md`; 19/19 offline fixtures
+- Fixture report: `13A-P0-BASELINE-AND-VOCABULARY.md`; 20/20 offline fixtures
 - Quota/address/scope regression: `20-SEATTLE-QUOTA-REGRESSION.md`; provider endpoint outcomes and unresolved identity are visibly distinct
 - Operational guard: 16/16; no live RentCast call attempted
 - Integration: 20/20, seed `20260811`, RentCast quota `45 → 45`
@@ -504,7 +504,7 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 
 | Metric | Baseline | Current | Target/gate | Last updated |
 |---|---:|---:|---:|---|
-| Baseline fixtures passing | 16/16 | 19/19 | 100% | 2026-08-12 |
+| Baseline fixtures passing | 16/16 | 20/20 | 100% | 2026-08-12 |
 | Assessments with resolved subject scope | TBD | TBD | Set after P2 shadow baseline | — |
 | Assessments requiring clarification | TBD | TBD | Observe; no arbitrary minimization | — |
 | Clarification completion rate | TBD | TBD | Set after P4 baseline | — |
