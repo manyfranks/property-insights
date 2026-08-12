@@ -63,7 +63,11 @@ Private assessment state is not copied into analytics events.
 - Production build: pass; 338/338 static pages generated
 - Integration: 20/20, seed `20260812`, RentCast quota `50 -> 50`
 - Full-repository lint: unchanged baseline of 26 errors and 20 warnings in untouched files
-- Signed-in browser restore QA: pending release verification
+- Signed-in production restore QA: Rental assessment created an owner-scoped private UUID; Explore switch persisted; reopening with the goal query removed restored Explore from private state
+- Production duplicate guard: aggregate `user_assessments` count remained `1 -> 1` across the US reopen
+- Production regression: Queens remained `$999,000` list / `$969,000` recommendation with the correct 3 bed, 2.5 bath, 1,831 sqft property facts
+
+The US reopen refreshes the current evidence bundle and regenerates its AI narrative. This keeps facts current but means prose can vary between opens. Exact historical-result reproducibility would require a separate private assessment-run snapshot; it is not implied by Sprint B's lightweight journey-state record.
 
 ## Remaining P4 gate
 

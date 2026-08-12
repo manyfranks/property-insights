@@ -323,10 +323,10 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Evidence
 
-- Commits: `d850e44` (`Add flagged P4 assessment journey preview`), `87c18c8` (`Record P4 preview acceptance`); Sprint B release commit pending
+- Commits: `d850e44` (`Add flagged P4 assessment journey preview`), `87c18c8` (`Record P4 preview acceptance`), `ca903bb` (`Persist private P4 assessment journeys`)
 - Event query/dashboard: `scripts/report-property-journeys.ts`; production aggregate verified 2026-08-11
 - Browser QA: `18-P4-GOAL-UX-SPRINT-A.md`; flag-off parity, signed-in production preview, no-refetch switching, and 390px/1280px responsive checks pass
-- Private persistence/privacy: `19-P4-SPRINT-B-PERSISTENCE-PRIVACY.md`; production migration and owner-isolation round trip pass 2026-08-12
+- Private persistence/privacy: `19-P4-SPRINT-B-PERSISTENCE-PRIVACY.md`; production migration, owner-isolation round trip, signed-in restore, and `1 -> 1` duplicate guard pass 2026-08-12
 - Rollout decision: _TBD_
 
 ---
