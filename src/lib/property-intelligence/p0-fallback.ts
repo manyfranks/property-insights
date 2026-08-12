@@ -59,3 +59,34 @@ export const US_COUNTY_FALLBACK_LABEL = "County Median Home Value — Modeled Es
 export function usCountyFallbackDisclosure(assessmentYear: string): string {
   return `Based on US Census ACS county-level median (${assessmentYear}), not property-specific. Treat as approximate.`;
 }
+
+/**
+ * Explain evidence availability without turning an operational failure into
+ * a property claim. In particular, quota exhaustion means RentCast was not
+ * checked for this address; it must never read as "not listed."
+ */
+export function usPropertyDataUnavailableMessage(
+  reason: UsPropertyDataUnavailableReason,
+  hasPropertySpecificCountyValue: boolean
+): { title: string; detail: string } {
+  const fallback = hasPropertySpecificCountyValue
+    ? "The result below uses property-specific county assessor data only."
+    : "The result below uses county-level context only.";
+
+  if (reason === "provider_quota_exhausted") {
+    return {
+      title: "Property and listing lookup was not run",
+      detail: `This month's RentCast request allowance has been reached, so RentCast was not checked for this address. ${fallback}`,
+    };
+  }
+  if (reason === "provider_error") {
+    return {
+      title: "Property and listing lookup is temporarily unavailable",
+      detail: `RentCast could not complete this lookup, so we could not confirm whether an active listing exists. ${fallback}`,
+    };
+  }
+  return {
+    title: "No matching property record or active listing was returned",
+    detail: `RentCast completed the lookup but did not return usable property or active-listing evidence for this address. ${fallback}`,
+  };
+}

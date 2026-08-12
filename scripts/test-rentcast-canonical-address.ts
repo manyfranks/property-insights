@@ -5,6 +5,10 @@
  *   input    51-20 69th Pl, Flushing, NY 11377
  *   provider 5120 69th Pl, Woodside, NY 11377
  *
+ * Also covers Seattle's directional/suffix canonicalization:
+ *   input    1625 Federal Avenue E
+ *   provider 1625 Federal Ave E
+ *
  * Run: npx tsx scripts/test-rentcast-canonical-address.ts
  */
 
@@ -37,6 +41,21 @@ async function main() {
     }
 
     if (url.pathname === "/v1/properties") {
+      if (url.searchParams.get("address") === "1625 Federal Avenue E, Seattle, WA, 98102") {
+        return Response.json([
+          {
+            formattedAddress: "1625 Federal Ave E, Seattle, WA 98102",
+            addressLine1: "1625 Federal Ave E",
+            city: "Seattle",
+            state: "WA",
+            zipCode: "98102",
+            propertyType: "Single Family",
+            bedrooms: 5,
+            bathrooms: 4,
+            squareFootage: 11520,
+          },
+        ]);
+      }
       assert.equal(url.searchParams.get("address"), "51-20 69th Pl, Flushing, NY, 11377");
       assert.deepEqual([...url.searchParams.keys()], ["address"]);
       return Response.json([
@@ -55,22 +74,26 @@ async function main() {
       ]);
     }
 
-    assert.equal(url.searchParams.get("address"), "5120 69th Pl, Woodside, NY 11377");
+    const requestedAddress = url.searchParams.get("address");
+    const isSeattle = requestedAddress === "1625 Federal Ave E, Seattle, WA 98102";
+    assert.ok(isSeattle || requestedAddress === "5120 69th Pl, Woodside, NY 11377");
     assert.deepEqual([...url.searchParams.keys()], ["address"]);
-    if (url.pathname === "/v1/avm/value") return Response.json({ price: 950_000 });
-    if (url.pathname === "/v1/avm/rent/long-term") return Response.json({ rent: 4_200 });
+    if (url.pathname === "/v1/avm/value") return Response.json({ price: isSeattle ? 8_100_000 : 950_000 });
+    if (url.pathname === "/v1/avm/rent/long-term") return Response.json({ rent: isSeattle ? 18_000 : 4_200 });
     if (url.pathname === "/v1/listings/sale") {
       return Response.json([
         {
-          formattedAddress: "5120 69th Pl, Woodside, NY 11377",
-          addressLine1: "5120 69th Pl",
-          city: "Woodside",
-          state: "NY",
+          formattedAddress: isSeattle
+            ? "1625 Federal Ave E, Seattle, WA 98102"
+            : "5120 69th Pl, Woodside, NY 11377",
+          addressLine1: isSeattle ? "1625 Federal Ave E" : "5120 69th Pl",
+          city: isSeattle ? "Seattle" : "Woodside",
+          state: isSeattle ? "WA" : "NY",
           status: "Active",
-          price: 999_000,
-          bedrooms: 3,
-          bathrooms: 2.5,
-          squareFootage: 1831,
+          price: isSeattle ? 8_750_000 : 999_000,
+          bedrooms: isSeattle ? 5 : 3,
+          bathrooms: isSeattle ? 4 : 2.5,
+          squareFootage: isSeattle ? 11520 : 1831,
         },
       ]);
     }
@@ -91,16 +114,22 @@ async function main() {
     assert.equal(calls.length, 4);
     assert.equal(calls[1].pathname, "/v1/listings/sale", "listing lookup must get quota priority");
 
+    const seattle = await getUSProperty("1625 Federal Avenue E", "Seattle", "WA", "98102");
+    assert.equal(seattle.record?.formattedAddress, "1625 Federal Ave E, Seattle, WA 98102");
+    assert.equal(seattle.activeListing?.price, 8_750_000);
+    assert.equal(seattle.meta.addressResolution, "provider_canonical");
+    assert.equal(calls.length, 8);
+
     const afterSuccess = await getRentcastQuotaStatus();
-    assert.equal(afterSuccess.used, 4, "four successful HTTP 200 responses should count");
+    assert.equal(afterSuccess.used, 8, "eight successful HTTP 200 responses should count");
     assert.equal(afterSuccess.limit, 50);
 
     const missing = await getUSActiveListing("404 Fixture Ave", "Testville", "NY", "10001");
     assert.equal(missing, null);
     const after404 = await getRentcastQuotaStatus();
-    assert.equal(after404.used, 4, "a non-billable 404 must release its reserved slot");
+    assert.equal(after404.used, 8, "a non-billable 404 must release its reserved slot");
 
-    console.log("\n7/7 RentCast canonical-address/accounting checks passed\n");
+    console.log("\n12/12 RentCast canonical-address/accounting checks passed\n");
   } finally {
     global.fetch = originalFetch;
     if (priorEnv.apiKey === undefined) delete process.env.RENTCAST_API_KEY;

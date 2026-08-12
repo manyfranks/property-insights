@@ -13,6 +13,7 @@ import {
   decideUsAssessmentDataPath,
   US_COUNTY_FALLBACK_LABEL,
   usCountyFallbackDisclosure,
+  usPropertyDataUnavailableMessage,
   type UsAssessmentDataPathDecision,
 } from "../src/lib/property-intelligence/p0-fallback";
 
@@ -166,6 +167,20 @@ check(
   "fallback disclosure remains non-property-specific and approximate",
   usCountyFallbackDisclosure("2024") ===
     "Based on US Census ACS county-level median (2024), not property-specific. Treat as approximate."
+);
+const quotaCopy = usPropertyDataUnavailableMessage("provider_quota_exhausted", false);
+check(
+  "quota fallback says the provider was not checked",
+  quotaCopy.title === "Property and listing lookup was not run" &&
+    quotaCopy.detail.includes("RentCast was not checked for this address") &&
+    !quotaCopy.detail.includes("not listed")
+);
+const missCopy = usPropertyDataUnavailableMessage("property_record_not_found", true);
+check(
+  "clean provider miss is distinct from operational unavailability",
+  missCopy.title === "No matching property record or active listing was returned" &&
+    missCopy.detail.includes("completed the lookup") &&
+    missCopy.detail.includes("property-specific county assessor data")
 );
 check("fixture harness made zero provider calls", providerCalls === 0, `calls=${providerCalls}`);
 

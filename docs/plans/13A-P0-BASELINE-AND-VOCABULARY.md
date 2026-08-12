@@ -65,8 +65,8 @@ The offline harness is `scripts/test-property-intelligence-p0.ts`. These are evi
 | Reason | Meaning | User-visible behavior in P0 |
 |---|---|---|
 | `property_record_not_found` | Provider calls completed without usable record, AVM, or listing evidence | Existing regional fallback |
-| `provider_quota_exhausted` | One or more required lookups were blocked by the quota guard and no usable property evidence remained | Existing regional fallback |
-| `provider_error` | Provider call/bundle failed and no usable property evidence remained | Existing regional fallback |
+| `provider_quota_exhausted` | One or more required lookups were blocked by the quota guard and no usable property evidence remained | Explicitly says RentCast was not checked; regional fallback remains clearly labeled |
+| `provider_error` | Provider call/bundle failed and no usable property evidence remained | Explicitly says listing status could not be confirmed; regional fallback remains clearly labeled |
 
 These reasons explain evidence availability. They do not classify the property.
 
@@ -74,7 +74,7 @@ These reasons explain evidence availability. They do not classify the property.
 
 | Check | Result | Evidence |
 |---|---|---|
-| P0 offline fixtures | **PASS — 14/14** | `npx tsx scripts/test-property-intelligence-p0.ts` |
+| P0 offline fixtures | **PASS — 16/16** | `npx tsx scripts/test-property-intelligence-p0.ts`; includes visible quota-vs-miss copy contracts added 2026-08-12 |
 | Pipeline guard | **PASS — 16/16** | `npx tsx scripts/test-pipeline-guard.ts`; fake KV; live RentCast calls blocked |
 | TypeScript | **PASS** | `npm exec tsc -- --noEmit` |
 | Touched-file lint | **PASS** | `npm exec eslint -- src/app/api/assess/route.ts src/components/us-assessment-result.tsx src/lib/property-intelligence/p0-fallback.ts scripts/test-property-intelligence-p0.ts` |

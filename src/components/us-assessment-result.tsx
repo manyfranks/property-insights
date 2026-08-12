@@ -20,6 +20,7 @@ import TierBadge from "@/components/tier-badge";
 import {
   US_COUNTY_FALLBACK_LABEL,
   usCountyFallbackDisclosure,
+  usPropertyDataUnavailableMessage,
   type UsPropertyDataUnavailableReason,
 } from "@/lib/property-intelligence/p0-fallback";
 
@@ -1033,6 +1034,10 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
 
 function UsFallbackView({ data }: { data: UsFallbackResult }) {
   const { assessment, marketPanel } = data;
+  const unavailable = usPropertyDataUnavailableMessage(
+    data.propertyDataUnavailableReason,
+    !!assessment?.liveCountySource
+  );
 
   return (
     <div>
@@ -1041,6 +1046,14 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
         <p className="text-sm text-muted mt-0.5">
           {data.countyName}, {data.state}
         </p>
+      </div>
+
+      <div
+        className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-amber-900"
+        data-property-data-unavailable-reason={data.propertyDataUnavailableReason}
+      >
+        <div className="text-sm font-semibold">{unavailable.title}</div>
+        <p className="text-sm mt-1 text-amber-800">{unavailable.detail}</p>
       </div>
 
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
@@ -1068,9 +1081,11 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
       </div>
 
       <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-sm text-amber-800">
-        {assessment?.liveCountySource
-          ? "Offer modeling isn't available because we couldn't attach an active sale listing. The value above is property-specific county assessor data."
-          : "Offer modeling isn't available here — it needs a specific listing (asking price, days on market), and this is a county-level lookup with no listing attached."}
+        {data.propertyDataUnavailableReason === "property_record_not_found"
+          ? assessment?.liveCountySource
+            ? "Offer modeling isn't available because RentCast did not return a matching active sale listing. The value above is property-specific county assessor data."
+            : "Offer modeling isn't available because RentCast did not return the property and active-listing evidence it requires."
+          : "Offer modeling isn't available because the property and active-listing lookup did not complete."}
       </div>
 
       <MarketPanelSection marketPanel={marketPanel} />
