@@ -11,6 +11,7 @@ import {
 } from "@/components/assessment-journey";
 import type { AssessmentGoal } from "@/lib/property-intelligence/journey";
 import type { AssessmentSubject } from "@/lib/property-intelligence/subject";
+import { confirmAssessmentSubject } from "@/lib/property-intelligence/journey";
 
 interface Step {
   label: string;
@@ -32,6 +33,14 @@ interface CanadaAssessmentResult {
   slug: string;
   country?: "CA";
   assessmentSubject?: AssessmentSubject;
+  assessmentId?: string | null;
+}
+
+interface RestoredAssessmentState {
+  id: string;
+  subjectScope: AssessmentSubject["scope"];
+  subjectUnit: string | null;
+  subjectSelectedBy: AssessmentSubject["selectedBy"];
 }
 
 function HouseIconCircle() {
@@ -60,12 +69,14 @@ export default function AssessmentProgress({
   journeyEnabled = false,
   journeyPreview = false,
   initialGoal = null,
+  restoredAssessment = null,
 }: {
   address: string;
   placeId?: string;
   journeyEnabled?: boolean;
   journeyPreview?: boolean;
   initialGoal?: AssessmentGoal | null;
+  restoredAssessment?: RestoredAssessmentState | null;
 }) {
   const router = useRouter();
   const { isSignedIn, isLoaded } = useUser();
@@ -76,11 +87,12 @@ export default function AssessmentProgress({
   const [apiDone, setApiDone] = useState(false);
   const [slug, setSlug] = useState("");
   const [retryCount, setRetryCount] = useState(0);
-  const [assessmentStarted, setAssessmentStarted] = useState(!journeyEnabled);
+  const [assessmentStarted, setAssessmentStarted] = useState(!journeyEnabled || !!restoredAssessment);
   const [selectedGoal, setSelectedGoal] = useState<AssessmentGoal | null>(initialGoal);
   const selectedGoalRef = useRef<AssessmentGoal | null>(initialGoal);
   const [confirmedSubject, setConfirmedSubject] = useState<AssessmentSubject | null>(null);
   const [pendingCanada, setPendingCanada] = useState<CanadaAssessmentResult | null>(null);
+  const [assessmentId, setAssessmentId] = useState<string | null>(restoredAssessment?.id ?? null);
   // US addresses render inline (county assessment + market panel) instead
   // of redirecting to a /property/[slug] page — there's no Listing to
   // persist for a bare county-level lookup. See UsAssessmentResult.
@@ -94,12 +106,13 @@ export default function AssessmentProgress({
     }, 800);
   }, [router]);
 
-  const propertyResultPath = useCallback((resultSlug: string, subjectScope?: string) => {
+  const propertyResultPath = useCallback((resultSlug: string, subjectScope?: string, savedId?: string | null) => {
     if (!journeyEnabled) return `/property/${resultSlug}`;
     const params = new URLSearchParams({ assessmentOrigin: "1" });
     if (journeyPreview) params.set("journeys", "1");
     if (selectedGoalRef.current) params.set("assessmentGoal", selectedGoalRef.current);
     if (subjectScope) params.set("subjectScope", subjectScope);
+    if (savedId) params.set("assessmentId", savedId);
     return `/property/${resultSlug}?${params.toString()}`;
   }, [journeyEnabled, journeyPreview]);
 
@@ -114,7 +127,12 @@ export default function AssessmentProgress({
     fetch("/api/assess", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address, placeId, assessmentGoal: selectedGoalRef.current }),
+      body: JSON.stringify({
+        address,
+        placeId,
+        assessmentGoal: selectedGoalRef.current,
+        journeyState: journeyEnabled && !restoredAssessment,
+      }),
       signal: controller.signal,
     })
       .then(async (res) => {
@@ -129,15 +147,36 @@ export default function AssessmentProgress({
           return;
         }
         if (data.country === "US") {
+          setAssessmentId(typeof data.assessmentId === "string" ? data.assessmentId : restoredAssessment?.id ?? null);
+          if (
+            restoredAssessment?.subjectSelectedBy === "user_confirmation" &&
+            data.assessmentSubject?.requiresClarification
+          ) {
+            const choice = restoredAssessment.subjectScope === "unit"
+              ? "specific_unit"
+              : restoredAssessment.subjectScope === "listing"
+                ? "listing"
+                : restoredAssessment.subjectScope === "unknown"
+                  ? "explore_address"
+                  : "whole_property";
+            try {
+              setConfirmedSubject(
+                confirmAssessmentSubject(data.assessmentSubject, choice, restoredAssessment.subjectUnit)
+              );
+            } catch {
+              setConfirmedSubject(null);
+            }
+          }
           setStepStatuses(STEPS.map(() => "complete"));
           setUsResult(data as UsAssessResult);
         } else if (data.slug) {
           const canadaResult = data as CanadaAssessmentResult;
+          setAssessmentId(canadaResult.assessmentId ?? null);
           if (journeyEnabled && canadaResult.assessmentSubject?.requiresClarification) {
             setStepStatuses(STEPS.map(() => "complete"));
             setPendingCanada(canadaResult);
           } else {
-            setSlug(propertyResultPath(data.slug, canadaResult.assessmentSubject?.scope));
+            setSlug(propertyResultPath(data.slug, canadaResult.assessmentSubject?.scope, canadaResult.assessmentId));
             setApiDone(true);
           }
         } else {
@@ -151,7 +190,7 @@ export default function AssessmentProgress({
       });
 
     return () => controller.abort();
-  }, [address, assessmentStarted, isLoaded, isSignedIn, journeyEnabled, placeId, propertyResultPath, retryCount]);
+  }, [address, assessmentStarted, isLoaded, isSignedIn, journeyEnabled, placeId, propertyResultPath, restoredAssessment, retryCount]);
 
   // Step timers (simulated progress)
   useEffect(() => {
@@ -190,6 +229,7 @@ export default function AssessmentProgress({
     setPendingCanada(null);
     setConfirmedSubject(null);
     setUsResult(null);
+    setAssessmentId(null);
     setRetryCount((c) => c + 1);
   }
 
@@ -209,7 +249,7 @@ export default function AssessmentProgress({
     setConfirmedSubject(subject);
     if (pendingCanada) {
       setPendingCanada(null);
-      setSlug(propertyResultPath(pendingCanada.slug, subject.scope));
+      setSlug(propertyResultPath(pendingCanada.slug, subject.scope, pendingCanada.assessmentId));
       setApiDone(true);
     }
   }
@@ -256,6 +296,7 @@ export default function AssessmentProgress({
       <AssessmentSubjectClarification
         subject={unresolvedSubject}
         country={usResult ? "US" : "CA"}
+        assessmentId={assessmentId}
         onConfirm={handleSubjectConfirmation}
       />
     );
@@ -268,6 +309,7 @@ export default function AssessmentProgress({
       <main className="max-w-3xl mx-auto px-6 py-10 sm:py-16">
         <AssessmentJourneyPanel
           enabled={journeyEnabled}
+          assessmentId={result.assessmentId ?? assessmentId}
           initialGoal={result.assessmentGoal ?? selectedGoal}
           country="US"
           subjectScope={result.assessmentSubject.scope}

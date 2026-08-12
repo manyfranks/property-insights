@@ -96,6 +96,10 @@ import {
 import type { USPropertyBundle } from "@/lib/rentcast";
 import type { Assessment } from "@/lib/types";
 import { parseAssessmentGoal, type AssessmentGoal } from "@/lib/property-intelligence/journey";
+import {
+  createUserAssessmentState,
+  type AssessmentResultVariant,
+} from "@/lib/db/user-assessments";
 
 const RATE_LIMIT_RESPONSE = (resetMs: number) =>
   NextResponse.json(
@@ -212,6 +216,34 @@ function observePropertyIntelligenceShadow(args: {
       args.log("property intelligence telemetry error", err instanceof Error ? err.message : String(err));
     }
   });
+}
+
+async function persistPrivateAssessmentState(args: {
+  enabled: boolean;
+  userId: string;
+  country: "US" | "CA";
+  resultVariant: AssessmentResultVariant;
+  resultRef?: string | null;
+  assessmentGoal: AssessmentGoal | null;
+  subject: AssessmentSubject;
+  log: (step: string, extra?: string) => void;
+}): Promise<string | null> {
+  if (!args.enabled) return null;
+  try {
+    const saved = await createUserAssessmentState({
+      userId: args.userId,
+      country: args.country,
+      resultVariant: args.resultVariant,
+      resultRef: args.resultRef,
+      assessmentGoal: args.assessmentGoal,
+      subject: args.subject,
+    });
+    args.log("private assessment state", saved ? saved.id : "database unavailable");
+    return saved?.id ?? null;
+  } catch (error) {
+    args.log("private assessment state error", error instanceof Error ? error.message : String(error));
+    return null;
+  }
 }
 
 // Region mapping: full names + common abbreviations → region codes.
@@ -437,6 +469,7 @@ async function handleUSAssessment({
   rawInput,
   selectedPlaceId,
   assessmentGoal,
+  journeyStateEnabled,
   log,
 }: {
   userId: string;
@@ -449,6 +482,7 @@ async function handleUSAssessment({
   rawInput: string;
   selectedPlaceId?: string;
   assessmentGoal: AssessmentGoal | null;
+  journeyStateEnabled: boolean;
   log: (step: string, extra?: string) => void;
 }) {
   log("us region", `${street} | ${city} | ${region}`);
@@ -633,6 +667,16 @@ async function handleUSAssessment({
 
     log("done (US, fallback)", geo.matchedAddress);
 
+    const assessmentId = await persistPrivateAssessmentState({
+      enabled: journeyStateEnabled,
+      userId,
+      country: "US",
+      resultVariant: "regional_fallback",
+      assessmentGoal,
+      subject: assessmentSubject,
+      log,
+    });
+
     return NextResponse.json({
       ok: true,
       country: "US" as const,
@@ -647,6 +691,7 @@ async function handleUSAssessment({
       propertyClassification,
       propertyCapabilities,
       assessmentGoal,
+      assessmentId,
       marketPanel,
       offerAvailable: false,
       offerUnavailableReason: "no_listing_data",
@@ -888,6 +933,16 @@ async function handleUSAssessment({
         `narrative=${narrative.length}chars`
     );
 
+    const assessmentId = await persistPrivateAssessmentState({
+      enabled: journeyStateEnabled,
+      userId,
+      country: "US",
+      resultVariant: "listed",
+      assessmentGoal,
+      subject: assessmentSubject,
+      log,
+    });
+
     return NextResponse.json({
       ok: true,
       country: "US" as const,
@@ -901,6 +956,7 @@ async function handleUSAssessment({
       propertyClassification,
       propertyCapabilities,
       assessmentGoal,
+      assessmentId,
       anchorDecision: anchorDecision ?? null,
       marketPanel,
       offerAvailable: true as const,
@@ -1026,6 +1082,16 @@ async function handleUSAssessment({
       `equity=${advantage.equitySignal?.tier ?? "none"} triangulation=${advantage.triangulation.confidence}`
   );
 
+  const assessmentId = await persistPrivateAssessmentState({
+    enabled: journeyStateEnabled,
+    userId,
+    country: "US",
+    resultVariant: "off_market",
+    assessmentGoal,
+    subject: assessmentSubject,
+    log,
+  });
+
   return NextResponse.json({
     ok: true,
     country: "US" as const,
@@ -1040,6 +1106,7 @@ async function handleUSAssessment({
     propertyClassification,
     propertyCapabilities,
     assessmentGoal,
+    assessmentId,
     avm: bundle.avm
       ? { value: bundle.avm.value, rangeLow: bundle.avm.rangeLow, rangeHigh: bundle.avm.rangeHigh }
       : null,
@@ -1097,6 +1164,7 @@ export async function POST(req: Request) {
   if (body.assessmentGoal != null && !assessmentGoal) {
     return NextResponse.json({ error: "Invalid assessment goal" }, { status: 400 });
   }
+  const journeyStateEnabled = body.journeyState === true;
   log("start", rawAddress);
 
   // Length check + reject control characters and obvious injection patterns
@@ -1158,6 +1226,7 @@ export async function POST(req: Request) {
         rawInput: submittedAddress,
         selectedPlaceId,
         assessmentGoal,
+        journeyStateEnabled,
         log,
       });
     }
@@ -1337,6 +1406,17 @@ export async function POST(req: Request) {
     slug,
   }).catch(() => {}); // fire and forget
 
+  const assessmentId = await persistPrivateAssessmentState({
+    enabled: journeyStateEnabled,
+    userId,
+    country: "CA",
+    resultVariant: "listed",
+    resultRef: slug,
+    assessmentGoal,
+    subject: assessmentSubject,
+    log,
+  });
+
   log("done", slug);
   return NextResponse.json({
     ok: true,
@@ -1347,6 +1427,7 @@ export async function POST(req: Request) {
     propertyClassification,
     propertyCapabilities,
     assessmentGoal,
+    assessmentId,
     emailSent,
   });
 }

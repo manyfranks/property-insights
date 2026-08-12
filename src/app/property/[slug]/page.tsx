@@ -32,6 +32,8 @@ import { getCmaFipsForCity, getCmaMomentum, getCmaRent, type CmaMomentum } from 
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 import { AssessmentJourneyPanel } from "@/components/assessment-journey";
 import { parseAssessmentGoal, parseSubjectScope } from "@/lib/property-intelligence/journey";
+import { auth } from "@clerk/nextjs/server";
+import { getUserAssessmentState } from "@/lib/db/user-assessments";
 
 // ISR: serve cached page for 10 minutes, revalidate in background
 export const revalidate = 600;
@@ -236,8 +238,19 @@ export default async function PropertyPage({
   const journeyEnabled = assessmentOrigin && (
     process.env.PROPERTY_JOURNEYS_ENABLED === "true" || queryValue(query.journeys) === "1"
   );
-  const assessmentGoal = parseAssessmentGoal(queryValue(query.assessmentGoal));
-  const confirmedSubjectScope = parseSubjectScope(queryValue(query.subjectScope));
+  const requestedAssessmentId = queryValue(query.assessmentId);
+  const { userId } = requestedAssessmentId ? await auth() : { userId: null };
+  const privateAssessment = userId && requestedAssessmentId
+    ? await getUserAssessmentState(userId, requestedAssessmentId).catch(() => null)
+    : null;
+  const savedAssessment = privateAssessment?.country === "CA" && privateAssessment.resultRef === slug
+    ? privateAssessment
+    : null;
+  // The query captures the user's just-completed transition while the
+  // best-effort private PATCH may still be in flight. The saved record is the
+  // durable fallback for a later reopen.
+  const assessmentGoal = parseAssessmentGoal(queryValue(query.assessmentGoal)) ?? savedAssessment?.activeView ?? null;
+  const confirmedSubjectScope = parseSubjectScope(queryValue(query.subjectScope)) ?? savedAssessment?.subjectScope ?? null;
 
   // US listings (US Discover cron — src/lib/pipeline/us-discover.ts) go
   // through an entirely separate render path: analyzeListingAsync() below
@@ -294,6 +307,7 @@ export default async function PropertyPage({
       <TrackView slug={slugify(listing.address)} city={listing.city} price={listing.price} />
       <AssessmentJourneyPanel
         enabled={journeyEnabled}
+        assessmentId={savedAssessment?.id ?? null}
         initialGoal={assessmentGoal}
         country="CA"
         subjectScope={confirmedSubjectScope ?? listing.assessmentSubject?.scope ?? "unknown"}

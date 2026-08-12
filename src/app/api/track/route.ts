@@ -8,9 +8,9 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { trackEvent, EventType } from "@/lib/db/user-events";
-import { hasAnalyticsConsent } from "@/lib/consent";
 import { isOptedOutRequest } from "@/lib/privacy";
 import { JOURNEY_EVENT_TYPES } from "@/lib/property-intelligence/journey";
+import { shouldTrackConsentedEvent, validateEventData } from "@/lib/tracking-validation";
 
 const VALID_TYPES: EventType[] = [
   "property_view",
@@ -20,44 +20,6 @@ const VALID_TYPES: EventType[] = [
   "partner_click",
   ...JOURNEY_EVENT_TYPES,
 ];
-
-const MAX_DATA_SIZE = 1024; // bytes
-const MAX_DATA_KEYS = 10;
-
-/** Validate and sanitize event data. Returns null if invalid. */
-function validateData(
-  raw: unknown
-): Record<string, string | number | boolean> | null {
-  if (raw === undefined || raw === null) return {};
-  if (typeof raw !== "object" || Array.isArray(raw)) return null;
-
-  const data = raw as Record<string, unknown>;
-  const keys = Object.keys(data);
-
-  // Limit number of keys
-  if (keys.length > MAX_DATA_KEYS) return null;
-
-  // Validate each value type and string length
-  const clean: Record<string, string | number | boolean> = {};
-  for (const key of keys) {
-    if (typeof key !== "string" || key.length > 64) return null;
-
-    const val = data[key];
-    if (typeof val === "boolean" || typeof val === "number") {
-      clean[key] = val;
-    } else if (typeof val === "string") {
-      if (val.length > 256) return null;
-      clean[key] = val;
-    } else {
-      return null; // reject non-primitive values
-    }
-  }
-
-  // Check total serialized size
-  if (JSON.stringify(clean).length > MAX_DATA_SIZE) return null;
-
-  return clean;
-}
 
 export async function POST(req: Request) {
   // Do Not Sell/Share: short-circuit before auth/consent checks so an
@@ -76,7 +38,7 @@ export async function POST(req: Request) {
   const user = await client.users.getUser(userId);
   const metadata = user.unsafeMetadata as Record<string, unknown> | undefined;
 
-  if (!hasAnalyticsConsent(metadata)) {
+  if (!shouldTrackConsentedEvent(req, metadata)) {
     return NextResponse.json({ ok: true, tracked: false });
   }
 
@@ -92,7 +54,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid event type" }, { status: 400 });
   }
 
-  const data = validateData(body.data);
+  const data = validateEventData(type as EventType, body.data);
   if (data === null) {
     return NextResponse.json({ error: "Invalid event data" }, { status: 400 });
   }

@@ -70,6 +70,19 @@ function trackJourneyEvent(type: JourneyEventType, data: JourneyEventData): void
   }).catch(() => {});
 }
 
+function persistAssessmentPatch(
+  assessmentId: string | null | undefined,
+  patch: Record<string, unknown>
+): void {
+  if (!assessmentId) return;
+  void fetch(`/api/assessment-state?id=${encodeURIComponent(assessmentId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+    keepalive: true,
+  }).catch(() => {});
+}
+
 export function AssessmentGoalPreflight({
   address,
   initialGoal,
@@ -156,10 +169,12 @@ export function AssessmentGoalPreflight({
 export function AssessmentSubjectClarification({
   subject,
   country,
+  assessmentId,
   onConfirm,
 }: {
   subject: AssessmentSubject;
   country: "US" | "CA";
+  assessmentId?: string | null;
   onConfirm: (subject: AssessmentSubject) => void;
 }) {
   const [choice, setChoice] = useState<AssessmentSubjectChoice | null>(null);
@@ -187,6 +202,13 @@ export function AssessmentSubjectClarification({
       surface: "assess_on_demand",
       subjectScope: confirmed.scope,
       selection: choice,
+    });
+    persistAssessmentPatch(assessmentId, {
+      subject: {
+        scope: confirmed.scope,
+        unit: confirmed.unit,
+        selectedBy: "user_confirmation",
+      },
     });
     onConfirm(confirmed);
   }
@@ -255,6 +277,7 @@ export function AssessmentSubjectClarification({
 
 export function AssessmentJourneyPanel({
   enabled = true,
+  assessmentId,
   initialGoal,
   country,
   subjectScope,
@@ -264,6 +287,7 @@ export function AssessmentJourneyPanel({
   children,
 }: {
   enabled?: boolean;
+  assessmentId?: string | null;
   initialGoal: AssessmentGoal | null;
   country: "US" | "CA";
   subjectScope: SubjectScope;
@@ -295,6 +319,14 @@ export function AssessmentJourneyPanel({
     });
   }, [country, effectiveStatus.availability, enabled, goal, subjectScope]);
 
+  useEffect(() => {
+    if (!enabled || !assessmentId) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("assessmentId") === assessmentId) return;
+    params.set("assessmentId", assessmentId);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, [assessmentId, enabled]);
+
   function switchGoal(nextGoal: AssessmentGoal) {
     if (nextGoal === goal) return;
     const previousGoal = goal;
@@ -310,6 +342,7 @@ export function AssessmentJourneyPanel({
       subjectScope,
       capabilityStatus: nextAvailability,
     });
+    persistAssessmentPatch(assessmentId, { activeView: nextGoal });
     const params = new URLSearchParams(window.location.search);
     params.set("assessmentGoal", nextGoal);
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);

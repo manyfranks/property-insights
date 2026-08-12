@@ -95,7 +95,6 @@ It selects no user ID, address, unit, slug, or raw event payload.
 
 ## Remaining P4 work
 
-- Persist goal and confirmed subject with a private assessment/saved-property record—not the shared listing.
-- Validate explicit opt-out suppression with a dedicated privacy test before cohort rollout; the existing `/api/track` consent/GPC gates remain in force.
+- Private goal/subject persistence and explicit opt-out fixtures shipped in Sprint B; see `19-P4-SPRINT-B-PERSISTENCE-PRIVACY.md`.
 - Decide the internal/cohort/default-on launch bar after review of the preview.
 - Keep occupancy-driven suggestions blocked pending counsel/privacy review.

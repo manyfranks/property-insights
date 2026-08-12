@@ -50,6 +50,7 @@ interface UsResultBase {
   propertyClassification: PropertyClassification;
   propertyCapabilities: PropertyCapabilities;
   assessmentGoal: AssessmentGoal | null;
+  assessmentId: string | null;
   marketPanel: CountyMarketPanel | null;
   emailSent: boolean;
 }

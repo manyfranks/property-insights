@@ -68,7 +68,7 @@ These are release-blocking requirements, not preferences:
 | **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
 | **P2 — Subject resolution** | `[x] Complete 2026-08-11` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | 23/23 resolver fixtures + common subject envelope |
 | **P3 — Classification/capabilities** | `[~] In progress — shadow built; P3.5 acceptance active 2026-08-11` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
-| **P4 — Goal UX/instrumentation** | `[~] Sprint A built; release verification pending 2026-08-11` | Optional per-assessment goal, conditional scope clarification, manual view switching | P3 | Funnel events + flagged rollout |
+| **P4 — Goal UX/instrumentation** | `[~] Sprint B built; production restore/acceptance review pending 2026-08-12` | Optional per-assessment goal, conditional scope clarification, private restore, manual view switching | P3 | Funnel events + flagged rollout |
 | **P5 — Investor/Landlord V1** | `[ ]` | Address-level US rental screen; capability-gated Canadian version | P4 | End-to-end journey QA + KPI baseline |
 | **P6 — Buyer/Owner convergence** | `[ ]` | Existing buyer parity plus current-owner/landlord view on shared contracts | P5 | Regression parity + owner journey QA |
 | **I1 — Insurance distribution test** | `[ ] Parallel after P4` | Measure intent-matched insurance demand without claiming underwriting | P4; preferably P5 | Pre-registered test + measured results |
@@ -309,7 +309,7 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
   - `journey_switched`
   - `classification_result`
   - `capability_missing`
-- [ ] **[A] Store goal with the assessment/saved property.** Do not add a permanent profile persona in V1.
+- [x] **[A] Store goal with the assessment/saved property.** Initial goal, active view, and user-confirmed scope live in an owner-scoped private assessment record—not the shared listing or a permanent profile persona.
 - [ ] **[A] Add an optional signed-in default** only after the assessment-level flow is stable; it may preselect, never lock.
 - [x] **[A] Put the UI behind a feature flag:** environment flag or internal per-assessment preview. Cohort/default-on rollout remains a later decision.
 
@@ -323,9 +323,10 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Evidence
 
-- Commit/PR: _Sprint A implementation pending release commit_
+- Commits: `d850e44` (`Add flagged P4 assessment journey preview`), `87c18c8` (`Record P4 preview acceptance`); Sprint B release commit pending
 - Event query/dashboard: `scripts/report-property-journeys.ts`; production aggregate verified 2026-08-11
 - Browser QA: `18-P4-GOAL-UX-SPRINT-A.md`; flag-off parity, signed-in production preview, no-refetch switching, and 390px/1280px responsive checks pass
+- Private persistence/privacy: `19-P4-SPRINT-B-PERSISTENCE-PRIVACY.md`; production migration and owner-isolation round trip pass 2026-08-12
 - Rollout decision: _TBD_
 
 ---
