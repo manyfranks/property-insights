@@ -3,7 +3,10 @@ import type { PropertyCapabilities } from "../src/lib/property-intelligence/capa
 import {
   assessmentAudience,
   buildRentalScreenModel,
+  shouldWithholdPropertyEvidence,
 } from "../src/lib/property-intelligence/investor-journey";
+import { assessmentJourneyHref } from "../src/lib/property-intelligence/journey";
+import type { AssessmentSubject } from "../src/lib/property-intelligence/subject";
 
 let providerCalls = 0;
 globalThis.fetch = async () => {
@@ -57,6 +60,21 @@ const yieldEvidence = {
   rentToPriceRatio: 0.0043,
   onePercentRuleMet: false,
 };
+
+function subject(overrides: Partial<AssessmentSubject> = {}): AssessmentSubject {
+  return {
+    schemaVersion: 1,
+    scope: "listing",
+    canonicalAddress: "12400 Cedar St, Austin, TX",
+    unit: null,
+    selectedBy: "listing_match",
+    resolutionConfidence: "high",
+    requiresClarification: false,
+    candidates: [],
+    conflicts: [],
+    ...overrides,
+  };
+}
 
 const cases: Array<[string, () => void]> = [
   ["explicit rental goal routes only the CTA audience and surface", () => {
@@ -122,6 +140,31 @@ const cases: Array<[string, () => void]> = [
       regionalRent,
       yield: yieldEvidence,
     }), null);
+  }],
+  ["Discover handoff preserves the explicit goal and enables the preview", () => {
+    assert.equal(
+      assessmentJourneyHref("12400 Cedar St, Austin, TX", "rental_investment"),
+      "/assess?address=12400+Cedar+St%2C+Austin%2C+TX&journeys=1&assessmentGoal=rental_investment"
+    );
+  }],
+  ["an unresolved multi-unit subject withholds property-level evidence", () => {
+    const ambiguous = subject({
+      scope: "building",
+      selectedBy: "provider_match",
+      resolutionConfidence: "medium",
+      requiresClarification: true,
+      clarificationReason: "unit_or_building_unspecified",
+    });
+    assert.equal(shouldWithholdPropertyEvidence(ambiguous, capabilities({
+      addressRentEstimate: true,
+      addressSaleValuation: true,
+    })), true);
+  }],
+  ["a resolved subject with matching capabilities remains renderable", () => {
+    assert.equal(shouldWithholdPropertyEvidence(subject(), capabilities({
+      addressRentEstimate: true,
+      addressSaleValuation: true,
+    })), false);
   }],
 ];
 

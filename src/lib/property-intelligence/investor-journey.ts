@@ -1,6 +1,8 @@
 import type { AudienceMode, SurfaceKey } from "@/config/affiliate-vendors";
 import type { PropertyCapabilities } from "./capabilities";
 import type { AssessmentGoal, JourneyAvailability } from "./journey";
+import { hasSubjectEvidenceGap } from "./journey";
+import type { AssessmentSubject } from "./subject";
 
 export interface RentalMoneyEvidence {
   value: number;
@@ -28,6 +30,13 @@ export interface RentalScreenModel {
 export interface AssessmentAudience {
   mode: AudienceMode;
   surface: Extract<SurfaceKey, "result-buyer" | "result-investor">;
+}
+
+export function shouldWithholdPropertyEvidence(
+  subject: AssessmentSubject,
+  capabilities: PropertyCapabilities | null | undefined
+): boolean {
+  return subject.requiresClarification || hasSubjectEvidenceGap(subject.scope, capabilities);
 }
 
 /**

@@ -1118,7 +1118,9 @@ async function handleUSAssessment({
     marketPanel,
     offerAvailable: false as const,
     offerUnavailableReason: "not_listed",
-    offerUnavailableMessage: "This property is not currently listed for sale.",
+    offerUnavailableMessage: assessmentSubject.requiresClarification
+      ? "No active whole-property listing matched this unresolved address. A unit may be listed separately."
+      : "No active listing matched the resolved property.",
     equitySignal: advantage.equitySignal,
     triangulation: advantage.triangulation,
     investorYield: advantage.investorYield,

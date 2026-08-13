@@ -8,6 +8,7 @@ import type { AssessmentGoal } from "@/lib/property-intelligence/journey";
 import {
   assessmentAudience,
   buildRentalScreenModel,
+  shouldWithholdPropertyEvidence,
   type RentalMoneyEvidence,
 } from "@/lib/property-intelligence/investor-journey";
 import type {
@@ -1242,6 +1243,47 @@ function UsFallbackView({ data, activeGoal }: { data: UsFallbackResult; activeGo
   );
 }
 
+function UsUnresolvedSubjectView({ data }: { data: UsAssessResult }) {
+  const isBuilding = data.assessmentSubject.scope === "building";
+  return (
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight">{data.address}</h1>
+        <p className="text-sm text-muted mt-0.5">
+          {data.countyName}, {data.state}
+        </p>
+      </div>
+
+      <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 sm:p-6 mb-6" data-subject-evidence-withheld="true">
+        <div className="text-xs uppercase tracking-widest text-amber-700 mb-2">Exact property required</div>
+        <h2 className="text-lg font-semibold text-amber-950 mb-2">
+          {isBuilding ? "This address contains multiple units." : "We could not resolve the exact assessment subject."}
+        </h2>
+        <p className="text-sm text-amber-900">
+          {isBuilding
+            ? "The building-level address does not identify which unit you mean. A unit in this building may be actively listed even when the whole building is not."
+            : "The available property, listing, and address evidence do not describe the same subject."}
+        </p>
+        <p className="text-xs text-amber-800 mt-2">
+          We withheld the returned value and rent rather than applying building or unit data to the wrong property.
+        </p>
+        <a
+          href={`/assess?${new URLSearchParams({ address: data.address, journeys: "1" }).toString()}`}
+          className="inline-flex mt-4 px-4 py-2 text-sm font-medium rounded-lg bg-amber-950 text-white hover:bg-amber-900 transition-colors"
+        >
+          Choose the exact unit or property &rarr;
+        </a>
+      </section>
+
+      <div className="mb-2 pt-2">
+        <div className="text-xs uppercase tracking-widest text-muted mb-3">Regional context only</div>
+        <MarketPanelSection marketPanel={data.marketPanel} />
+      </div>
+      <FooterCredits marketPanel={data.marketPanel} includeRentCast={false} />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -1253,6 +1295,10 @@ export default function UsAssessmentResult({
   data: UsAssessResult;
   activeGoal?: AssessmentGoal | null;
 }) {
+  const withholdPropertyEvidence = shouldWithholdPropertyEvidence(
+    data.assessmentSubject,
+    data.propertyCapabilities
+  );
   return (
     <div
       className="max-w-3xl mx-auto"
@@ -1269,7 +1315,9 @@ export default function UsAssessmentResult({
       data-capability-insurance-prefill={data.propertyCapabilities.items.insurancePrefill.reason}
       data-p5-active-composition={activeGoal === "rental_investment" ? "rental" : "legacy"}
     >
-      {data.offerAvailable ? (
+      {withholdPropertyEvidence ? (
+        <UsUnresolvedSubjectView data={data} />
+      ) : data.offerAvailable ? (
         <UsListedView data={data} activeGoal={activeGoal} />
       ) : data.offerUnavailableReason === "not_listed" ? (
         <UsOffMarketView data={data} activeGoal={activeGoal} />

@@ -36,6 +36,15 @@ export interface JourneyCapabilityStatus {
   message: string;
 }
 
+export function assessmentJourneyHref(address: string, goal: AssessmentGoal): string {
+  const params = new URLSearchParams({
+    address,
+    journeys: "1",
+    assessmentGoal: goal,
+  });
+  return `/assess?${params.toString()}`;
+}
+
 export function parseAssessmentGoal(value: unknown): AssessmentGoal | null {
   return typeof value === "string" && ASSESSMENT_GOALS.includes(value as AssessmentGoal)
     ? value as AssessmentGoal

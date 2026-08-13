@@ -370,6 +370,7 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 ### Evidence
 
 - Sprint A (2026-08-13): flagged US on-demand rental composition now responds to the explicit assessment goal without refetching; it separates RentCast address-rent evidence from HUD county FMR, shows gross screening before buyer analysis, and routes eligible CTAs through the investor audience/surface. Classification and occupancy are not inputs.
+- Surface correction (2026-08-13): Discover property details now hand explicit goals into the enriched assessment flow instead of silently bypassing journeys. Unresolved multi-unit assessments withhold AVM/rent and avoid claiming that no unit in the building is listed.
 - Contract fixtures: `scripts/test-property-intelligence-p5.ts` covers explicit-goal routing, supported address-level output, regional-only degradation, capability withholding, legacy composition parity, and zero provider calls.
 - Commit/PR: _TBD_
 - Production examples: _TBD_

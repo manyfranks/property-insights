@@ -31,6 +31,7 @@ import { computeInvestorYield } from "@/lib/pipeline/us-advantage";
 import { getCmaFipsForCity, getCmaMomentum, getCmaRent, type CmaMomentum } from "@/lib/db/regional-econ";
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 import { AssessmentJourneyPanel } from "@/components/assessment-journey";
+import PropertyJourneyHandoff from "@/components/property-journey-handoff";
 import { parseAssessmentGoal, parseSubjectScope } from "@/lib/property-intelligence/journey";
 import { auth } from "@clerk/nextjs/server";
 import { getUserAssessmentState } from "@/lib/db/user-assessments";
@@ -251,6 +252,7 @@ export default async function PropertyPage({
   // durable fallback for a later reopen.
   const assessmentGoal = parseAssessmentGoal(queryValue(query.assessmentGoal)) ?? savedAssessment?.activeView ?? null;
   const confirmedSubjectScope = parseSubjectScope(queryValue(query.subjectScope)) ?? savedAssessment?.subjectScope ?? null;
+  const propertyAssessmentInput = listing.url || `${listing.address}, ${listing.city}, ${listing.province}`;
 
   // US listings (US Discover cron — src/lib/pipeline/us-discover.ts) go
   // through an entirely separate render path: analyzeListingAsync() below
@@ -345,6 +347,8 @@ export default async function PropertyPage({
         </div>
         <TierBadge tier={score.tier} />
       </div>
+
+      {!journeyEnabled && <PropertyJourneyHandoff assessmentInput={propertyAssessmentInput} />}
 
       {/* C. Hero Card — Recommended Offer */}
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
@@ -1096,6 +1100,8 @@ function renderUSSparseListing(listing: Listing, slug: string) {
         </p>
       </div>
 
+      <PropertyJourneyHandoff assessmentInput={fullAddress} />
+
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
         <div className="text-xs uppercase tracking-widest text-muted mb-2">List Price</div>
         <div className="font-mono text-4xl sm:text-5xl font-bold mb-3">{fmt(listing.price)}</div>
@@ -1192,6 +1198,10 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
         </div>
         <TierBadge tier={tier} />
       </div>
+
+      <PropertyJourneyHandoff
+        assessmentInput={`${listing.address}, ${listing.city}, ${listing.province}`}
+      />
 
       {/* Hero — offer or list price */}
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
