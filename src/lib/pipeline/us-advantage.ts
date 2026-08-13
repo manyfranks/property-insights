@@ -115,10 +115,8 @@ const LOSS_SALE_MAX_HOLD_YEARS = 5;
  * ordinary rounding/negotiation noise near breakeven doesn't false-trigger. */
 const LOSS_SALE_PRICE_RATIO = 0.98;
 
-/** Flip window — RentCast's own data can't distinguish "investor flip" from
- * "owner-occupant sold quickly for personal reasons" beyond hold length and
- * markup size, so this stays conservative: under 2 years plus a markup big
- * enough that it reads as a value-add resale rather than a wash sale. */
+/** Short-hold window — the data proves only hold length and price movement,
+ * not renovation, investor ownership, seller intent, or motivation. */
 const FLIP_MAX_HOLD_YEARS = 2;
 const FLIP_MIN_MARKUP_RATIO = 1.15;
 
@@ -202,13 +200,13 @@ export function computeEquityTenureSignal(
       `financial pressure, not just listing language.`;
   } else if (holdYears <= FLIP_MAX_HOLD_YEARS && currentValueEstimate >= lastSalePrice * FLIP_MIN_MARKUP_RATIO) {
     tier = "short_hold_flip";
-    label = "Investor Flip";
+    label = "Short-Hold Resale Pattern";
     motivationStrength = "moderate";
     scorePoints = 10;
     narrative =
-      `Bought ${holdYears.toFixed(1)}yr ago for ${money(lastSalePrice)}, now ${refWord === "asking" ? "asking" : "valued at"} ` +
-      `${money(currentValueEstimate)} (+${(impliedAppreciationPct * 100).toFixed(0)}%) — a short-hold resale that reads ` +
-      `as an investor/flipper, likely negotiable to avoid another cycle of carrying costs.`;
+      `Last sold ${holdYears.toFixed(1)}yr ago for ${money(lastSalePrice)}, now ${refWord === "asking" ? "asking" : "valued at"} ` +
+      `${money(currentValueEstimate)} (+${(impliedAppreciationPct * 100).toFixed(0)}%). This is a short-hold resale ` +
+      `pattern; the records do not establish renovation work, seller intent, or investment ownership.`;
   } else if (holdYears >= LONG_TENURE_MIN_HOLD_YEARS && impliedAppreciationPct >= LONG_TENURE_MIN_APPRECIATION) {
     tier = "long_tenure_high_equity";
     label = "Long-Tenure Equity";
@@ -406,6 +404,11 @@ export function triangulateValuation(opts: {
 // ---------------------------------------------------------------------------
 
 export interface InvestorYield {
+  /** Address-level modeled monthly rent used in the calculation. Optional
+   * for backward compatibility with already-persisted US Discover bundles. */
+  monthlyRent?: number;
+  /** Asking price when listed, otherwise the address AVM used as denominator. */
+  priceForYield?: number;
   grossYieldPct: number;
   rentToPriceRatio: number;
   onePercentRuleMet: boolean;
@@ -450,7 +453,15 @@ export function computeInvestorYield(opts: {
     `Gross yield ${(grossYieldPct * 100).toFixed(1)}% (${onePercentRuleMet ? "meets" : "below"} the 1% rule` +
     `, rent/price ${(rentToPriceRatio * 100).toFixed(2)}%).${fmrNote}`;
 
-  return { grossYieldPct, rentToPriceRatio, onePercentRuleMet, fmr2brDeltaPct, verdict };
+  return {
+    monthlyRent: opts.monthlyRent,
+    priceForYield: opts.priceForYield,
+    grossYieldPct,
+    rentToPriceRatio,
+    onePercentRuleMet,
+    fmr2brDeltaPct,
+    verdict,
+  };
 }
 
 // ---------------------------------------------------------------------------

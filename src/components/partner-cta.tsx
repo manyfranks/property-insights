@@ -34,7 +34,7 @@ interface PartnerCtaBlockProps {
   country: Country;
   /** province/state code, e.g. "BC" — used for US state gates; CA vendors are stateCoverage: "all" */
   state?: string;
-  /** which CTAs to show; defaults to "buyer" since the app has no investor mode yet */
+  /** which CTAs to show; defaults to the legacy buyer composition */
   mode?: AudienceMode;
   /** where this cluster is rendered, for sub_id attribution + click tracking */
   source: AffiliateSource;

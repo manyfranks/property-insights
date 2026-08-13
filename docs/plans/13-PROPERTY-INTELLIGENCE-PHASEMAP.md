@@ -350,7 +350,7 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 - [ ] **[A] Create the investor result composition** from P3 capabilities rather than country-only branching.
 - [ ] **[A] Separate address-level expected rent from regional benchmark rent** in UI, narrative, and types.
-- [ ] **[A] Rename “Investor Flip” to “Short-hold resale pattern”** and remove claims that renovation or seller motivation is proven.
+- [x] **[A] Rename “Investor Flip” to “Short-hold resale pattern”** and remove claims that renovation or seller motivation is proven.
 - [ ] **[A] Show gross yield by default;** show cash flow/cap rate only when required expenses are known or user-supplied.
 - [ ] **[A] Add inputs for financing, vacancy, maintenance, management, utilities, insurance, and other operating costs** without blocking the first useful result.
 - [ ] **[A] Feed real journey state** into `AudienceMode` and `result-investor` CTA surfaces.
@@ -369,6 +369,8 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Evidence
 
+- Sprint A (2026-08-13): flagged US on-demand rental composition now responds to the explicit assessment goal without refetching; it separates RentCast address-rent evidence from HUD county FMR, shows gross screening before buyer analysis, and routes eligible CTAs through the investor audience/surface. Classification and occupancy are not inputs.
+- Contract fixtures: `scripts/test-property-intelligence-p5.ts` covers explicit-goal routing, supported address-level output, regional-only degradation, capability withholding, legacy composition parity, and zero provider calls.
 - Commit/PR: _TBD_
 - Production examples: _TBD_
 - KPI readout: _TBD_

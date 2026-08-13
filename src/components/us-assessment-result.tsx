@@ -5,6 +5,11 @@ import type { AssessmentSubject } from "@/lib/property-intelligence/subject";
 import type { PropertyClassification } from "@/lib/property-intelligence/classification";
 import type { PropertyCapabilities } from "@/lib/property-intelligence/capabilities";
 import type { AssessmentGoal } from "@/lib/property-intelligence/journey";
+import {
+  assessmentAudience,
+  buildRentalScreenModel,
+  type RentalMoneyEvidence,
+} from "@/lib/property-intelligence/investor-journey";
 import type {
   EquityTenureSignal,
   ValuationTriangulation,
@@ -281,7 +286,7 @@ function FooterCredits({
 
 const EQUITY_TIER_STYLE: Record<EquityTenureSignal["tier"], { badge: string; label: string }> = {
   loss_sale_distress: { badge: "bg-rose-100 text-rose-700", label: "Loss-Sale Distress" },
-  short_hold_flip: { badge: "bg-amber-100 text-amber-700", label: "Investor Flip" },
+  short_hold_flip: { badge: "bg-amber-100 text-amber-700", label: "Short-Hold Resale Pattern" },
   long_tenure_high_equity: { badge: "bg-emerald-100 text-emerald-700", label: "Long-Tenure Equity" },
   moderate_hold: { badge: "bg-zinc-100 text-zinc-600", label: "Moderate Hold" },
 };
@@ -441,6 +446,92 @@ function InvestorYieldCard({ investorYield }: { investorYield: InvestorYield | n
       <p className="text-xs text-muted/60 mt-2">Modeled estimate — based on RentCast&apos;s rent AVM, not a signed lease.</p>
     </div>
   );
+}
+
+function RentalScreen({
+  model,
+}: {
+  model: NonNullable<ReturnType<typeof buildRentalScreenModel>>;
+}) {
+  const badgeClass = model.availability === "supported"
+    ? "bg-emerald-100 text-emerald-700"
+    : model.availability === "limited"
+      ? "bg-amber-100 text-amber-700"
+      : "bg-zinc-100 text-zinc-600";
+
+  return (
+    <section className="border border-border rounded-xl p-5 sm:p-6 mb-6 bg-white" data-p5-rental-screen={model.availability}>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+          <div className="text-xs uppercase tracking-widest text-muted">Rental screen · Preview</div>
+          <h2 className="text-xl font-semibold mt-1">Rent and gross-yield evidence</h2>
+        </div>
+        <span className={`text-xs px-2 py-1 rounded-full ${badgeClass}`}>{model.availability}</span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <RentalEvidenceCard evidence={model.addressRent} unavailableLabel="Address rent unavailable" />
+        <div className="border border-border rounded-lg p-4 bg-gray-50/50">
+          <div className="text-xs uppercase tracking-widest text-muted mb-2">Gross rental yield</div>
+          {model.yield ? (
+            <>
+              <div className="font-mono text-2xl font-semibold">{pct(model.yield.grossYieldPct)}</div>
+              <p className="text-xs text-muted mt-1">
+                {pct(model.yield.rentToPriceRatio)} monthly rent-to-price · {model.yield.onePercentRuleMet ? "meets" : "below"} 1% rule
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted">A property-specific yield cannot be calculated from the verified evidence.</p>
+          )}
+        </div>
+        <RentalEvidenceCard evidence={model.regionalRent} unavailableLabel="Regional benchmark unavailable" />
+      </div>
+
+      <p className="text-xs text-muted/70 mt-4">
+        Gross screening only: financing, vacancy, maintenance, management, utilities, insurance, taxes, and other
+        operating costs are not deducted. This is not a cash-flow or cap-rate projection.
+      </p>
+    </section>
+  );
+}
+
+function RentalEvidenceCard({
+  evidence,
+  unavailableLabel,
+}: {
+  evidence: RentalMoneyEvidence | null;
+  unavailableLabel: string;
+}) {
+  return (
+    <div className="border border-border rounded-lg p-4 bg-gray-50/50">
+      <div className="text-xs uppercase tracking-widest text-muted mb-2">{evidence?.label ?? unavailableLabel}</div>
+      {evidence ? (
+        <>
+          <div className="font-mono text-2xl font-semibold">{fmt(evidence.value)}/mo</div>
+          {evidence.rangeLow != null && evidence.rangeHigh != null && (
+            <p className="text-xs text-muted mt-1">Modeled range: {fmt(evidence.rangeLow)}–{fmt(evidence.rangeHigh)}</p>
+          )}
+          <p className="text-xs text-muted/70 mt-2">
+            {evidence.source}{evidence.geography ? ` · ${evidence.geography}` : ""}{evidence.vintage ? ` · ${evidence.vintage}` : ""}
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-muted">Not available for the resolved assessment subject.</p>
+      )}
+    </div>
+  );
+}
+
+function regionalRentEvidence(data: UsResultBase): RentalMoneyEvidence | null {
+  const value = data.marketPanel?.fmr2br;
+  if (value == null) return null;
+  return {
+    value,
+    label: "Regional benchmark · 2BR",
+    source: "HUD Fair Market Rent",
+    geography: `${data.countyName} County`,
+    vintage: data.marketPanel?.vintages.fmr_2br ?? null,
+  };
 }
 
 const MOMENTUM_BADGE: Record<RiskMomentumContext["momentum"], string> = {
@@ -611,7 +702,7 @@ function domColor(dom: number): string {
   return "bg-green-500";
 }
 
-function UsListedView({ data }: { data: UsListedResult }) {
+function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: AssessmentGoal | null }) {
   const {
     listing,
     assessment,
@@ -629,6 +720,20 @@ function UsListedView({ data }: { data: UsListedResult }) {
     narrativeConfidence,
     anchorDecision,
   } = data;
+  const audience = assessmentAudience(activeGoal);
+  const rentalScreen = buildRentalScreenModel({
+    goal: activeGoal,
+    capabilities: data.propertyCapabilities,
+    addressRent: investorYield?.monthlyRent
+      ? {
+          value: investorYield.monthlyRent,
+          label: "Address-level rent estimate",
+          source: "RentCast rent AVM · modeled, not a signed lease",
+        }
+      : null,
+    regionalRent: regionalRentEvidence(data),
+    yield: investorYield,
+  });
 
   return (
     <div>
@@ -641,6 +746,8 @@ function UsListedView({ data }: { data: UsListedResult }) {
         </div>
         <TierBadge tier={score.tier} />
       </div>
+
+      {rentalScreen && <RentalScreen model={rentalScreen} />}
 
       {/* Hero — recommended offer */}
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
@@ -684,7 +791,7 @@ function UsListedView({ data }: { data: UsListedResult }) {
       </div>
 
       <div className="mb-6">
-        <PartnerCtaRow country="US" state={data.state} source="assess-result" surface="result-buyer" city={data.city} />
+        <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
       </div>
 
       {/* THE SIGNAL — LLM narrative (src/lib/pipeline/us-narrative.ts), mirrors
@@ -900,7 +1007,7 @@ function UsListedView({ data }: { data: UsListedResult }) {
         </div>
 
         <EquityTenureCard equitySignal={equitySignal} />
-        <InvestorYieldCard investorYield={investorYield} />
+        {!rentalScreen && <InvestorYieldCard investorYield={investorYield} />}
         <RiskMomentumCard riskMomentum={riskMomentum} />
       </div>
 
@@ -911,7 +1018,8 @@ function UsListedView({ data }: { data: UsListedResult }) {
           country="US"
           state={data.state}
           source="assess-result"
-          surface="result-buyer"
+          mode={audience.mode}
+          surface={audience.surface}
           heading="Act on this analysis"
           city={data.city}
         />
@@ -931,9 +1039,25 @@ function UsListedView({ data }: { data: UsListedResult }) {
 // Off-market variant
 // ---------------------------------------------------------------------------
 
-function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
+function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; activeGoal: AssessmentGoal | null }) {
   const { assessment, avm, rent, marketPanel, equitySignal, triangulation, investorYield, riskMomentum, overAssessment } =
     data;
+  const audience = assessmentAudience(activeGoal);
+  const rentalScreen = buildRentalScreenModel({
+    goal: activeGoal,
+    capabilities: data.propertyCapabilities,
+    addressRent: rent
+      ? {
+          value: rent.value,
+          rangeLow: rent.rangeLow,
+          rangeHigh: rent.rangeHigh,
+          label: "Address-level rent estimate",
+          source: "RentCast rent AVM · modeled, not a signed lease",
+        }
+      : null,
+    regionalRent: regionalRentEvidence(data),
+    yield: investorYield,
+  });
 
   return (
     <div>
@@ -943,6 +1067,8 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
           {data.countyName}, {data.state}
         </p>
       </div>
+
+      {rentalScreen && <RentalScreen model={rentalScreen} />}
 
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
         {assessment?.found ? (
@@ -972,7 +1098,7 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
       </div>
 
       <div className="mb-6">
-        <PartnerCtaRow country="US" state={data.state} source="assess-result" surface="result-investor" city={data.city} />
+        <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
       </div>
 
       <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-sm text-amber-800">
@@ -1002,7 +1128,7 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <EquityTenureCard equitySignal={equitySignal} />
-        <InvestorYieldCard investorYield={investorYield} />
+        {!rentalScreen && <InvestorYieldCard investorYield={investorYield} />}
         <RiskMomentumCard riskMomentum={riskMomentum} />
       </div>
 
@@ -1017,7 +1143,8 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
           country="US"
           state={data.state}
           source="assess-result"
-          surface="result-investor"
+          mode={audience.mode}
+          surface={audience.surface}
           heading="Act on this analysis"
           city={data.city}
         />
@@ -1033,12 +1160,18 @@ function UsOffMarketView({ data }: { data: UsOffMarketResult }) {
 // original county-median-only experience.
 // ---------------------------------------------------------------------------
 
-function UsFallbackView({ data }: { data: UsFallbackResult }) {
+function UsFallbackView({ data, activeGoal }: { data: UsFallbackResult; activeGoal: AssessmentGoal | null }) {
   const { assessment, marketPanel } = data;
   const unavailable = usPropertyDataUnavailableMessage(
     data.propertyDataUnavailableReason,
     !!assessment?.liveCountySource
   );
+  const audience = assessmentAudience(activeGoal);
+  const rentalScreen = buildRentalScreenModel({
+    goal: activeGoal,
+    capabilities: data.propertyCapabilities,
+    regionalRent: regionalRentEvidence(data),
+  });
 
   return (
     <div>
@@ -1048,6 +1181,8 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
           {data.countyName}, {data.state}
         </p>
       </div>
+
+      {rentalScreen && <RentalScreen model={rentalScreen} />}
 
       <div
         className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-amber-900"
@@ -1078,7 +1213,7 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
       </div>
 
       <div className="mb-6">
-        <PartnerCtaRow country="US" state={data.state} source="assess-result" surface="result-buyer" city={data.city} />
+        <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
       </div>
 
       <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-sm text-amber-800">
@@ -1095,7 +1230,8 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
           country="US"
           state={data.state}
           source="assess-result"
-          surface="result-buyer"
+          mode={audience.mode}
+          surface={audience.surface}
           heading="Act on this analysis"
           city={data.city}
         />
@@ -1110,7 +1246,13 @@ function UsFallbackView({ data }: { data: UsFallbackResult }) {
 // Entry point
 // ---------------------------------------------------------------------------
 
-export default function UsAssessmentResult({ data }: { data: UsAssessResult }) {
+export default function UsAssessmentResult({
+  data,
+  activeGoal = null,
+}: {
+  data: UsAssessResult;
+  activeGoal?: AssessmentGoal | null;
+}) {
   return (
     <div
       className="max-w-3xl mx-auto"
@@ -1125,13 +1267,14 @@ export default function UsAssessmentResult({ data }: { data: UsAssessResult }) {
       data-capability-address-rent={data.propertyCapabilities.items.addressRentEstimate.reason}
       data-capability-offer={data.propertyCapabilities.items.offerAnalysis.reason}
       data-capability-insurance-prefill={data.propertyCapabilities.items.insurancePrefill.reason}
+      data-p5-active-composition={activeGoal === "rental_investment" ? "rental" : "legacy"}
     >
       {data.offerAvailable ? (
-        <UsListedView data={data} />
+        <UsListedView data={data} activeGoal={activeGoal} />
       ) : data.offerUnavailableReason === "not_listed" ? (
-        <UsOffMarketView data={data} />
+        <UsOffMarketView data={data} activeGoal={activeGoal} />
       ) : (
-        <UsFallbackView data={data} />
+        <UsFallbackView data={data} activeGoal={activeGoal} />
       )}
     </div>
   );

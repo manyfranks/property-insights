@@ -920,13 +920,22 @@ function UsPropertyFactsCard({ listing }: { listing: Listing }) {
 
 function UsEquityTenureCard({ equitySignal }: { equitySignal: EquityTenureSignal | null }) {
   if (!equitySignal || equitySignal.tier === "moderate_hold") return null;
+  const isShortHold = equitySignal.tier === "short_hold_flip";
+  const label = isShortHold ? "Short-Hold Resale Pattern" : equitySignal.label;
+  const narrative = isShortHold
+    ? `Last sold ${equitySignal.holdYears.toFixed(1)}yr ago for ${fmt(equitySignal.lastSalePrice)}, now ${
+        equitySignal.currentValueKind === "asking" ? "asking" : "valued at"
+      } ${fmt(equitySignal.currentValueEstimate)} (${equitySignal.impliedAppreciationPct >= 0 ? "+" : ""}${pct(
+        equitySignal.impliedAppreciationPct
+      )}). This is a short-hold resale pattern; the records do not establish renovation work, seller intent, or investment ownership.`
+    : equitySignal.narrative;
   return (
     <div className="border border-border rounded-xl p-4 bg-white">
       <div className="flex items-center justify-between mb-2">
         <div className="text-xs uppercase tracking-widest text-muted">Seller Equity/Tenure</div>
-        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{equitySignal.label}</span>
+        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{label}</span>
       </div>
-      <p className="text-sm text-foreground leading-relaxed">{equitySignal.narrative}</p>
+      <p className="text-sm text-foreground leading-relaxed">{narrative}</p>
     </div>
   );
 }

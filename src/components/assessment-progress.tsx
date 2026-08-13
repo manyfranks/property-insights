@@ -317,7 +317,10 @@ export default function AssessmentProgress({
           onGoalChange={handleGoalChange}
           gateUnsupported
         >
-          <UsAssessmentResult data={result} />
+          <UsAssessmentResult
+            data={result}
+            activeGoal={journeyEnabled ? selectedGoal ?? result.assessmentGoal : null}
+          />
         </AssessmentJourneyPanel>
       </main>
     );

@@ -128,13 +128,16 @@ console.log("\n═══ Equity/Tenure signal ═══\n");
   }
 }
 
-// --- Short-hold flip case ---
+// --- Short-hold resale case ---
 {
   const record = fixtureRecord({ lastSaleDate: isoYearsAgo(0.75, NOW), lastSalePrice: 300_000 });
   const sig = computeEquityTenureSignal(record, 375_000, "asking", 0.05, NOW);
   assert("flip: returns a signal", sig !== null);
   if (sig) {
     assert("flip: tier is short_hold_flip", sig.tier === "short_hold_flip", sig.tier);
+    assert("short hold: neutral label", sig.label === "Short-Hold Resale Pattern", sig.label);
+    assert("short hold: does not claim investor ownership", !sig.narrative.includes("investor/flipper"));
+    assert("short hold: does not claim seller motivation", !sig.narrative.includes("likely negotiable"));
     assert("flip: scorePoints 10", sig.scorePoints === 10, String(sig.scorePoints));
     assert("flip: holdYears < 2", sig.holdYears < 2, String(sig.holdYears));
   }
@@ -431,6 +434,7 @@ console.log("\n═══ buildUsAdvantageBundle (integration) ═══\n");
   assert("integration: equity signal fires (short-hold flip)", bundle.equitySignal?.tier === "short_hold_flip", bundle.equitySignal?.tier);
   assert("integration: triangulation has 4 anchors", bundle.triangulation.anchors.length === 4);
   assert("integration: investor yield computed", bundle.investorYield !== null);
+  assert("integration: investor yield preserves address rent input", bundle.investorYield?.monthlyRent === 2_450);
   assert("integration: risk momentum is accelerating (18% >= 15% threshold)", bundle.riskMomentum.momentum === "accelerating");
   assert("integration: no over-assessment (asking above assessed)", bundle.overAssessment.triggered === false);
 
