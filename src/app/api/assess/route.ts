@@ -96,6 +96,7 @@ import {
 import type { USPropertyBundle } from "@/lib/rentcast";
 import type { Assessment } from "@/lib/types";
 import { parseAssessmentGoal, type AssessmentGoal } from "@/lib/property-intelligence/journey";
+import { rentCastValuationEvidenceScopes } from "@/lib/property-intelligence/investor-journey";
 import {
   createUserAssessmentState,
   type AssessmentResultVariant,
@@ -139,8 +140,8 @@ function buildPropertyIntelligenceShadow(args: {
   subject: AssessmentSubject;
   evidence: PropertyEvidenceSnapshot;
   classificationFacts?: PropertyClassificationFacts;
-  saleValue?: { available: boolean; source: string; regionalOnly?: boolean };
-  rentEstimate?: { available: boolean; source: string };
+  saleValue?: { available: boolean; source: string; regionalOnly?: boolean; scope?: CapabilityScope };
+  rentEstimate?: { available: boolean; source: string; scope?: CapabilityScope };
   regionalRent?: { available: boolean; source: string };
   activeListing?: boolean;
   offerComputed?: boolean;
@@ -162,9 +163,9 @@ function buildPropertyIntelligenceShadow(args: {
     : undefined;
   const capabilityFacts: PropertyCapabilityFacts = {
     addressSaleValue: args.saleValue
-      ? scopedFact(args.saleValue, args.saleValue.regionalOnly ? "regional" : scope)
+      ? scopedFact(args.saleValue, args.saleValue.regionalOnly ? "regional" : args.saleValue.scope ?? scope)
       : undefined,
-    addressRentEstimate: scopedFact(args.rentEstimate),
+    addressRentEstimate: scopedFact(args.rentEstimate, args.rentEstimate?.scope ?? scope),
     regionalRentBenchmark: scopedFact(args.regionalRent, "regional"),
     activeListing: args.activeListing,
     offerComputed: args.offerComputed,
@@ -737,6 +738,12 @@ async function handleUSAssessment({
       bundle,
       assessment,
     });
+    const rentCastScopes = rentCastValuationEvidenceScopes(
+      bundle.activeListing.propertyType ?? bundle.record?.propertyType
+    );
+    const compatibleMonthlyRent = rentCastScopes && !assessmentSubject.unit
+      ? null
+      : bundle.rent?.value ?? null;
     listing.assessmentSubject = assessmentSubject;
     const baseScore = scoreV2(listing);
     const comparables = buildUsCompSupport(bundle.avm, parseInt(listing.sqft) || 0);
@@ -814,7 +821,7 @@ async function handleUSAssessment({
       taxAssessmentEligible: assessment?.liveCountyValueKind !== "market_value",
       assessmentBasis: assessment?.assessmentBasis,
       compImpliedValue: comparables.impliedValue,
-      monthlyRent: bundle.rent?.value ?? null,
+      monthlyRent: compatibleMonthlyRent,
       marketPanel,
       taxAssessedDemoted,
     });
@@ -897,8 +904,12 @@ async function handleUSAssessment({
         hasSuite: listing.hasSuite,
         yearBuilt: bundle.record?.yearBuilt ?? listing.yearBuilt,
       },
-      saleValue: { available: !!bundle.avm, source: "rentcast_avm" },
-      rentEstimate: { available: !!bundle.rent, source: "rentcast_rent" },
+      saleValue: { available: listing.price > 0, source: "rentcast_listing" },
+      rentEstimate: {
+        available: !!bundle.rent,
+        source: "rentcast_rent",
+        ...(rentCastScopes ? { scope: rentCastScopes.rentEstimate } : {}),
+      },
       regionalRent: { available: regionalRentAvailable, source: "county_market_panel" },
       activeListing: true,
       offerComputed: !!offer,
@@ -1014,6 +1025,10 @@ async function handleUSAssessment({
     bundle,
     assessment,
   });
+  const rentCastScopes = rentCastValuationEvidenceScopes(bundle.record?.propertyType);
+  const compatibleMonthlyRent = rentCastScopes && !assessmentSubject.unit
+    ? null
+    : bundle.rent?.value ?? null;
   const advantageAssessmentValue =
     assessment?.source === "government"
       ? assessment.totalValue
@@ -1030,7 +1045,7 @@ async function handleUSAssessment({
     taxAssessmentEligible: assessment?.liveCountyValueKind !== "market_value",
     assessmentBasis: assessment?.assessmentBasis,
     compImpliedValue: offMarketComparables.impliedValue,
-    monthlyRent: bundle.rent?.value ?? null,
+    monthlyRent: compatibleMonthlyRent,
     marketPanel,
   });
   const regionalRentAvailable = !!marketPanel && [
@@ -1049,8 +1064,16 @@ async function handleUSAssessment({
       lastSaleDate: bundle.record?.lastSaleDate,
       yearBuilt: bundle.record?.yearBuilt,
     },
-    saleValue: { available: !!bundle.avm, source: "rentcast_avm" },
-    rentEstimate: { available: !!bundle.rent, source: "rentcast_rent" },
+    saleValue: {
+      available: !!bundle.avm,
+      source: "rentcast_avm",
+      ...(rentCastScopes ? { scope: rentCastScopes.saleValue } : {}),
+    },
+    rentEstimate: {
+      available: !!bundle.rent,
+      source: "rentcast_rent",
+      ...(rentCastScopes ? { scope: rentCastScopes.rentEstimate } : {}),
+    },
     regionalRent: { available: regionalRentAvailable, source: "county_market_panel" },
     activeListing: false,
     offerComputed: false,

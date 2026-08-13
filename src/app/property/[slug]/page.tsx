@@ -31,8 +31,13 @@ import { computeInvestorYield } from "@/lib/pipeline/us-advantage";
 import { getCmaFipsForCity, getCmaMomentum, getCmaRent, type CmaMomentum } from "@/lib/db/regional-econ";
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 import { AssessmentJourneyPanel } from "@/components/assessment-journey";
+import CanadaRentalScreen from "@/components/canada-rental-screen";
 import PropertyJourneyHandoff from "@/components/property-journey-handoff";
-import { parseAssessmentGoal, parseSubjectScope } from "@/lib/property-intelligence/journey";
+import {
+  parseAssessmentGoal,
+  parseSubjectScope,
+  type JourneyCapabilityStatus,
+} from "@/lib/property-intelligence/journey";
 import { auth } from "@clerk/nextjs/server";
 import { getUserAssessmentState } from "@/lib/db/user-assessments";
 
@@ -280,12 +285,19 @@ export default async function PropertyPage({
   // never blocks rendering — same graceful-degradation shape as the
   // assessment lookup above.
   const caCma = getCmaFipsForCity(listing.city);
+  const caRentBeds = bedsForCmaRent(listing.beds);
   const [caMomentum, caRent] = caCma
-    ? await Promise.all([getCmaMomentum(caCma.fips), getCmaRent(caCma.fips, bedsForCmaRent(listing.beds))])
+    ? await Promise.all([getCmaMomentum(caCma.fips), getCmaRent(caCma.fips, caRentBeds)])
     : [null, null];
   const caInvestorYield = caRent
     ? computeInvestorYield({ priceForYield: listing.price, monthlyRent: caRent.monthlyRent, countyFmr2br: null })
     : null;
+  const caRentalJourneyStatus = {
+    availability: "limited",
+    message: caRent
+      ? "Regional CMHC rent context and a user-entered rent scenario support a limited screen; neither is an address-level expected rent."
+      : "No reliable rent estimate is available for this address or city; enter your own monthly-rent scenario to screen it against the listing price.",
+  } satisfies JourneyCapabilityStatus;
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
@@ -315,6 +327,27 @@ export default async function PropertyPage({
         subjectScope={confirmedSubjectScope ?? listing.assessmentSubject?.scope ?? "unknown"}
         capabilities={listing.propertyCapabilities}
         gateUnsupported
+        goalStatusOverrides={{ rental_investment: caRentalJourneyStatus }}
+        goalContent={{
+          rental_investment: (
+            <CanadaRentalScreen
+              address={listing.address}
+              city={listing.city}
+              province={listing.province}
+              propertySlug={slugify(listing.address)}
+              listPrice={listing.price}
+              beds={listing.beds}
+              baths={listing.baths}
+              sqft={listing.sqft}
+              regionalRent={caRent && caCma ? {
+                monthlyRent: caRent.monthlyRent,
+                cmaName: caCma.cmaName,
+                bedroomLabel: caRentBeds >= 3 ? "3 bedroom+" : caRentBeds === 0 ? "studio" : `${caRentBeds} bedroom`,
+                vintage: caRent.vintage,
+              } : null}
+            />
+          ),
+        }}
       >
       {/* A. Back link */}
       <Link

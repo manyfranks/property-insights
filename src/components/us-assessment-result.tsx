@@ -523,6 +523,79 @@ function RentalEvidenceCard({
   );
 }
 
+function UsLimitedListedRentalView({
+  data,
+  model,
+}: {
+  data: UsListedResult;
+  model: NonNullable<ReturnType<typeof buildRentalScreenModel>>;
+}) {
+  const { listing, marketPanel, riskMomentum } = data;
+  const audience = assessmentAudience("rental_investment");
+  const rentReason = data.propertyCapabilities.items.addressRentEstimate.reason;
+  const unitRentMismatch =
+    rentReason === "unsupported_scope" &&
+    (data.propertyClassification.buildingForm.value === "apartment" ||
+      data.propertyClassification.buildingForm.value === "low-rise multi-unit");
+
+  return (
+    <div data-p5-us-rental-limited="true">
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{data.address}</h1>
+          <p className="text-sm text-muted mt-0.5">{listing.city}, {listing.province}</p>
+        </div>
+        <TierBadge tier={data.score.tier} />
+      </div>
+
+      <RentalScreen model={model} />
+
+      <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 mb-6">
+        <div className="text-xs uppercase tracking-widest text-amber-700 mb-2">Property yield withheld</div>
+        <h2 className="text-lg font-semibold text-amber-950 mb-2">
+          {unitRentMismatch ? "The rent and price do not describe the same asset." : "A verified property yield is unavailable."}
+        </h2>
+        <p className="text-sm text-amber-900">
+          {unitRentMismatch
+            ? "For this multi-family listing, RentCast's rent AVM describes one unit while the listing price describes the whole building. A building yield requires total scheduled rent or a unit-by-unit rent roll."
+            : rentReason === "missing_field"
+              ? "No address-level rent estimate is available for the resolved listing, so regional rent context cannot be divided by the property price."
+              : "The available rent estimate does not match the resolved listing scope, so it cannot be divided by the property price."}
+        </p>
+      </section>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <StatCard label="List price" value={fmt(listing.price)} sub="Resolved listing" />
+        <StatCard label="Beds" value={listing.beds || "—"} sub="Listing total" />
+        <StatCard label="Baths" value={listing.baths || "—"} sub="Listing total" />
+        <StatCard label="Sqft" value={listing.sqft || "—"} sub="Listing total" />
+      </div>
+
+      <div className="mb-6">
+        <RiskMomentumCard riskMomentum={riskMomentum} />
+      </div>
+
+      <div className="mb-6">
+        <PartnerCta
+          country="US"
+          state={data.state}
+          source="assess-result"
+          mode={audience.mode}
+          surface={audience.surface}
+          heading="Continue your rental analysis"
+          city={data.city}
+        />
+      </div>
+
+      <div className="mb-2 pt-4 border-t border-border">
+        <div className="text-xs uppercase tracking-widest text-muted mb-3">County Context</div>
+        <MarketPanelSection marketPanel={marketPanel} />
+      </div>
+      <FooterCredits marketPanel={marketPanel} />
+    </div>
+  );
+}
+
 function regionalRentEvidence(data: UsResultBase): RentalMoneyEvidence | null {
   const value = data.marketPanel?.fmr2br;
   if (value == null) return null;
@@ -735,6 +808,14 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
     regionalRent: regionalRentEvidence(data),
     yield: investorYield,
   });
+
+  if (
+    activeGoal === "rental_investment" &&
+    rentalScreen &&
+    !data.propertyCapabilities.items.grossYieldScreen.available
+  ) {
+    return <UsLimitedListedRentalView data={data} model={rentalScreen} />;
+  }
 
   return (
     <div>
@@ -1059,6 +1140,58 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
     regionalRent: regionalRentEvidence(data),
     yield: investorYield,
   });
+
+  if (
+    activeGoal === "rental_investment" &&
+    rentalScreen &&
+    !data.propertyCapabilities.items.grossYieldScreen.available
+  ) {
+    const audience = assessmentAudience("rental_investment");
+    const rentReason = data.propertyCapabilities.items.addressRentEstimate.reason;
+    const unitRentMismatch =
+      rentReason === "unsupported_scope" &&
+      (data.propertyClassification.buildingForm.value === "apartment" ||
+        data.propertyClassification.buildingForm.value === "low-rise multi-unit");
+    return (
+      <div data-p5-us-rental-limited="true">
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold tracking-tight">{data.address}</h1>
+          <p className="text-sm text-muted mt-0.5">{data.countyName}, {data.state}</p>
+        </div>
+        <RentalScreen model={rentalScreen} />
+        <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 mb-6">
+          <div className="text-xs uppercase tracking-widest text-amber-700 mb-2">Property yield withheld</div>
+          <h2 className="text-lg font-semibold text-amber-950 mb-2">
+            {unitRentMismatch ? "The rent and value do not describe the same asset." : "A verified property yield is unavailable."}
+          </h2>
+          <p className="text-sm text-amber-900">
+            {unitRentMismatch
+              ? "For this multi-family property, RentCast's rent AVM describes one unit while its value AVM describes the whole building. A building yield requires total scheduled rent or a unit-by-unit rent roll."
+              : rentReason === "missing_field"
+                ? "No address-level rent estimate is available for the resolved property, so regional rent context cannot be divided by the property value."
+                : "The available rent estimate does not match the resolved property scope, so it cannot be divided by the property value."}
+          </p>
+        </section>
+        <div className="mb-6"><RiskMomentumCard riskMomentum={riskMomentum} /></div>
+        <div className="mb-6">
+          <PartnerCta
+            country="US"
+            state={data.state}
+            source="assess-result"
+            mode={audience.mode}
+            surface={audience.surface}
+            heading="Continue your rental analysis"
+            city={data.city}
+          />
+        </div>
+        <div className="mb-2 pt-4 border-t border-border">
+          <div className="text-xs uppercase tracking-widest text-muted mb-3">County Context</div>
+          <MarketPanelSection marketPanel={marketPanel} />
+        </div>
+        <FooterCredits marketPanel={marketPanel} />
+      </div>
+    );
+  }
 
   return (
     <div>

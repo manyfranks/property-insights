@@ -349,12 +349,12 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 ### Build
 
 - [ ] **[A] Create the investor result composition** from P3 capabilities rather than country-only branching.
-- [ ] **[A] Separate address-level expected rent from regional benchmark rent** in UI, narrative, and types.
+- [x] **[A] Separate address-level expected rent from regional benchmark rent** in UI, narrative, and types.
 - [x] **[A] Rename “Investor Flip” to “Short-hold resale pattern”** and remove claims that renovation or seller motivation is proven.
 - [ ] **[A] Show gross yield by default;** show cash flow/cap rate only when required expenses are known or user-supplied.
 - [ ] **[A] Add inputs for financing, vacancy, maintenance, management, utilities, insurance, and other operating costs** without blocking the first useful result.
-- [ ] **[A] Feed real journey state** into `AudienceMode` and `result-investor` CTA surfaces.
-- [ ] **[A] Capability-gate Canadian output:** no address-level rent language when only CMA/CMHC data exists; land/improvement insight only where the split exists.
+- [x] **[A] Feed real journey state** into `AudienceMode` and `result-investor` CTA surfaces.
+- [x] **[A] Capability-gate Canadian output:** no address-level rent language when only CMA/CMHC data exists; land/improvement insight only where the split exists.
 - [ ] **[A] Save assumptions** per assessment/saved property, not as universal truths.
 - [ ] **[A+M] Define the V1 success readout before launch:** selection rate, result completion, view switching, missing-capability rate, investor CTA engagement, and saved/shared assessments.
 
@@ -371,6 +371,7 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 - Sprint A (2026-08-13): flagged US on-demand rental composition now responds to the explicit assessment goal without refetching; it separates RentCast address-rent evidence from HUD county FMR, shows gross screening before buyer analysis, and routes eligible CTAs through the investor audience/surface. Classification and occupancy are not inputs.
 - Surface correction (2026-08-13): Discover property details now hand explicit goals into the enriched assessment flow instead of silently bypassing journeys. Unresolved multi-unit assessments withhold AVM/rent and avoid claiming that no unit in the building is listed.
+- Cross-country correction (2026-08-13): Canadian rental focus now renders a limited, interactive user-rent scenario against the listing price, with CMHC shown only where available and always labeled regional. RentCast `Multi-Family`/`Apartment` rent AVMs are explicitly scoped to one unit while value/listing evidence remains whole-building, preventing false building yields such as the Salt Lake City acceptance case.
 - Contract fixtures: `scripts/test-property-intelligence-p5.ts` covers explicit-goal routing, supported address-level output, regional-only degradation, capability withholding, legacy composition parity, and zero provider calls.
 - Commit/PR: _TBD_
 - Production examples: _TBD_

@@ -239,6 +239,31 @@ test("explicit whole-apartment-building listing is not mistaken for one unit", (
   assert.equal(result.capabilities.items.offerAnalysis.reason, "unsupported_scope");
 });
 
+test("whole multi-family listing never combines building value with a single-unit rent AVM", () => {
+  const resolved = subject({
+    listing: { address: "123 Main St, Austin, TX", source: "rentcast_listing" },
+    propertyRecord: { address: "123 Main St, Austin, TX", propertyType: "Multi-Family" },
+  });
+  const result = run({
+    subject: resolved,
+    evidence: evidence({ types: [
+      { value: "Multi-Family", scope: "listing" },
+      { value: "Multi-Family", scope: "provider_record" },
+    ] }),
+    capabilityFacts: {
+      addressSaleValue: fact(true, "building", "rentcast_listing"),
+      addressRentEstimate: fact(true, "unit", "rentcast_rent"),
+      regionalRentBenchmark: fact(true, "regional", "hud_fmr"),
+      activeListing: true,
+      offerComputed: true,
+    },
+  });
+  assert.equal(result.classification.listingScope.value, "whole building");
+  assert.equal(result.capabilities.items.addressSaleValuation.available, true);
+  assert.equal(result.capabilities.items.addressRentEstimate.reason, "unsupported_scope");
+  assert.equal(result.capabilities.items.grossYieldScreen.available, false);
+});
+
 for (const [label, propertyType, expected, expectedReason] of [
   ["vacant land", "Vacant Land", "land", "provider_exclusion"],
   ["institutional", "Municipal Government Exempt", "institutional", "provider_exclusion"],

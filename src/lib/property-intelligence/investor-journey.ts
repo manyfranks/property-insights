@@ -1,5 +1,5 @@
 import type { AudienceMode, SurfaceKey } from "@/config/affiliate-vendors";
-import type { PropertyCapabilities } from "./capabilities";
+import type { CapabilityScope, PropertyCapabilities } from "./capabilities";
 import type { AssessmentGoal, JourneyAvailability } from "./journey";
 import { hasSubjectEvidenceGap } from "./journey";
 import type { AssessmentSubject } from "./subject";
@@ -30,6 +30,48 @@ export interface RentalScreenModel {
 export interface AssessmentAudience {
   mode: AudienceMode;
   surface: Extract<SurfaceKey, "result-buyer" | "result-investor">;
+}
+
+export interface RentCastValuationEvidenceScopes {
+  saleValue: CapabilityScope;
+  rentEstimate: CapabilityScope;
+}
+
+/**
+ * RentCast documents intentionally different semantics for multi-family
+ * AVMs: value is for the whole building, while long-term rent is for one
+ * unit. Keep those scopes explicit so the two numbers can never be divided
+ * into a fake whole-building yield.
+ */
+export function rentCastValuationEvidenceScopes(
+  propertyType: string | null | undefined
+): RentCastValuationEvidenceScopes | null {
+  const normalized = propertyType?.trim().toLowerCase();
+  return normalized === "multi-family" || normalized === "apartment"
+    ? { saleValue: "building", rentEstimate: "unit" }
+    : null;
+}
+
+export function buildUserRentScenario(
+  price: number,
+  monthlyRent: number
+): RentalYieldEvidence | null {
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(monthlyRent) || monthlyRent <= 0) {
+    return null;
+  }
+  const rentToPriceRatio = monthlyRent / price;
+  return {
+    grossYieldPct: rentToPriceRatio * 12,
+    rentToPriceRatio,
+    onePercentRuleMet: rentToPriceRatio >= 0.01,
+  };
+}
+
+export function monthlyRentForGrossYield(price: number, annualYieldPct: number): number | null {
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(annualYieldPct) || annualYieldPct <= 0) {
+    return null;
+  }
+  return price * annualYieldPct / 12;
 }
 
 export function shouldWithholdPropertyEvidence(

@@ -3,6 +3,9 @@ import type { PropertyCapabilities } from "../src/lib/property-intelligence/capa
 import {
   assessmentAudience,
   buildRentalScreenModel,
+  buildUserRentScenario,
+  monthlyRentForGrossYield,
+  rentCastValuationEvidenceScopes,
   shouldWithholdPropertyEvidence,
 } from "../src/lib/property-intelligence/investor-journey";
 import { assessmentJourneyHref } from "../src/lib/property-intelligence/journey";
@@ -165,6 +168,26 @@ const cases: Array<[string, () => void]> = [
       addressRentEstimate: true,
       addressSaleValuation: true,
     })), false);
+  }],
+  ["RentCast multi-family AVMs keep whole-building value separate from single-unit rent", () => {
+    assert.deepEqual(rentCastValuationEvidenceScopes("Apartment"), {
+      saleValue: "building",
+      rentEstimate: "unit",
+    });
+    assert.deepEqual(rentCastValuationEvidenceScopes("Multi-Family"), {
+      saleValue: "building",
+      rentEstimate: "unit",
+    });
+    assert.equal(rentCastValuationEvidenceScopes("Single Family"), null);
+  }],
+  ["Canadian user rent scenarios calculate gross yield without creating a property fact", () => {
+    assert.deepEqual(buildUserRentScenario(1_000_000, 5_000), {
+      grossYieldPct: 0.06,
+      rentToPriceRatio: 0.005,
+      onePercentRuleMet: false,
+    });
+    assert.equal(monthlyRentForGrossYield(1_000_000, 0.06), 5_000);
+    assert.equal(buildUserRentScenario(1_000_000, 0), null);
   }],
 ];
 

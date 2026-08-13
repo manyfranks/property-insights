@@ -9,6 +9,7 @@ import {
   journeyCapabilityStatus,
   type AssessmentGoal,
   type AssessmentSubjectChoice,
+  type JourneyCapabilityStatus,
   type JourneyEventType,
 } from "@/lib/property-intelligence/journey";
 import type { AssessmentSubject, SubjectScope } from "@/lib/property-intelligence/subject";
@@ -284,6 +285,8 @@ export function AssessmentJourneyPanel({
   capabilities,
   onGoalChange,
   gateUnsupported = false,
+  goalStatusOverrides,
+  goalContent,
   children,
 }: {
   enabled?: boolean;
@@ -294,11 +297,15 @@ export function AssessmentJourneyPanel({
   capabilities?: PropertyCapabilities | null;
   onGoalChange?: (goal: AssessmentGoal) => void;
   gateUnsupported?: boolean;
+  goalStatusOverrides?: Partial<Record<AssessmentGoal, JourneyCapabilityStatus>>;
+  goalContent?: Partial<Record<AssessmentGoal, ReactNode>>;
   children?: ReactNode;
 }) {
   const [goal, setGoal] = useState<AssessmentGoal>(initialGoal ?? "buy_home");
   const viewed = useRef(false);
-  const status = journeyCapabilityStatus(goal, capabilities);
+  const statusForGoal = (selectedGoal: AssessmentGoal) =>
+    goalStatusOverrides?.[selectedGoal] ?? journeyCapabilityStatus(selectedGoal, capabilities);
+  const status = statusForGoal(goal);
   const subjectEvidenceGap = hasSubjectEvidenceGap(subjectScope, capabilities);
   const effectiveStatus = subjectEvidenceGap
     ? {
@@ -330,7 +337,7 @@ export function AssessmentJourneyPanel({
   function switchGoal(nextGoal: AssessmentGoal) {
     if (nextGoal === goal) return;
     const previousGoal = goal;
-    const nextStatus = journeyCapabilityStatus(nextGoal, capabilities);
+    const nextStatus = statusForGoal(nextGoal);
     const nextAvailability = subjectEvidenceGap ? "unavailable" : nextStatus.availability;
     setGoal(nextGoal);
     onGoalChange?.(nextGoal);
@@ -353,6 +360,7 @@ export function AssessmentJourneyPanel({
     : effectiveStatus.availability === "limited"
       ? "bg-amber-100 text-amber-700"
       : "bg-zinc-100 text-zinc-600";
+  const selectedContent = goalContent?.[goal] ?? children;
 
   if (!enabled) return <>{children}</>;
 
@@ -393,7 +401,7 @@ export function AssessmentJourneyPanel({
         <p className="text-sm text-foreground">{effectiveStatus.message}</p>
         <p className="text-xs text-muted mt-2">
           {gateUnsupported
-            ? "Unsupported report modules and partner links are withheld; supported views keep the current report unchanged."
+            ? "Evidence-gated modules and partner links appear only when they match this subject and focus."
             : "The current report modules and partner links are unchanged during this preview."}
         </p>
       </section>
@@ -411,7 +419,7 @@ export function AssessmentJourneyPanel({
             listing values as though they describe a different unit.
           </p>
         </section>
-      ) : children}
+      ) : selectedContent}
     </>
   );
 }
