@@ -43,6 +43,8 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { after, NextResponse } from "next/server";
 import { getPostHogClient } from "@/lib/posthog-server";
 import { isOptedOutRequest } from "@/lib/privacy";
+import { insertAnalyticsEvents } from "@/lib/db/analytics-events";
+import { ANON_ID_COOKIE, SESSION_ID_COOKIE, isPlausibleUuid, readCookie } from "@/lib/analytics-ids";
 import { findAndFetchDetail, fetchDetailByUrl, parseZoocasaUrl, ZoocasaNotFoundError } from "@/lib/zoocasa";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { upsertListing } from "@/lib/kv/listings";
@@ -484,6 +486,64 @@ async function capturePostHogEvent(
   }
 }
 
+/**
+ * Writes assess_completed/assess_failed to the anonymous-capable analytics
+ * spine (analytics_events — src/lib/db/analytics-events.ts, ingested
+ * anonymously over HTTP at /api/signal for client events). This route writes
+ * directly via insertAnalyticsEvents() instead — there is no HTTP hop to make
+ * against itself, and the identifying cookies are already on this request.
+ *
+ * Distinct from capturePostHogEvent() above (PostHog, keyed by Clerk userId)
+ * and from trackEvent() (user_events, requires Clerk auth): this is System A,
+ * the same spine /api/signal/route.ts ingests client-side signal() calls
+ * into, so assess_completed/assess_failed land in the SAME table and can be
+ * funneled against assess_address_entered (src/components/
+ * home-address-search.tsx) and page_view, none of which require a session.
+ *
+ * A no-op — not a degraded write — in exactly the two cases /api/signal
+ * itself would also refuse the write:
+ *   - `optedOut` (Do Not Sell/Share, same flag capturePostHogEvent() checks)
+ *   - either pi_aid or pi_sid cookie missing/malformed. Middleware
+ *     (src/proxy.ts) mints both together for any non-opted-out page request,
+ *     so a signed-in user hitting this API route via the normal UI flow
+ *     (home page → /assess → this endpoint) always has both; a direct API
+ *     call that skipped a page load would not, and there is no anonymous
+ *     identity to attach the row to in that case.
+ *
+ * Runs inside next/server's after() so a slow or failed analytics write can
+ * never add latency to, or fail, the assessment response itself.
+ * insertAnalyticsEvents() is already fail-soft-but-logged internally (see its
+ * doc comment), so nothing here needs its own try/catch.
+ */
+function recordAssessSpineEvent(args: {
+  req: Request;
+  optedOut: boolean;
+  userId: string;
+  eventType: "assess_completed" | "assess_failed";
+  data: Record<string, string | number | boolean>;
+}): void {
+  if (args.optedOut) return;
+
+  const anonId = readCookie(args.req, ANON_ID_COOKIE);
+  const sessionId = readCookie(args.req, SESSION_ID_COOKIE);
+  if (!anonId || !sessionId || !isPlausibleUuid(anonId) || !isPlausibleUuid(sessionId)) return;
+
+  const country = args.req.headers.get("x-vercel-ip-country");
+
+  after(async () => {
+    await insertAnalyticsEvents([
+      {
+        anonId,
+        sessionId,
+        userId: args.userId,
+        eventType: args.eventType,
+        data: args.data,
+        country,
+      },
+    ]);
+  });
+}
+
 async function handleUSAssessment({
   userId,
   limiter,
@@ -498,6 +558,8 @@ async function handleUSAssessment({
   journeyStateEnabled,
   optedOut,
   log,
+  recordSpine,
+  elapsedMs,
 }: {
   userId: string;
   limiter: ReturnType<typeof assessLimiter>;
@@ -513,6 +575,10 @@ async function handleUSAssessment({
   /** Do Not Sell/Share: true when the originating request is opted out — skips PostHog captures below. */
   optedOut: boolean;
   log: (step: string, extra?: string) => void;
+  /** Anonymous spine writer bound to this request's cookies/optedOut/userId — see recordAssessSpineEvent's doc comment. */
+  recordSpine: (eventType: "assess_completed" | "assess_failed", data: Record<string, string | number | boolean>) => void;
+  /** Milliseconds elapsed since this POST started (bound to the same t0 `log` uses) — for assess_completed's durationMs. */
+  elapsedMs: () => number;
 }) {
   log("us region", `${street} | ${city} | ${region}`);
 
@@ -521,6 +587,7 @@ async function handleUSAssessment({
     geo = await geocodeUSAddress(`${street}, ${city}, ${region}`);
   } catch (err) {
     log("geocode error", err instanceof Error ? err.message : String(err));
+    recordSpine("assess_failed", { reason: "geocode_error", country: "US", region });
     return NextResponse.json(
       { error: "Failed to look up this address. Please try again." },
       { status: 502 }
@@ -529,6 +596,7 @@ async function handleUSAssessment({
 
   if (!geo) {
     log("geocode no match");
+    recordSpine("assess_failed", { reason: "address_not_found", country: "US", region });
     return NextResponse.json(
       {
         error:
@@ -553,6 +621,7 @@ async function handleUSAssessment({
         event: "assessment_rate_limit_hit",
         properties: { country: "US", city, state: region },
       });
+      recordSpine("assess_failed", { reason: "rate_limited", country: "US", region });
       return RATE_LIMIT_RESPONSE(result.reset - Date.now());
     }
   }
@@ -719,6 +788,13 @@ async function handleUSAssessment({
     });
 
     log("done (US, fallback)", geo.matchedAddress);
+
+    recordSpine("assess_completed", {
+      country: "US",
+      hasAssessment: !!assessment?.found,
+      resultVariant: "regional_fallback",
+      durationMs: elapsedMs(),
+    });
 
     const assessmentId = await persistPrivateAssessmentState({
       enabled: journeyStateEnabled,
@@ -1015,6 +1091,13 @@ async function handleUSAssessment({
 
     await phUsAssessmentCapture("listed");
 
+    recordSpine("assess_completed", {
+      country: "US",
+      hasAssessment: !!assessment?.found,
+      resultVariant: "listed",
+      durationMs: elapsedMs(),
+    });
+
     const assessmentId = await persistPrivateAssessmentState({
       enabled: journeyStateEnabled,
       userId,
@@ -1178,6 +1261,13 @@ async function handleUSAssessment({
 
   await phUsAssessmentCapture("off_market");
 
+  recordSpine("assess_completed", {
+    country: "US",
+    hasAssessment: !!assessment?.found,
+    resultVariant: "off_market",
+    durationMs: elapsedMs(),
+  });
+
   const assessmentId = await persistPrivateAssessmentState({
     enabled: journeyStateEnabled,
     userId,
@@ -1237,8 +1327,18 @@ export async function POST(req: Request) {
 
   const { userId } = await auth();
   if (!userId) {
+    // No assess_failed here: no address has been submitted yet, so there is
+    // no jurisdiction/data-availability outcome for the spine to record —
+    // this is an auth gate, not an assessment-funnel failure branch.
     return NextResponse.json({ error: "Sign in to request an assessment" }, { status: 401 });
   }
+
+  // Anonymous spine (System A — analytics_events) writer + elapsed-time
+  // reader for this request, bound once `userId` is known. See
+  // recordAssessSpineEvent's doc comment for the write's exact conditions.
+  const recordSpine = (eventType: "assess_completed" | "assess_failed", data: Record<string, string | number | boolean>) =>
+    recordAssessSpineEvent({ req, optedOut, userId, eventType, data });
+  const elapsedMs = () => Date.now() - t0;
 
   // Pro users bypass the daily assessment cap entirely.
   const pro = await isPro(userId);
@@ -1258,6 +1358,7 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
+    recordSpine("assess_failed", { reason: "invalid_request" });
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
@@ -1266,6 +1367,7 @@ export async function POST(req: Request) {
   const selectedPlaceId = typeof body.placeId === "string" ? body.placeId.trim() || undefined : undefined;
   const assessmentGoal = parseAssessmentGoal(body.assessmentGoal);
   if (body.assessmentGoal != null && !assessmentGoal) {
+    recordSpine("assess_failed", { reason: "invalid_request" });
     return NextResponse.json({ error: "Invalid assessment goal" }, { status: 400 });
   }
   const journeyStateEnabled = body.journeyState === true;
@@ -1273,6 +1375,7 @@ export async function POST(req: Request) {
 
   // Length check + reject control characters and obvious injection patterns
   if (!rawAddress || rawAddress.length > 500 || /[\x00-\x1f<>{}]/.test(rawAddress)) {
+    recordSpine("assess_failed", { reason: "invalid_address" });
     return NextResponse.json({ error: "Invalid address" }, { status: 400 });
   }
 
@@ -1290,11 +1393,21 @@ export async function POST(req: Request) {
     } catch (err) {
       log("zoocasa error", err instanceof Error ? err.message : String(err));
       if (err instanceof ZoocasaNotFoundError) {
+        recordSpine("assess_failed", {
+          reason: "listing_not_found",
+          country: "CA",
+          region: isZoocasaUrl.province,
+        });
         return NextResponse.json(
           { error: "This listing wasn't found on Zoocasa. It may no longer be active." },
           { status: 404 }
         );
       }
+      recordSpine("assess_failed", {
+        reason: "provider_error",
+        country: "CA",
+        region: isZoocasaUrl.province,
+      });
       return NextResponse.json(
         { error: "Failed to load this listing. Please try again." },
         { status: 502 }
@@ -1305,6 +1418,12 @@ export async function POST(req: Request) {
     const parsed = parseAddress(rawAddress);
     if (!parsed) {
       log("parse failed");
+      // The region token didn't match REGION_MAP (no CA province or US state
+      // recognized) — this is the "we don't cover that jurisdiction, or
+      // couldn't tell what it is" branch, hence "unsupported_region" rather
+      // than a generic parse failure. Neither country nor region is knowable
+      // here — that's exactly what failed to resolve.
+      recordSpine("assess_failed", { reason: "unsupported_region" });
       return NextResponse.json(
         {
           error:
@@ -1333,6 +1452,8 @@ export async function POST(req: Request) {
         journeyStateEnabled,
         optedOut,
         log,
+        recordSpine,
+        elapsedMs,
       });
     }
 
@@ -1342,6 +1463,7 @@ export async function POST(req: Request) {
     } catch (err) {
       log("zoocasa error", err instanceof Error ? err.message : String(err));
       if (err instanceof ZoocasaNotFoundError) {
+        recordSpine("assess_failed", { reason: "address_not_found", country: "CA", region });
         return NextResponse.json(
           {
             error:
@@ -1351,6 +1473,7 @@ export async function POST(req: Request) {
           { status: 404 }
         );
       }
+      recordSpine("assess_failed", { reason: "provider_error", country: "CA", region });
       return NextResponse.json(
         { error: "Failed to look up this property. Please try again." },
         { status: 502 }
@@ -1370,6 +1493,7 @@ export async function POST(req: Request) {
         event: "assessment_rate_limit_hit",
         properties: { country: "CA" },
       });
+      recordSpine("assess_failed", { reason: "rate_limited", country: "CA" });
       return RATE_LIMIT_RESPONSE(result.reset - Date.now());
     }
   }
@@ -1532,6 +1656,14 @@ export async function POST(req: Request) {
       result_variant: "listed",
       score_tier: enriched.preTier,
     },
+  });
+
+  recordSpine("assess_completed", {
+    country: "CA",
+    hasAssessment: !!enriched.preAssessment?.found,
+    resultVariant: "listed",
+    region: enriched.province,
+    durationMs: elapsedMs(),
   });
 
   const assessmentId = await persistPrivateAssessmentState({
