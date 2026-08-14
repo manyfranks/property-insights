@@ -68,8 +68,8 @@ These are release-blocking requirements, not preferences:
 | **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
 | **P2 — Subject resolution** | `[x] Complete 2026-08-11` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | 23/23 resolver fixtures + common subject envelope |
 | **P3 — Classification/capabilities** | `[~] In progress — shadow built; P3.5 acceptance active 2026-08-11` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
-| **P4 — Goal UX/instrumentation** | `[~] Sprint B built; production restore/acceptance review pending 2026-08-12` | Optional per-assessment goal, conditional scope clarification, private restore, manual view switching | P3 | Funnel events + flagged rollout |
-| **P5 — Investor/Landlord V1** | `[ ]` | Address-level US rental screen; capability-gated Canadian version | P4 | End-to-end journey QA + KPI baseline |
+| **P4 — Goal UX/instrumentation** | `[~] Containment complete; post-deploy acceptance pending 2026-08-14` | Optional per-assessment goal, conditional scope clarification, private restore, manual view switching | P3 | Funnel events + route-specific rollout |
+| **P5 — Investor/Landlord V1** | `[~] US composition and CA capability gate built; acceptance active` | Address-level US rental screen; capability-gated Canadian version | P4 | End-to-end journey QA + KPI baseline |
 | **P6 — Buyer/Owner convergence** | `[ ]` | Existing buyer parity plus current-owner/landlord view on shared contracts | P5 | Regression parity + owner journey QA |
 | **I1 — Insurance distribution test** | `[ ] Parallel after P4` | Measure intent-matched insurance demand without claiming underwriting | P4; preferably P5 | Pre-registered test + measured results |
 | **I2 — Coverage Profile** | `[ ] Gated` | Prefill a partner-ready intake and ask users for missing insurance facts | I1 go decision | Partner/legal approval + handoff QA |
@@ -267,7 +267,7 @@ Each result must include scope, source evidence, confidence, and an explanation 
 - Coverage report: `16-P3-SHADOW-COVERAGE.md`; 14/14 fixtures, zero provider calls
 - P3.5 acceptance: `17-P3.5-SHADOW-ACCEPTANCE.md`; anonymous operational telemetry plus a read-only replay of 2,325 persisted listings
 - Discover finding: 2,324/2,325 records predate P1 and lack an evidence envelope; replay made zero provider calls and RentCast quota remained `50 -> 50`
-- Rollout boundary: P4 may pilot on on-demand assessments behind its flag after production telemetry verification; Discover remains excluded from persona routing until evidence-envelope coverage is measured and sufficient
+- Rollout boundary: P4 uses the on-demand journey route after production telemetry verification; Discover listing records remain excluded from direct capability-driven persona rendering until evidence-envelope coverage is measured and sufficient
 - Production proof: commit `8c0c1ab`; live US listed assessment emitted queryable `classification_result` and `capability_missing` rows while preserving the current buyer output
 - Shadow review decision: _TBD_
 
@@ -312,23 +312,24 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
   - `capability_missing`
 - [x] **[A] Store goal with the assessment/saved property.** Initial goal, active view, and user-confirmed scope live in an owner-scoped private assessment record—not the shared listing or a permanent profile persona.
 - [ ] **[A] Add an optional signed-in default** only after the assessment-level flow is stable; it may preselect, never lock.
-- [x] **[A] Put the UI behind a feature flag:** environment flag or internal per-assessment preview. Cohort/default-on rollout remains a later decision.
+- [x] **[A] Keep rollout surface-specific:** Discover goal handoffs use the journey route while plain `/assess` retains buyer behavior until P6. No permanent environment switch.
 
 ### Exit gate
 
 - [ ] Users can correct scope and change views without re-entering the address.
 - [ ] No classification path automatically changes the selected journey.
 - [ ] Funnel events answer: which goals are selected, where clarification occurs, which views users switch to, and which capabilities are missing.
-- [ ] Existing buyer flow remains available and regression-tested while the flag is off.
+- [ ] Existing buyer flow remains available and regression-tested on plain `/assess`.
 - [ ] Mobile and desktop flows pass browser QA.
 
 ### Evidence
 
 - Commits: `d850e44` (`Add flagged P4 assessment journey preview`), `87c18c8` (`Record P4 preview acceptance`), `ca903bb` (`Persist private P4 assessment journeys`)
 - Event query/dashboard: `scripts/report-property-journeys.ts`; production aggregate verified 2026-08-11
-- Browser QA: `18-P4-GOAL-UX-SPRINT-A.md`; flag-off parity, signed-in production preview, no-refetch switching, and 390px/1280px responsive checks pass
+- Browser QA: `18-P4-GOAL-UX-SPRINT-A.md`; plain-flow parity, signed-in journey routing, no-refetch switching, and 390px/1280px responsive checks pass
 - Private persistence/privacy: `19-P4-SPRINT-B-PERSISTENCE-PRIVACY.md`; production migration, owner-isolation round trip, signed-in restore, and `1 -> 1` duplicate guard pass 2026-08-12
-- Rollout decision: _TBD_
+- Containment decision (2026-08-14): URL subject scope is never authoritative; CA confirmation persists before redirect; no non-durable version marker or permanent journeys env flag. See `21-JOURNEYS-ROLLOUT-POLICY.md`.
+- Post-deploy acceptance: _pending_
 
 ---
 
@@ -369,7 +370,7 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Evidence
 
-- Sprint A (2026-08-13): flagged US on-demand rental composition now responds to the explicit assessment goal without refetching; it separates RentCast address-rent evidence from HUD county FMR, shows gross screening before buyer analysis, and routes eligible CTAs through the investor audience/surface. Classification and occupancy are not inputs.
+- Sprint A (2026-08-13): US on-demand rental composition responds to the explicit assessment goal without refetching; it separates RentCast address-rent evidence from HUD county FMR, shows gross screening before buyer analysis, and routes eligible CTAs through the investor audience/surface. Classification and occupancy are not inputs.
 - Surface correction (2026-08-13): Discover property details now hand explicit goals into the enriched assessment flow instead of silently bypassing journeys. Unresolved multi-unit assessments withhold AVM/rent and avoid claiming that no unit in the building is listed.
 - Cross-country correction (2026-08-13): Canadian rental focus now renders a limited, interactive user-rent scenario against the listing price, with CMHC shown only where available and always labeled regional. RentCast `Multi-Family`/`Apartment` rent AVMs are explicitly scoped to one unit while value/listing evidence remains whole-building, preventing false building yields such as the Salt Lake City acceptance case.
 - Contract fixtures: `scripts/test-property-intelligence-p5.ts` covers explicit-goal routing, supported address-level output, regional-only degradation, capability withholding, legacy composition parity, and zero provider calls.
@@ -494,10 +495,10 @@ Requires property-level hazard and replacement-cost evidence, construction/syste
 1. **Additive contracts:** keep current `Listing` and country-specific outputs working while `PropertySnapshot`/subject/evidence contracts are introduced beside them.
 2. **Fixture first:** every high-risk address/scope case gets an expected result before routing changes.
 3. **Shadow classification:** compute and inspect P3 results before they suppress or add visible modules.
-4. **Feature flag:** P4 journey UI rolls out independently of evidence collection and classification.
+4. **Surface-specific route:** journey UI rolls out through explicit product entry points independently of evidence collection and classification; do not accumulate permanent per-feature environment modes.
 5. **No expensive refetch for view switching:** reuse the evidence bundle unless a user requests a module whose required source was intentionally deferred.
 6. **Geo-specific rollout:** enable only where the capability matrix and fixtures pass; do not hide uneven coverage behind a global launch flag.
-7. **Rollback:** disabling journey UI must return the existing buyer flow without requiring a data migration rollback.
+7. **Rollback:** a release revert must return the existing buyer flow without requiring a data migration rollback. Any emergency runtime switch must ship with an owner, expiry date, and deletion issue.
 8. **Shared-file coordination:** before P0/P1 work begins, record ownership for `src/app/api/assess/route.ts`, `src/lib/pipeline/us-assess.ts`, RentCast/Zoocasa mappers, and any shared result component. Coordinate with concurrent monetization/cron work; do not let parallel changes silently overwrite one another.
 9. **Use the application data layer:** all persisted changes go through the repository's guarded KV/database abstractions. Do not add direct ad hoc production writes.
 10. **Run the operational regressions:** changes touching assess, mapper, pipeline, or persistence paths must run `scripts/test-pipeline-guard.ts` and, in an appropriately configured integration environment, `scripts/verify-seeds.ts` with its default 20-random sample. Record the reproducible seed and before/after quota count.
@@ -538,15 +539,15 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 | 2026-08-11 | P2 subject resolution makes no new provider calls | RentCast quota is the binding constraint and ambiguity can degrade to clarification | A separately approved quota/cost plan |
 | 2026-08-11 | Capability reporting separates Discover seeds from on-demand assessments | `/listings/sale` sweeps and assessment bundles have structurally different evidence completeness | Discover gains a documented, universal enrichment contract |
 | 2026-08-11 | Occupancy-driven personalization is counsel-gated | Preserving a field is different from using it for profiling, content, or affiliate routing | Counsel/privacy approval and implemented opt-out treatment |
+| 2026-08-14 | Journeys use an explicit product route, not a permanent environment mode | Stacked feature switches obscure production behavior and become technical debt; plain `/assess` still preserves buyer parity | P6 deliberately migrates the plain assessment flow |
+| 2026-08-14 | Only durable `user_confirmation` provenance restores subject scope | URL scope is forgeable and an application-only version disappears on DB reads | Persistence schema or trust contract changes |
 
 ## Immediate next implementation slice
 
-P2 completed on 2026-08-11. Execute **P3 scope-aware classification and capability routing** next:
+Close the current P4/P5 release gate before expanding the asset matrix:
 
-1. Classify resolved subject scopes without collapsing parcel, building, unit, listing, or occupancy evidence.
-2. Compute module capabilities separately from classification.
-3. Run both outputs in shadow mode before they affect visible modules.
-4. Publish geo/scope/confidence coverage and conflict reports.
-5. Prove with routing fixtures that classification never mutates the user goal or auto-switches a journey.
-
-Do not add goal UI, persona routing, occupancy-driven personalization, or commercial financial claims in the P3 slice.
+1. Deploy the containment and Canadian exclusion fixtures.
+2. Run the signed-in browser acceptance set in `21-JOURNEYS-ROLLOUT-POLICY.md`.
+3. Confirm zero scope substitutions, no provider refetch on view switching, and unchanged plain `/assess` buyer behavior.
+4. Record the production examples and mark P4 accepted if the set passes.
+5. Continue P5 with user-supplied operating assumptions and saved per-assessment scenarios; keep occupancy personalization and commercial financial claims out of scope.

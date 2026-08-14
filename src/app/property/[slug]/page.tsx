@@ -34,9 +34,9 @@ import { AssessmentJourneyPanel } from "@/components/assessment-journey";
 import CanadaRentalScreen from "@/components/canada-rental-screen";
 import PropertyJourneyHandoff from "@/components/property-journey-handoff";
 import {
+  deriveCaRentalJourneyStatus,
   parseAssessmentGoal,
-  parseSubjectScope,
-  type JourneyCapabilityStatus,
+  persistedConfirmedSubjectScope,
 } from "@/lib/property-intelligence/journey";
 import { auth } from "@clerk/nextjs/server";
 import { getUserAssessmentState } from "@/lib/db/user-assessments";
@@ -241,9 +241,7 @@ export default async function PropertyPage({
 
   const queryValue = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
   const assessmentOrigin = queryValue(query.assessmentOrigin) === "1";
-  const journeyEnabled = assessmentOrigin && (
-    process.env.PROPERTY_JOURNEYS_ENABLED === "true" || queryValue(query.journeys) === "1"
-  );
+  const journeyEnabled = assessmentOrigin && queryValue(query.journeys) === "1";
   const requestedAssessmentId = queryValue(query.assessmentId);
   const { userId } = requestedAssessmentId ? await auth() : { userId: null };
   const privateAssessment = userId && requestedAssessmentId
@@ -252,11 +250,16 @@ export default async function PropertyPage({
   const savedAssessment = privateAssessment?.country === "CA" && privateAssessment.resultRef === slug
     ? privateAssessment
     : null;
-  // The query captures the user's just-completed transition while the
-  // best-effort private PATCH may still be in flight. The saved record is the
-  // durable fallback for a later reopen.
   const assessmentGoal = parseAssessmentGoal(queryValue(query.assessmentGoal)) ?? savedAssessment?.activeView ?? null;
-  const confirmedSubjectScope = parseSubjectScope(queryValue(query.subjectScope)) ?? savedAssessment?.subjectScope ?? null;
+  // Never treat a query-string subjectScope as confirmation. A confirmed
+  // scope is trusted only when it survived the authenticated, owner-scoped
+  // assessment-state write with user_confirmation provenance.
+  const confirmedSubjectScope = savedAssessment
+    ? persistedConfirmedSubjectScope({
+        scope: savedAssessment.subjectScope,
+        selectedBy: savedAssessment.subjectSelectedBy,
+      })
+    : null;
   const propertyAssessmentInput = listing.url || `${listing.address}, ${listing.city}, ${listing.province}`;
 
   // US listings (US Discover cron — src/lib/pipeline/us-discover.ts) go
@@ -292,12 +295,11 @@ export default async function PropertyPage({
   const caInvestorYield = caRent
     ? computeInvestorYield({ priceForYield: listing.price, monthlyRent: caRent.monthlyRent, countyFmr2br: null })
     : null;
-  const caRentalJourneyStatus = {
-    availability: "limited",
-    message: caRent
-      ? "Regional CMHC rent context and a user-entered rent scenario support a limited screen; neither is an address-level expected rent."
-      : "No reliable rent estimate is available for this address or city; enter your own monthly-rent scenario to screen it against the listing price.",
-  } satisfies JourneyCapabilityStatus;
+  const caRentalJourneyStatus = deriveCaRentalJourneyStatus(
+    listing.propertyCapabilities,
+    listing.propertyClassification,
+    { hasCmhcRent: !!caRent, hasRegionalContext: !!caRent }
+  );
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
@@ -324,7 +326,9 @@ export default async function PropertyPage({
         assessmentId={savedAssessment?.id ?? null}
         initialGoal={assessmentGoal}
         country="CA"
-        subjectScope={confirmedSubjectScope ?? listing.assessmentSubject?.scope ?? "unknown"}
+        subjectScope={confirmedSubjectScope ?? (
+          listing.assessmentSubject?.requiresClarification ? "unknown" : listing.assessmentSubject?.scope ?? "unknown"
+        )}
         capabilities={listing.propertyCapabilities}
         gateUnsupported
         goalStatusOverrides={{ rental_investment: caRentalJourneyStatus }}
@@ -1232,9 +1236,7 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
         <TierBadge tier={tier} />
       </div>
 
-      <PropertyJourneyHandoff
-        assessmentInput={`${listing.address}, ${listing.city}, ${listing.province}`}
-      />
+      <PropertyJourneyHandoff assessmentInput={`${listing.address}, ${listing.city}, ${listing.province}`} />
 
       {/* Hero — offer or list price */}
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">

@@ -4,6 +4,7 @@ import {
   hasSubjectEvidenceGap,
   journeyCapabilityStatus,
   parseAssessmentGoal,
+  persistedConfirmedSubjectScope,
 } from "../src/lib/property-intelligence/journey";
 import type { PropertyCapabilities } from "../src/lib/property-intelligence/capabilities";
 import type { AssessmentSubject } from "../src/lib/property-intelligence/subject";
@@ -140,6 +141,12 @@ const cases: Array<[string, () => void]> = [
     const buildingCapabilities = capabilities({ addressSaleValuation: true, offerAnalysis: true });
     assert.equal(hasSubjectEvidenceGap("unit", buildingCapabilities), true);
     assert.equal(hasSubjectEvidenceGap("building", buildingCapabilities), false);
+  }],
+  ["only authenticated user-confirmation provenance can restore a confirmed scope", () => {
+    assert.equal(persistedConfirmedSubjectScope({ scope: "unit", selectedBy: "user_confirmation" }), "unit");
+    assert.equal(persistedConfirmedSubjectScope({ scope: "building", selectedBy: "provider_match" }), null);
+    assert.equal(persistedConfirmedSubjectScope({ scope: "listing", selectedBy: "listing_match" }), null);
+    assert.equal(persistedConfirmedSubjectScope(null), null);
   }],
 ];
 

@@ -68,7 +68,7 @@ export default function CanadaRentalScreen({
       <section className="border border-border rounded-xl p-5 sm:p-6 mb-6 bg-white">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
           <div>
-            <div className="text-xs uppercase tracking-widest text-muted">Rental screen · Canada preview</div>
+            <div className="text-xs uppercase tracking-widest text-muted">Rental screen · Canada</div>
             <h2 className="text-xl font-semibold mt-1">Test a rent scenario without inventing one</h2>
           </div>
           <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700">limited</span>

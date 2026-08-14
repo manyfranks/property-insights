@@ -24,8 +24,10 @@ export default async function AssessPage({
     );
   }
 
-  const journeyPreview = journeys === "1";
-  const journeyEnabled = process.env.PROPERTY_JOURNEYS_ENABLED === "true" || journeyPreview;
+  // `journeys=1` is an intentional product entry path, not a feature-flag
+  // override. Discover handoffs add it; ordinary buyer assessments retain
+  // their existing flow until that broader UX migration is deliberately made.
+  const journeyEnabled = journeys === "1";
   const { userId } = assessmentId ? await auth() : { userId: null };
   const savedAssessment = userId && assessmentId
     ? await getUserAssessmentState(userId, assessmentId).catch(() => null)
@@ -38,7 +40,6 @@ export default async function AssessPage({
       address={address}
       placeId={placeId}
       journeyEnabled={journeyEnabled}
-      journeyPreview={journeyPreview}
       initialGoal={parseAssessmentGoal(assessmentGoal) ?? resumableAssessment?.activeView ?? null}
       restoredAssessment={resumableAssessment ? {
         id: resumableAssessment.id,

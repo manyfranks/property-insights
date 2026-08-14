@@ -464,7 +464,7 @@ function RentalScreen({
     <section className="border border-border rounded-xl p-5 sm:p-6 mb-6 bg-white" data-p5-rental-screen={model.availability}>
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
-          <div className="text-xs uppercase tracking-widest text-muted">Rental screen · Preview</div>
+          <div className="text-xs uppercase tracking-widest text-muted">Rental screen</div>
           <h2 className="text-xl font-semibold mt-1">Rent and gross-yield evidence</h2>
         </div>
         <span className={`text-xs px-2 py-1 rounded-full ${badgeClass}`}>{model.availability}</span>

@@ -144,7 +144,7 @@ const cases: Array<[string, () => void]> = [
       yield: yieldEvidence,
     }), null);
   }],
-  ["Discover handoff preserves the explicit goal and enables the preview", () => {
+  ["Discover handoff preserves the explicit goal and enters the journey route", () => {
     assert.equal(
       assessmentJourneyHref("12400 Cedar St, Austin, TX", "rental_investment"),
       "/assess?address=12400+Cedar+St%2C+Austin%2C+TX&journeys=1&assessmentGoal=rental_investment"

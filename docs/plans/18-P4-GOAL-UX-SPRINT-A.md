@@ -1,12 +1,12 @@
 # P4 Sprint A — Assessment Goal and Subject UX
 
-_Created 2026-08-11. First flagged vertical slice of P4; on-demand assessment only._
+_Created 2026-08-11. First on-demand vertical slice of P4; rollout policy reconciled 2026-08-14._
 
 ## Outcome
 
 Sprint A adds explicit assessment-level intent without assigning a permanent persona or allowing property classification to choose for the user.
 
-The preview sequence is:
+The assessment sequence is:
 
 ```text
 Sign in
@@ -18,7 +18,7 @@ Sign in
   -> allow manual focus switching without a refetch
 ```
 
-The feature is enabled by `PROPERTY_JOURNEYS_ENABLED=true` or, for an internal signed-in production test, `journeys=1` on the assessment URL. The query preview is deliberately scoped to on-demand assessment handoffs; Discover does not render the journey controls.
+`journeys=1` is now an intentional product route used by Discover goal handoffs, not a preview override or environment flag. Plain `/assess` retains the established buyer flow while the shared buyer migration remains in P6. There is no permanent journeys environment switch; see `21-JOURNEYS-ROLLOUT-POLICY.md`.
 
 ## Goal contract
 
@@ -42,7 +42,7 @@ P2 remains the only trigger. Straightforward subjects do not see another questio
 - the listing found;
 - general address exploration.
 
-A specific-unit choice requires a unit identifier. The unit identifier remains local to the assessment interaction: it is not sent in journey analytics or placed in the result URL.
+A specific-unit choice requires a unit identifier. The identifier is not sent in journey analytics or placed in the result URL. For Canadian redirects it is first written to the authenticated user's private assessment record; the property page accepts only durable `user_confirmation` provenance and never trusts a `subjectScope` query value.
 
 User confirmation does not manufacture evidence. If capabilities were computed for a different or conflicting subject scope, Sprint A withholds the report and tells the user to start a new assessment with the exact unit/listing identifier. It never reuses building, parcel, or listing values as unit values, and it never automatically performs another provider call.
 
@@ -80,21 +80,21 @@ It selects no user ID, address, unit, slug, or raw event payload.
 
 ## Verification
 
-- P4 contract fixtures: 8/8, zero provider calls
+- P4 contract fixtures: 9/9, zero provider calls
 - TypeScript: pass
 - Touched-file lint: pass; one pre-existing warning remains in `property/[slug]/page.tsx`
-- Local flag-off QA: no P4 panel; existing Vancouver result and `$3,674,000` offer remain visible
-- Local preview QA: Rental → Explore changes the view state and URL with no second property-page request
+- Local plain-flow QA: existing buyer result remains visible when the journey route is not selected
+- Local journey QA: Rental → Explore changes the view state and URL with no second property-page request
 - Production build: 337/337 pages generated
 - Full P0-P4 regression and pipeline guard: pass
 - Integration: 20/20, seed `20260811`, RentCast quota `50 -> 50`
 - Full-repository lint: unchanged baseline of 26 errors and 20 warnings in untouched files
-- Signed-in production preview: Rental selected explicitly; Queens returned supported/high-confidence evidence with the existing `$999,000` list and `$969,000` offer; Explore switch required no refetch
+- Signed-in production journey: Rental selected explicitly; Queens returned supported/high-confidence evidence with the existing `$999,000` list and `$969,000` offer; Explore switch required no refetch
 - Production funnel aggregate: `journey_selected`, `journey_result_viewed`, and `journey_switched` rows are queryable without selecting user or property identifiers
 - Responsive QA: no horizontal overflow at 390px or 1280px; result focus controls have a 44px minimum touch target
 
 ## Remaining P4 work
 
 - Private goal/subject persistence and explicit opt-out fixtures shipped in Sprint B; see `19-P4-SPRINT-B-PERSISTENCE-PRIVACY.md`.
-- Decide the internal/cohort/default-on launch bar after review of the preview.
+- Complete post-deploy acceptance for the supported product route before expanding the asset matrix.
 - Keep occupancy-driven suggestions blocked pending counsel/privacy review.

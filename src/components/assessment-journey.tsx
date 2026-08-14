@@ -71,17 +71,22 @@ function trackJourneyEvent(type: JourneyEventType, data: JourneyEventData): void
   }).catch(() => {});
 }
 
-function persistAssessmentPatch(
+async function persistAssessmentPatch(
   assessmentId: string | null | undefined,
   patch: Record<string, unknown>
-): void {
-  if (!assessmentId) return;
-  void fetch(`/api/assessment-state?id=${encodeURIComponent(assessmentId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch),
-    keepalive: true,
-  }).catch(() => {});
+): Promise<boolean> {
+  if (!assessmentId) return false;
+  try {
+    const response = await fetch(`/api/assessment-state?id=${encodeURIComponent(assessmentId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+      keepalive: true,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export function AssessmentGoalPreflight({
@@ -180,6 +185,8 @@ export function AssessmentSubjectClarification({
 }) {
   const [choice, setChoice] = useState<AssessmentSubjectChoice | null>(null);
   const [unit, setUnit] = useState(subject.unit ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const shown = useRef(false);
 
   useEffect(() => {
@@ -195,8 +202,8 @@ export function AssessmentSubjectClarification({
 
   const unitRequired = choice === "specific_unit" && !unit.trim();
 
-  function confirm() {
-    if (!choice || unitRequired) return;
+  async function confirm() {
+    if (!choice || unitRequired || saving) return;
     const confirmed = confirmAssessmentSubject(subject, choice, unit);
     trackJourneyEvent("assessment_subject_selected", {
       country,
@@ -204,13 +211,25 @@ export function AssessmentSubjectClarification({
       subjectScope: confirmed.scope,
       selection: choice,
     });
-    persistAssessmentPatch(assessmentId, {
+    setSaving(true);
+    setSaveError(null);
+    const persisted = await persistAssessmentPatch(assessmentId, {
       subject: {
         scope: confirmed.scope,
         unit: confirmed.unit,
         selectedBy: "user_confirmation",
       },
     });
+    setSaving(false);
+    // Canada redirects to a server-rendered property page. The confirmed
+    // scope must be durably owner-scoped before that redirect; otherwise the
+    // next page would have to trust a forgeable query-string value. US stays
+    // on this client surface, so its local confirmation can proceed even if
+    // best-effort private persistence is temporarily unavailable.
+    if (country === "CA" && !persisted) {
+      setSaveError("We couldn't save this property selection. Please try again before opening the report.");
+      return;
+    }
     onConfirm(confirmed);
   }
 
@@ -266,12 +285,15 @@ export function AssessmentSubjectClarification({
 
       <button
         type="button"
-        disabled={!choice || unitRequired}
-        onClick={confirm}
+        disabled={!choice || unitRequired || saving}
+        onClick={() => void confirm()}
         className="w-full min-h-11 px-6 py-2.5 text-sm font-medium rounded-lg bg-foreground text-white hover:bg-foreground/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
       >
-        Continue to result
+        {saving ? "Saving selection…" : "Continue to result"}
       </button>
+      {saveError && (
+        <p role="alert" className="text-xs text-red-700 text-center mt-3">{saveError}</p>
+      )}
     </main>
   );
 }
@@ -349,7 +371,7 @@ export function AssessmentJourneyPanel({
       subjectScope,
       capabilityStatus: nextAvailability,
     });
-    persistAssessmentPatch(assessmentId, { activeView: nextGoal });
+    void persistAssessmentPatch(assessmentId, { activeView: nextGoal });
     const params = new URLSearchParams(window.location.search);
     params.set("assessmentGoal", nextGoal);
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
@@ -374,7 +396,7 @@ export function AssessmentJourneyPanel({
       >
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
-            <div className="text-xs uppercase tracking-widest text-muted">Assessment focus · Preview</div>
+            <div className="text-xs uppercase tracking-widest text-muted">Assessment focus</div>
             <p className="text-xs text-muted mt-1">Your selection changes the view state, never the property facts.</p>
           </div>
           <span className={`text-xs px-2 py-1 rounded-full ${badgeClass}`}>{effectiveStatus.availability}</span>
@@ -402,7 +424,7 @@ export function AssessmentJourneyPanel({
         <p className="text-xs text-muted mt-2">
           {gateUnsupported
             ? "Evidence-gated modules and partner links appear only when they match this subject and focus."
-            : "The current report modules and partner links are unchanged during this preview."}
+            : "The current report modules and partner links remain unchanged for this focus."}
         </p>
       </section>
       {gateUnsupported && effectiveStatus.availability === "unavailable" ? (

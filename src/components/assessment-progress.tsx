@@ -67,14 +67,12 @@ export default function AssessmentProgress({
   address,
   placeId,
   journeyEnabled = false,
-  journeyPreview = false,
   initialGoal = null,
   restoredAssessment = null,
 }: {
   address: string;
   placeId?: string;
   journeyEnabled?: boolean;
-  journeyPreview?: boolean;
   initialGoal?: AssessmentGoal | null;
   restoredAssessment?: RestoredAssessmentState | null;
 }) {
@@ -106,15 +104,13 @@ export default function AssessmentProgress({
     }, 800);
   }, [router]);
 
-  const propertyResultPath = useCallback((resultSlug: string, subjectScope?: string, savedId?: string | null) => {
+  const propertyResultPath = useCallback((resultSlug: string, savedId?: string | null) => {
     if (!journeyEnabled) return `/property/${resultSlug}`;
-    const params = new URLSearchParams({ assessmentOrigin: "1" });
-    if (journeyPreview) params.set("journeys", "1");
+    const params = new URLSearchParams({ assessmentOrigin: "1", journeys: "1" });
     if (selectedGoalRef.current) params.set("assessmentGoal", selectedGoalRef.current);
-    if (subjectScope) params.set("subjectScope", subjectScope);
     if (savedId) params.set("assessmentId", savedId);
     return `/property/${resultSlug}?${params.toString()}`;
-  }, [journeyEnabled, journeyPreview]);
+  }, [journeyEnabled]);
 
   // Fire API call when authenticated.
   // No fetchedRef — React 18 Strict Mode runs effects twice in dev.
@@ -171,12 +167,18 @@ export default function AssessmentProgress({
           setUsResult(data as UsAssessResult);
         } else if (data.slug) {
           const canadaResult = data as CanadaAssessmentResult;
-          setAssessmentId(canadaResult.assessmentId ?? null);
+          const effectiveAssessmentId = canadaResult.assessmentId ?? restoredAssessment?.id ?? null;
+          setAssessmentId(effectiveAssessmentId);
           if (journeyEnabled && canadaResult.assessmentSubject?.requiresClarification) {
-            setStepStatuses(STEPS.map(() => "complete"));
-            setPendingCanada(canadaResult);
+            if (restoredAssessment?.subjectSelectedBy === "user_confirmation") {
+              setSlug(propertyResultPath(data.slug, effectiveAssessmentId));
+              setApiDone(true);
+            } else {
+              setStepStatuses(STEPS.map(() => "complete"));
+              setPendingCanada({ ...canadaResult, assessmentId: effectiveAssessmentId });
+            }
           } else {
-            setSlug(propertyResultPath(data.slug, canadaResult.assessmentSubject?.scope, canadaResult.assessmentId));
+            setSlug(propertyResultPath(data.slug, effectiveAssessmentId));
             setApiDone(true);
           }
         } else {
@@ -249,7 +251,7 @@ export default function AssessmentProgress({
     setConfirmedSubject(subject);
     if (pendingCanada) {
       setPendingCanada(null);
-      setSlug(propertyResultPath(pendingCanada.slug, subject.scope, pendingCanada.assessmentId));
+      setSlug(propertyResultPath(pendingCanada.slug, pendingCanada.assessmentId));
       setApiDone(true);
     }
   }
