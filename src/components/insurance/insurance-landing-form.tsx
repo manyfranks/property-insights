@@ -109,6 +109,7 @@ export default function InsuranceLandingForm({
   intakeEnabled,
   variant = "teal",
   anchorId,
+  hideLegalese = false,
 }: {
   /** USPS code + name pairs, passed server-side to keep the county JSON out of the client bundle */
   usStates: { code: string; name: string }[];
@@ -122,6 +123,8 @@ export default function InsuranceLandingForm({
   variant?: "teal" | "navy";
   /** DOM id so other sections can anchor-link here (e.g. "How it works"'s CTA). */
   anchorId?: string;
+  /** Suppresses the "availability varies / licensed broker only" line below the pill — set by the hero, which renders that disclosure once, pinned near the partner strip, instead of once per form instance. */
+  hideLegalese?: boolean;
 }) {
   const router = useRouter();
 
@@ -138,6 +141,9 @@ export default function InsuranceLandingForm({
     return "BC";
   });
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [regionQuery, setRegionQuery] = useState("");
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const regionQueryRef = useRef<HTMLInputElement>(null);
 
   const [address, setAddress] = useState("");
   const [line] = useState<InsuranceLine>(initialLine ?? "homeowner");
@@ -209,6 +215,29 @@ export default function InsuranceLandingForm({
     // the same two things it's computed from.
   }, [address, pickedHit, selected]);
 
+  // Region picker: close on an outside click/tap or Escape. The filter
+  // field autofocuses on mount (it only mounts while the popover is open)
+  // — the popover holds every CA province plus every US state, so a filter
+  // is the difference between a two-second pick and scrolling a 60-row
+  // list on a phone.
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function handlePointerDown(e: PointerEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setPickerOpen(false);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [pickerOpen]);
+
   function pickSuggestion(hit: AddressHit) {
     setPickedHit(hit);
     setAddress(hit.address);
@@ -222,6 +251,7 @@ export default function InsuranceLandingForm({
     setCountry(nextCountry);
     setRegion(nextRegion);
     setPickerOpen(false);
+    setRegionQuery("");
     setWaitlistSuccess(false);
     setWaitlistError(null);
     setWaitlistRevealed(false);
@@ -229,6 +259,9 @@ export default function InsuranceLandingForm({
 
   const displayName = lookupRegionName(country, region, usStates);
   const status = statusFor(country, region);
+  const regionFilter = regionQuery.trim().toLowerCase();
+  const filteredCaRegions = CA_REGIONS.filter((r) => r.name.toLowerCase().includes(regionFilter));
+  const filteredUsStates = usStates.filter((s) => s.name.toLowerCase().includes(regionFilter));
   const waitlistMode = !intakeEnabled || status !== "live";
   const ctaLabel = waitlistMode ? `Join the ${displayName} waitlist` : "Check my address";
   const ready = waitlistMode ? region.length > 0 : address.trim().length > 0 && region.length > 0;
@@ -382,55 +415,110 @@ export default function InsuranceLandingForm({
         <span className={dividerClass}>&middot;</span>
         <span>Matched only with licensed brokers</span>
         <span className={dividerClass}>&middot;</span>
-        <div className="relative">
+        <div className="relative" ref={pickerRef}>
           <button
             type="button"
-            onClick={() => setPickerOpen((o) => !o)}
-            className={`font-semibold hover:opacity-75 transition-opacity ${accentTextClass}`}
+            onClick={() => {
+              setRegionQuery("");
+              setPickerOpen((o) => !o);
+            }}
+            aria-expanded={pickerOpen}
+            className={`inline-flex items-center gap-1 font-semibold hover:opacity-75 transition-opacity ${accentTextClass}`}
           >
             {displayName}, {country === "CA" ? "Canada" : "United States"}
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+              className={`transition-transform ${pickerOpen ? "rotate-180" : ""}`}
+            >
+              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
           {pickerOpen && (
-            <div className="absolute z-30 top-6 left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 w-72 max-h-80 overflow-y-auto bg-white border border-border rounded-2xl shadow-xl p-1.5 text-left">
-              <div className="px-2.5 pt-1.5 pb-1 font-mono text-[10px] uppercase tracking-wide text-muted">
-                Canada
+            <>
+              {/* Mobile: dim the page so the sheet below reads as modal, not a stray box. */}
+              <div
+                className="fixed inset-0 z-30 bg-black/30 sm:hidden"
+                aria-hidden="true"
+                onClick={() => setPickerOpen(false)}
+              />
+              {/* Bottom sheet on mobile (full-width, thumb-reachable); anchored dropdown on desktop. */}
+              <div className="fixed inset-x-0 bottom-0 z-40 max-h-[75vh] rounded-t-2xl bg-white p-3 text-left shadow-xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-7 sm:left-1/2 sm:-translate-x-1/2 sm:w-80 sm:max-h-96 sm:rounded-2xl sm:border sm:border-border sm:p-2 sm:shadow-xl">
+                <div className="flex items-center justify-between px-1 pb-2 sm:hidden">
+                  <span className="text-sm font-semibold text-foreground">Choose your region</span>
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen(false)}
+                    aria-label="Close"
+                    className="p-1 text-muted hover:opacity-75 transition-opacity"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+
+                <input
+                  ref={regionQueryRef}
+                  autoFocus
+                  value={regionQuery}
+                  onChange={(e) => setRegionQuery(e.target.value)}
+                  placeholder="Search province or state…"
+                  className="w-full rounded-xl border border-border px-3 py-2 mb-2 text-sm focus:outline-none focus:ring-2 focus:ring-foreground/20"
+                />
+
+                <div className="max-h-[55vh] sm:max-h-72 overflow-y-auto">
+                  {filteredCaRegions.length > 0 && (
+                    <>
+                      <div className="px-2.5 pt-1.5 pb-1 font-mono text-[10px] uppercase tracking-wide text-muted">
+                        Canada
+                      </div>
+                      {filteredCaRegions.map((r) => (
+                        <button
+                          key={r.code}
+                          type="button"
+                          onClick={() => applyRegionChange("CA", r.code)}
+                          className={`w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2.5 sm:py-2 text-left transition-colors ${
+                            country === "CA" && region === r.code ? "bg-gray-50" : "hover:bg-gray-50"
+                          }`}
+                        >
+                          <span className="text-[13.5px] font-semibold text-foreground">{r.name}</span>
+                          <StatusChip status={r.status} />
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {filteredUsStates.length > 0 && (
+                    <>
+                      <div className="px-2.5 pt-2 pb-1 font-mono text-[10px] uppercase tracking-wide text-muted">
+                        United States
+                      </div>
+                      {filteredUsStates.map((s) => (
+                        <button
+                          key={s.code}
+                          type="button"
+                          onClick={() => applyRegionChange("US", s.code)}
+                          className={`w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2.5 sm:py-2 text-left transition-colors ${
+                            country === "US" && region === s.code ? "bg-gray-50" : "hover:bg-gray-50"
+                          }`}
+                        >
+                          <span className="text-[13.5px] font-semibold text-foreground">{s.name}</span>
+                          <StatusChip status={statusFor("US", s.code)} />
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {filteredCaRegions.length === 0 && filteredUsStates.length === 0 && (
+                    <p className="px-2.5 py-6 text-center text-sm text-muted">
+                      No match for &ldquo;{regionQuery}&rdquo;
+                    </p>
+                  )}
+                </div>
               </div>
-              {CA_REGIONS.map((r) => (
-                <button
-                  key={r.code}
-                  type="button"
-                  onClick={() => applyRegionChange("CA", r.code)}
-                  className={`w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${
-                    country === "CA" && region === r.code ? "bg-gray-50" : "hover:bg-gray-50"
-                  }`}
-                >
-                  <span className="flex flex-col gap-0.5">
-                    <span className="text-[13.5px] font-semibold text-foreground">{r.name}</span>
-                    <span className="text-[11px] text-muted">Canada</span>
-                  </span>
-                  <StatusChip status={r.status} />
-                </button>
-              ))}
-              <div className="px-2.5 pt-2 pb-1 font-mono text-[10px] uppercase tracking-wide text-muted">
-                United States
-              </div>
-              {usStates.map((s) => (
-                <button
-                  key={s.code}
-                  type="button"
-                  onClick={() => applyRegionChange("US", s.code)}
-                  className={`w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${
-                    country === "US" && region === s.code ? "bg-gray-50" : "hover:bg-gray-50"
-                  }`}
-                >
-                  <span className="flex flex-col gap-0.5">
-                    <span className="text-[13.5px] font-semibold text-foreground">{s.name}</span>
-                    <span className="text-[11px] text-muted">United States</span>
-                  </span>
-                  <StatusChip status={statusFor("US", s.code)} />
-                </button>
-              ))}
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -477,10 +565,12 @@ export default function InsuranceLandingForm({
         </div>
       )}
 
-      <p className={`text-xs leading-relaxed mt-4 text-center max-w-md mx-auto ${mutedTextClass}`}>
-        Availability varies by {country === "CA" ? "province" : "state"}. You&apos;ll only ever be matched with a
-        licensed broker — Property Insights does not sell, quote, or bind insurance.
-      </p>
+      {!hideLegalese && (
+        <p className={`text-xs leading-relaxed mt-4 text-center max-w-md mx-auto ${mutedTextClass}`}>
+          Availability varies by {country === "CA" ? "province" : "state"}. You&apos;ll only ever be matched with a
+          licensed broker — Property Insights does not sell, quote, or bind insurance.
+        </p>
+      )}
     </div>
   );
 }

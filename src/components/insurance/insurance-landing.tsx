@@ -14,12 +14,11 @@ import type { InsuranceLine, Country } from "@/config/affiliate-vendors";
 import { getVendorsForSurface } from "@/config/affiliate-vendors";
 import { regionName as lookupRegionName } from "@/config/insurance-rollout";
 import Hero from "./landing/hero";
-import TrustBar from "./landing/trust-bar";
+import AvailabilityNote from "./landing/availability-note";
 import CoverageTiles from "./landing/coverage-tiles";
 import DataMoat from "./landing/data-moat";
 import NoLeadAuction from "./landing/no-lead-auction";
 import HowItWorks from "./landing/how-it-works";
-import PartnerStrip from "./landing/partner-strip";
 import RolloutStrip from "./landing/rollout-strip";
 import Faq from "./landing/faq";
 import FinalCta from "./landing/final-cta";
@@ -63,9 +62,14 @@ export default function InsuranceLanding({
 
   return (
     <main>
-      <Hero usStates={usStates} initialGeo={initialGeo} initialLine={initialLine} intakeEnabled={intakeEnabled} />
-      <PartnerStrip country={country} />
-      <TrustBar />
+      <Hero
+        usStates={usStates}
+        initialGeo={initialGeo}
+        initialLine={initialLine}
+        intakeEnabled={intakeEnabled}
+        country={country}
+      />
+      <AvailabilityNote />
       <CoverageTiles country={country} region={region} />
       <DataMoat country={country} region={region} />
       <NoLeadAuction vendorCount={vendors.length} />

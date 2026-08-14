@@ -59,14 +59,10 @@ export default function CoverageTiles({ country, region }: { country: Country; r
   return (
     <section className="py-20 sm:py-24 px-6">
       <div className="max-w-5xl mx-auto">
-        <div className="flex flex-wrap items-end justify-between gap-6 mb-9">
-          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight max-w-sm text-balance">
+        <div className="mb-9">
+          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-balance">
             Whatever you own, we&apos;ve got the paperwork.
           </h2>
-          <p className="text-[15px] text-muted max-w-sm">
-            Five coverage lines, one platform. We route you to a licensed broker who places that line in{" "}
-            {upperRegion}.
-          </p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
@@ -100,7 +96,7 @@ export default function CoverageTiles({ country, region }: { country: Country; r
                 </div>
                 <div className="text-[16px] font-semibold tracking-tight mb-1.5">{line.label}</div>
                 <p className="text-[12.5px] text-muted leading-relaxed mb-4 min-h-[3.2em]">{line.blurb}</p>
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2 mt-auto">
                   <span
                     className={`font-mono text-[9px] uppercase tracking-wide rounded-full px-2.5 py-1 ${tag.className}`}
                   >
@@ -127,7 +123,7 @@ export default function CoverageTiles({ country, region }: { country: Country; r
               return (
                 <div
                   key={line.id}
-                  className="text-left rounded-[22px] p-5"
+                  className="flex flex-col h-full text-left rounded-[22px] p-5"
                   style={{ background: cardBg, border: `1.5px solid ${cardBorder}` }}
                   title={`${line.label} insurance is placed directly by a licensed broker in ${upperRegion} — Property Insights doesn't earn a referral fee on this line here.`}
                 >
@@ -140,7 +136,7 @@ export default function CoverageTiles({ country, region }: { country: Country; r
               <Link
                 key={line.id}
                 href={`/insurance?line=${line.id}`}
-                className="text-left rounded-[22px] p-5 transition-colors hover:border-foreground/30"
+                className="flex flex-col h-full text-left rounded-[22px] p-5 transition-colors hover:border-foreground/30"
                 style={{ background: cardBg, border: `1.5px solid ${cardBorder}` }}
               >
                 {inner}

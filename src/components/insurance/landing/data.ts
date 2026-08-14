@@ -29,27 +29,6 @@ export const COVERAGE_LINES: CoverageLineInfo[] = [
   { id: "commercial", label: "Commercial", blurb: "Mixed-use and commercial — property and business interruption." },
 ];
 
-export interface TrustCard {
-  title: string;
-  body: string;
-}
-
-/** From the design file's unused `trustCards` data. */
-export const TRUST_CARDS: TrustCard[] = [
-  {
-    title: "A layer, not an insurer",
-    body: "We don't quote or bind. You're always placed with a licensed broker of record — we just make the match and pass along what we already know.",
-  },
-  {
-    title: "One match, never resold",
-    body: "Your profile goes to a single licensed broker for your region — not auctioned to a room of cold-callers. No spam, no ten follow-up calls.",
-  },
-  {
-    title: "We disclose how we're paid",
-    body: "Property Insights may earn a referral fee from a match. It never changes the price you pay, and it never touches our analysis.",
-  },
-];
-
 export interface HowStep {
   num: string;
   title: string;
