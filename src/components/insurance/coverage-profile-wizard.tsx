@@ -27,7 +27,7 @@
  * by construction (both read the same derived value).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { InsuranceLine } from "@/config/affiliate-vendors";
 import type { CoverageOccupancy } from "@/lib/db/coverage-profiles";
 import {
@@ -221,6 +221,13 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState<Phase>("wizard");
   const [error, setError] = useState<string | null>(null);
+
+  // Each step (and the handoff swap) is a full content change — without
+  // this, mobile keeps whatever scroll position the previous step ended at,
+  // which can land the next step's heading off-screen above the viewport.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [step, phase]);
 
   // Step 1 — confirm/edit
   const [editing, setEditing] = useState(false);

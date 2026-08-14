@@ -15,6 +15,7 @@
 
 import {
   AFFILIATE_VENDORS,
+  rotateTies,
   type AffiliateVendor,
   type Country,
   type InsuranceLine,
@@ -58,10 +59,12 @@ export function resolveVendor(
     if (requested) return requested;
   }
 
-  const sorted = [...eligible].sort((a, b) => {
-    if (b.cpaTier !== a.cpaTier) return b.cpaTier - a.cpaTier;
-    return Number(b.affiliateReady) - Number(a.affiliateReady);
-  });
+  const sorted = rotateTies(
+    [...eligible].sort((a, b) => {
+      if (b.cpaTier !== a.cpaTier) return b.cpaTier - a.cpaTier;
+      return Number(b.affiliateReady) - Number(a.affiliateReady);
+    })
+  );
 
   return sorted[0] ?? null;
 }

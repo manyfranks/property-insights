@@ -255,7 +255,10 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     description: "Online quote and policy in minutes, no phone call needed",
     shortCta: "Get quote",
     notes:
-      "APPROVED (auto) Aug 2026. Prod URL confirmed by owner 2026-08-14: apollocover.com/lp/propertyinsights (set as NEXT_PUBLIC_AFFILIATE_URL_APOLLO in Vercel). NOTE: a second issued URL, covertrack.ca/propertyinsights, remains unreconciled — verify in the partner portal that the lp URL carries attribution (if covertrack is the tracker, clicks on the lp URL may not credit). Commission rate not disclosed publicly; cpaTier 1 is a conservative placeholder pending dashboard confirmation.",
+      "APPROVED (auto) Aug 2026. Prod URL confirmed by owner 2026-08-14: apollocover.com/lp/propertyinsights (set as NEXT_PUBLIC_AFFILIATE_URL_APOLLO in Vercel). NOTE: a second issued URL, covertrack.ca/propertyinsights, remains unreconciled — verify in the partner portal that the lp URL carries attribution (if covertrack is the tracker, clicks on the lp URL may not credit). " +
+      "Payout confirmed 2026-08-14 via APOLLO's published 'Rewards Program — Calculation Methodology': $25 one-time 'Marketing Reward' per qualifying tenant, paid once the policy has been active 90+ days (unpaid/'Pending' before that); accrual must reach a $100 minimum before any payout, capped at $5,000/qualifying instance and $10,000/calendar year without APOLLO's written approval. cpaTier 1 (<$50) still correct at $25. " +
+      "SCOPE CAVEAT: this methodology explicitly covers 'APOLLO-Insured Tenants' only — it says nothing about homeowner/landlord/commercial payout, which remain unconfirmed despite this vendor's `lines` including all four. Don't assume $25 applies outside the tenant line. " +
+      "COMPLIANCE CAVEAT: APOLLO's own terms state this reward 'is not a commission, referral fee, or compensation for the sale, solicitation, or placement of insurance' and does not authorize acting as an agent/broker — framed as pay for tenant education/engagement, not the sale. That's in tension with how docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §1 already models this same $25 figure as a 'flat referral fee' for economics purposes — and it's volume-linked to qualifying purchases, which that doc's own §1 table (row 4) flags as the 'SaaS fee in costume' pattern. Site disclosure copy (e.g. FAQ_ITEMS in components/insurance/landing/data.ts) currently calls this a 'referral fee' — worth a legal read on whether that label is accurate for APOLLO specifically before relying on it.",
     lines: ["homeowner", "landlord", "tenant", "commercial"],
   },
   {
@@ -908,7 +911,7 @@ function dayOfYearUTC(d: Date = new Date()): number {
  * vertical priority and tier ordering intact while giving every approved partner
  * exposure. Replace with EPC-driven ordering once partner_clicks has volume.
  */
-function rotateTies(sorted: AffiliateVendor[]): AffiliateVendor[] {
+export function rotateTies(sorted: AffiliateVendor[]): AffiliateVendor[] {
   const out: AffiliateVendor[] = [];
   const day = dayOfYearUTC();
 
