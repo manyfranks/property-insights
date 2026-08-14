@@ -32,6 +32,15 @@ export type Country = "US" | "CA";
 
 export type AudienceMode = "buyer" | "investor";
 
+/**
+ * Insurance product lines. Meaningful only on `vertical: "insurance"` vendors —
+ * declares which lines a vendor actually writes, since e.g. Square One quotes
+ * homeowner/landlord/tenant but Allstate (via this affiliate program) is
+ * homeowner-only. Drives per-line CTA/eligibility once Stage 2 routing lands
+ * (see docs/proposals/insurance-distribution-proposal.html).
+ */
+export type InsuranceLine = "homeowner" | "landlord" | "tenant" | "strata" | "commercial";
+
 export type AffiliateNetwork =
   | "direct"
   | "CJ"
@@ -83,6 +92,22 @@ export interface AffiliateVendor {
   network: AffiliateNetwork;
   /** rate/payment/business notes — not rendered, for maintainers only */
   notes?: string;
+  /** Which insurance product lines this vendor writes. Meaningful only when
+   *  `vertical: "insurance"` — ignored for every other vertical. */
+  lines?: InsuranceLine[];
+  /**
+   * Declares whether a vendor's quote flow can accept pre-filled property
+   * data — the Stage 2 handoff capability (see
+   * docs/proposals/insurance-distribution-proposal.html and
+   * docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §6). Declaration only: no
+   * resolver/param-mapping logic exists yet, this just records what each
+   * vendor's partner program supports so Stage 2 can be built without a
+   * fresh capability audit.
+   */
+  prefill?: {
+    kind: "url-params" | "smart-link" | "api";
+    notes?: string;
+  };
 
   // --- Presentation extensions (beyond the spec interface) ---
   // The spec's registry interface intentionally omits UI copy since it's a
@@ -172,6 +197,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     shortCta: "Get quote",
     legacyPartnerType: "insurance",
     envKey: "NEXT_PUBLIC_SQUAREONE_URL",
+    lines: ["homeowner", "landlord", "tenant"],
   },
   {
     id: "apollo",
@@ -195,6 +221,30 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     shortCta: "Get quote",
     notes:
       "APPROVED (auto) Aug 2026. Co-branded landing page: apollocover.com/lp/propertyinsights (set NEXT_PUBLIC_AFFILIATE_URL_APOLLO). A second URL, covertrack.ca/propertyinsights, was also issued — confirm in the partner portal which carries attribution. Commission rate not disclosed publicly; cpaTier 1 is a conservative placeholder pending dashboard confirmation.",
+    lines: ["homeowner", "landlord", "tenant", "commercial"],
+  },
+  {
+    id: "zensurance",
+    name: "Zensurance",
+    vertical: "insurance",
+    country: "CA",
+    url: "https://www.zensurance.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 1,
+    audienceMode: ["investor"],
+    stateCoverage: "all",
+    // Precautionary jurisdiction gate — see docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §3.
+    // Same QC exclusion rationale as APOLLO above (civil-law AMF regime, no
+    // referral-fee mapping). No personal homeowner/tenant lines to gate NB on.
+    stateExclusions: ["QC"],
+    network: "direct",
+    ctaLabel: "Insure my rental property",
+    description: "Rental property coverage from a licensed Canadian brokerage",
+    shortCta: "Get quote",
+    notes:
+      "$50 CAD CPA per completed online quote via Fintel Connect. Application in review Aug 2026. No personal homeowner/tenant lines — landlord/commercial only. Excludes QC + territories.",
+    lines: ["landlord", "commercial"],
   },
 
   // ---------------------------------------------------------------------
@@ -334,11 +384,12 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "unconfirmed",
-    ctaLabel: "Compare home insurance quotes",
-    description: "Prices from 100+ insurance companies side by side",
-    shortCta: "Compare",
+    ctaLabel: "Get home insurance quotes",
+    description: "Quotes from 100+ insurance companies in one place",
+    shortCta: "Get quotes",
     notes:
       "Carrier-agnostic insurance comparison — nationwide default insurance CTA when a specific carrier isn't licensed in the property's state. Network unconfirmed (possibly Awin); apply direct.",
+    lines: ["homeowner", "tenant"],
   },
   {
     id: "lendingtree",
@@ -397,6 +448,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     shortCta: "Get quote",
     notes:
       "~$5-8/lead PPL (secondary-sourced; verify in Impact dashboard). Impact media-partner application explicitly accepts US/Canada publishers; 2-5 day manual review.",
+    lines: ["homeowner"],
   },
   {
     id: "smartfinancial",
@@ -410,11 +462,12 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "direct",
-    ctaLabel: "Find cheaper home insurance",
-    description: "Compare quotes from local and national insurers",
-    shortCta: "Compare",
+    ctaLabel: "Get home insurance quotes",
+    description: "Quotes from local and national insurers",
+    shortCta: "Get quotes",
     notes:
       "In-house publisher platform (agents.smartfinancial.com/publishers), self-serve low-barrier approval; up to ~$40/lead claimed (unverified).",
+    lines: ["homeowner"],
   },
   {
     id: "insurify",
@@ -428,11 +481,67 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     audienceMode: ["buyer", "investor"],
     stateCoverage: "all",
     network: "Impact",
-    ctaLabel: "Compare insurance quotes",
+    ctaLabel: "Get insurance quotes",
     description: "Real quotes from 100+ companies in minutes",
-    shortCta: "Compare",
+    shortCta: "Get quotes",
     notes:
       "~$15/lead home (secondary), 30d cookie; licensed all 50 states; apply via Impact or partnerships@insurify.com.",
+    lines: ["homeowner", "tenant"],
+  },
+
+  // ---------------------------------------------------------------------
+  // US — Insurance BD pipeline (Aug 2026). Landlord-focused specialists with
+  // a Stage 2 pre-filled-handoff capability (see
+  // docs/proposals/insurance-distribution-proposal.html and
+  // docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §6) — the `prefill` field
+  // records what each partner program supports. Inert until BD lands.
+  // ---------------------------------------------------------------------
+  {
+    id: "steadily",
+    name: "Steadily",
+    vertical: "insurance",
+    country: "US",
+    url: "https://www.steadily.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 1,
+    audienceMode: ["investor"],
+    stateCoverage: "all",
+    network: "direct",
+    ctaLabel: "Insure my rental property",
+    description: "Landlord policies quoted online in minutes",
+    shortCta: "Get quote",
+    prefill: {
+      kind: "smart-link",
+      notes:
+        "Steadily smart links accept pre-filled property data; request via partners@steadily.com",
+    },
+    notes:
+      "Ambassador tier already held; partner program at steadily.com/partners has an explicit unlicensed-referrer track. 'Smart links' tier = pre-filled quote experience with referral tracking (the Stage 2 terminal). Full API is licensed-partners-only. Payouts direct-BD, not public.",
+    lines: ["landlord"],
+  },
+  {
+    id: "obie",
+    name: "Obie",
+    vertical: "insurance",
+    country: "US",
+    url: "https://www.obieinsurance.com",
+    enabled: false,
+    affiliateReady: false,
+    cpaTier: 1,
+    audienceMode: ["investor"],
+    stateCoverage: "all",
+    network: "direct",
+    ctaLabel: "Insure this rental property",
+    description: "Coverage for rental and investment properties, online in minutes",
+    shortCta: "Get quote",
+    prefill: {
+      kind: "api",
+      notes: "Embedded API accepts property data; docs via BD, not public",
+    },
+    notes:
+      "BD thread live Aug 2026 (partnerships team: Sumaya + Brian Harris). Baldwin Group completed acquisition Jan 2026 — confirm current terms. Embedded stack (Instant Estimate Widget / Embedded Experience / Policy Sync); 'simple referral options' for unlicensed platforms. Licensed all 50 states + DC.",
+    lines: ["landlord", "strata", "commercial"],
   },
   {
     id: "easystreet",
@@ -546,6 +655,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     description: "Landlord insurance quotes from top insurers in minutes",
     shortCta: "Get quote",
     notes: "CJ #5808859, $30/lead, 3mo EPC $1,570 — landlord/business insurance.",
+    lines: ["landlord", "strata", "commercial"],
   },
   {
     id: "avail",
@@ -582,6 +692,39 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     notes: "CJ #4593144, $20/lead, 3mo EPC $64.",
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Insurance jurisdiction exclusions
+//
+// See docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §3 for the underlying
+// research. These are line/state-level overlays on top of each vendor's own
+// `stateExclusions` — they exist because some jurisdictions ban referral
+// compensation for a specific *line* (BC strata) or the *entire insurance
+// vertical* (WA/QC/NB) rather than for a specific vendor.
+// ---------------------------------------------------------------------------
+
+/**
+ * BC bans referral compensation on strata insurance entirely (ICN 20-003 /
+ * Bill 14, 2020) — the strata line renders as an uncompensated
+ * licensed-broker handoff in BC, never a paid CTA.
+ */
+export const INSURANCE_LINE_EXCLUSIONS: Record<Country, Record<string, InsuranceLine[]>> = {
+  CA: { BC: ["strata"] },
+  US: {},
+};
+
+/**
+ * Whole-vertical insurance exclusions by state/province. WA: TAA 2021-01
+ * double-sided enforcement (site *and* accepting producer exposed). QC: AMF
+ * regime whose distribution-without-representative framework doesn't map to
+ * referral compensation. NB: 2023 regime licenses intermediary activity
+ * "regardless of whether conducted... online" — both QC and NB pending legal
+ * review. See docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §3.
+ */
+export const INSURANCE_STATE_EXCLUSIONS: Record<Country, string[]> = {
+  US: ["WA"],
+  CA: ["QC", "NB"],
+};
 
 // ---------------------------------------------------------------------------
 // Resolver
@@ -771,6 +914,7 @@ const ENV_URL_MAP: Record<string, string | undefined> = {
   nesto: process.env.NEXT_PUBLIC_NESTO_URL,
   squareone: process.env.NEXT_PUBLIC_SQUAREONE_URL,
   apollo: process.env.NEXT_PUBLIC_AFFILIATE_URL_APOLLO,
+  zensurance: process.env.NEXT_PUBLIC_AFFILIATE_URL_ZENSURANCE,
 
   // US — default NEXT_PUBLIC_AFFILIATE_URL_{ID} pattern, wired per vendor
   // as approvals land. Reading these now (even though every US vendor is
@@ -788,6 +932,8 @@ const ENV_URL_MAP: Record<string, string | undefined> = {
   allstate: process.env.NEXT_PUBLIC_AFFILIATE_URL_ALLSTATE,
   smartfinancial: process.env.NEXT_PUBLIC_AFFILIATE_URL_SMARTFINANCIAL,
   insurify: process.env.NEXT_PUBLIC_AFFILIATE_URL_INSURIFY,
+  steadily: process.env.NEXT_PUBLIC_AFFILIATE_URL_STEADILY,
+  obie: process.env.NEXT_PUBLIC_AFFILIATE_URL_OBIE,
   easystreet: process.env.NEXT_PUBLIC_AFFILIATE_URL_EASYSTREET,
   limaone: process.env.NEXT_PUBLIC_AFFILIATE_URL_LIMAONE,
   newamericanfunding: process.env.NEXT_PUBLIC_AFFILIATE_URL_NEWAMERICANFUNDING,

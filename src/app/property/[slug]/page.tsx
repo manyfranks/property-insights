@@ -32,6 +32,8 @@ import { getCmaFipsForCity, getCmaMomentum, getCmaRent, type CmaMomentum } from 
 import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 import { AssessmentJourneyPanel } from "@/components/assessment-journey";
 import CanadaRentalScreen from "@/components/canada-rental-screen";
+import InsuranceModule from "@/components/insurance/insurance-module";
+import { lineForGoal } from "@/components/insurance/goal-line-map";
 import PropertyJourneyHandoff from "@/components/property-journey-handoff";
 import {
   parseAssessmentGoal,
@@ -766,6 +768,22 @@ export default async function PropertyPage({
         />
       </div>
 
+      {/* I2. Insurance module (Insurance Path Stage 2, Screen 1) */}
+      <div className="mb-6">
+        <InsuranceModule
+          country="CA"
+          region={listing.province}
+          address={listing.address}
+          source="property-page"
+          surface="result-buyer"
+          listingId={slugify(listing.address)}
+          yearBuilt={listing.yearBuilt}
+          estimatedValue={assessment?.totalValue ?? listing.price}
+          estimatedRent={caRent?.monthlyRent}
+          initialLine={lineForGoal(assessmentGoal)}
+        />
+      </div>
+
       {/* J. Footer links */}
       {listing.url && (
         <div className="pt-6 border-t border-border flex justify-center">
@@ -1383,6 +1401,20 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
           heading="Act on this analysis"
           propertySlug={slug}
           city={listing.city}
+        />
+      </div>
+
+      {/* Insurance module (Insurance Path Stage 2, Screen 1) — US full-assessment view */}
+      <div className="mb-6">
+        <InsuranceModule
+          country="US"
+          region={listing.province}
+          address={listing.address}
+          source="property-page"
+          surface="result-buyer"
+          listingId={slug}
+          yearBuilt={listing.yearBuilt}
+          estimatedValue={listing.preAssessment?.totalValue ?? listing.price}
         />
       </div>
     </main>

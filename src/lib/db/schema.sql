@@ -163,3 +163,43 @@ CREATE TABLE IF NOT EXISTS user_assessments (
 
 CREATE INDEX IF NOT EXISTS idx_user_assessments_owner_updated
   ON user_assessments (user_id, updated_at DESC);
+
+-- Insurance coverage profiles: Stage 2 of the insurance path (see
+-- docs/proposals/insurance-distribution-proposal.html, "Stages" + "seam"
+-- sections). Users confirm pre-filled property data, answer ~6 questions
+-- only they can answer, consent, and are handed off to a licensed partner
+-- with the profile. The partner is broker of record at this stage; the
+-- profile row itself is the strategic asset (warm pipeline + conversion
+-- proof for the eventual Stage 3 internal-brokerage submission), separate
+-- from the affiliate click log in partner_clicks.
+--
+-- user_id is NULL when the visitor is opted out of sale/share (Sec-GPC /
+-- pi_dns cookie — see src/lib/privacy.ts), mirroring partner_clicks: the
+-- profile is still stored (it is user-initiated and separately consented
+-- via `consent`/`consent_text`) but not tied to the account. vendor_id is
+-- NULL until the handoff to a licensed partner actually happens.
+--
+-- consent is constrained to TRUE: the API layer (src/lib/db/coverage-profiles.ts,
+-- src/app/api/coverage-profile/route.ts) rejects any submission without an
+-- explicit affirmative consent before it reaches this insert, and the CHECK
+-- makes that invariant hold at the data layer too, not just in application code.
+CREATE TABLE IF NOT EXISTS coverage_profiles (
+  id             UUID PRIMARY KEY,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  user_id        TEXT,
+  country        TEXT NOT NULL CHECK (country IN ('US', 'CA')),
+  region         TEXT NOT NULL,
+  address        TEXT NOT NULL,
+  line           TEXT NOT NULL CHECK (line IN ('homeowner', 'landlord', 'tenant', 'strata', 'commercial')),
+  property       JSONB NOT NULL,  -- prefilled snapshot: identity/value/hazards groups, each tagged source: known | modeled
+  answers        JSONB NOT NULL,  -- occupancy, unitCount, claims5yr, coverageExpiry, roofAge, contact
+  vendor_id      TEXT,            -- registry id (src/config/affiliate-vendors.ts) of the handoff target; NULL until handoff
+  consent        BOOLEAN NOT NULL CHECK (consent = TRUE),
+  consent_text   TEXT NOT NULL,   -- exact consent copy shown to the user at submission time
+  consented_at   TIMESTAMPTZ,
+  source         TEXT             -- AffiliateSource value (src/config/affiliate-vendors.ts)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coverage_profiles_created ON coverage_profiles (created_at);
+CREATE INDEX IF NOT EXISTS idx_coverage_profiles_region ON coverage_profiles (region);
+CREATE INDEX IF NOT EXISTS idx_coverage_profiles_line ON coverage_profiles (line);

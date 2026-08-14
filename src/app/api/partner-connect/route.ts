@@ -1,8 +1,20 @@
 /**
  * POST /api/partner-connect
  *
- * Track affiliate partner click-throughs. No user data is shared with partners;
- * users click through to partner sites and provide their own info there.
+ * Track affiliate partner click-throughs. For most verticals, no user data
+ * is shared with partners: users click through to partner sites and provide
+ * their own info there. The exception is the insurance coverage-profile
+ * handoff (Stage 2 of the insurance path — see
+ * docs/proposals/insurance-distribution-proposal.html, "Stages" + "seam"
+ * sections): that flow shares only the data the user explicitly consented
+ * to hand to a licensed partner, gated behind the profile's consent
+ * checkbox (src/lib/db/coverage-profiles.ts — consent must be exactly
+ * `true`, enforced at both the API layer and a DB CHECK constraint) and, until
+ * the public privacy pages are amended to disclose it, the
+ * NEXT_PUBLIC_INSURANCE_INTAKE feature flag (src/app/api/coverage-profile/route.ts
+ * 404s while it's off). This route only carries the resulting `profileId`
+ * through as an opaque, size-capped reference for click-through analytics —
+ * it does not itself read or transmit the profile contents.
  *
  * Auth is optional: every click (signed-in or anonymous) is logged to the
  * append-only partner_clicks table so top-of-funnel EPC data isn't lost for
@@ -24,6 +36,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { trackEvent } from "@/lib/db/user-events";
 import { trackPartnerClick } from "@/lib/db/partner-clicks";
+import { isCoverageProfileId } from "@/lib/db/coverage-profiles";
 import { isOptedOutRequest } from "@/lib/privacy";
 
 const VALID_TYPES = ["compare-rates", "pre-approval", "insurance"] as const;
@@ -122,6 +135,17 @@ export async function POST(req: Request) {
       ? body.city.slice(0, 100)
       : undefined;
 
+  // Opaque reference to a Stage-2 insurance coverage profile
+  // (src/lib/db/coverage-profiles.ts) that this click is handing off. Only
+  // shape-validated here (a plausible UUID) — this route never reads or
+  // transmits the profile's contents, just carries the id through for
+  // click-through analytics.
+  const profileIdRaw = body.profileId;
+  const profileId = isCoverageProfileId(profileIdRaw) ? profileIdRaw : undefined;
+  if (profileIdRaw !== undefined && !profileId) {
+    return NextResponse.json({ error: "Invalid profileId" }, { status: 400 });
+  }
+
   const data = {
     ...(partnerType && { partnerType }),
     ...(vendor && { vendor }),
@@ -131,6 +155,7 @@ export async function POST(req: Request) {
     ...(affiliate !== undefined && { affiliate }),
     ...(propertySlug && { propertySlug }),
     ...(city && { city }),
+    ...(profileId && { profileId }),
   };
 
   if (JSON.stringify(data).length > MAX_DATA_SIZE) {
