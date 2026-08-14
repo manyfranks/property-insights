@@ -35,7 +35,13 @@ import {
 } from "@/config/affiliate-vendors";
 import { stageAtLeast } from "@/config/insurance-stage";
 import { isLive } from "@/config/insurance-rollout";
-import { FTC_DISCLOSURE, trackClick, useOptedOut } from "@/lib/partner-cta-shared";
+import {
+  FTC_DISCLOSURE,
+  trackClick,
+  useOptedOut,
+  usePartnerCtaImpression,
+  type PartnerCtaImpressionPayload,
+} from "@/lib/partner-cta-shared";
 
 export interface InsuranceModuleProps {
   /** property country */
@@ -112,9 +118,46 @@ export default function InsuranceModule({
   const [line, setLine] = useState<InsuranceLine>(initialLine ?? "homeowner");
   const optedOut = useOptedOut();
 
+  // Vendor-slate derivation, hoisted above every early `return null` below
+  // (Rules of Hooks: the usePartnerCtaImpression calls that follow must run
+  // in the same order on every render). None of this depends on the
+  // stageAtLeast/exclusions/isLive gates below, so hoisting changes nothing
+  // about what gets computed — it only moves *when*. A hook whose ref never
+  // attaches to a rendered element (because the component bails out below)
+  // is inert: see usePartnerCtaImpression's doc comment.
+  const upperRegion = region ? region.toUpperCase() : "";
+  const lineExclusions = INSURANCE_LINE_EXCLUSIONS[country]?.[upperRegion] ?? [];
+  const restricted = lineExclusions.includes(line);
+  const vendors = restricted
+    ? []
+    : getVendorsForSurface(country, region, mode, surface, "insurance").filter((v) => v.lines?.includes(line));
+  const hero = vendors[0];
+  const pills = vendors.slice(1, 3);
+  const noMatch = !restricted && vendors.length === 0;
+  const hasSponsoredCard = Boolean(hero);
+
+  // Impression payloads mirror trackClick()'s field names (see handleClick
+  // below and usePartnerCtaImpression's doc comment). The hero slot is
+  // shared by the hero card and the "match me with a licensed broker"
+  // no-match card — they're mutually exclusive (noMatch is only true when
+  // there's no hero), so one hook call safely covers both.
+  const heroSlotPayload: PartnerCtaImpressionPayload | null = hero
+    ? { vendor: hero.id, vertical: "insurance", source, ...(region ? { state: region } : {}) }
+    : noMatch
+      ? { vendor: "licensed-broker", vertical: "insurance", source, ...(region ? { state: region } : {}) }
+      : null;
+  const pill0Payload: PartnerCtaImpressionPayload | null = pills[0]
+    ? { vendor: pills[0].id, vertical: "insurance", source, ...(region ? { state: region } : {}) }
+    : null;
+  const pill1Payload: PartnerCtaImpressionPayload | null = pills[1]
+    ? { vendor: pills[1].id, vertical: "insurance", source, ...(region ? { state: region } : {}) }
+    : null;
+  const heroImpressionRef = usePartnerCtaImpression(heroSlotPayload);
+  const pill0ImpressionRef = usePartnerCtaImpression(pill0Payload);
+  const pill1ImpressionRef = usePartnerCtaImpression(pill1Payload);
+
   if (!stageAtLeast("intake")) return null;
 
-  const upperRegion = region ? region.toUpperCase() : "";
   if (INSURANCE_STATE_EXCLUSIONS[country]?.includes(upperRegion)) return null;
   // Rollout gate, distinct from the exclusions check above: AB/ON/NS etc.
   // aren't excluded (no permanent regulatory ban) but also aren't isLive()
@@ -125,8 +168,6 @@ export default function InsuranceModule({
   if (!isLive(country, upperRegion)) return null;
 
   const regionName = REGION_NAMES[upperRegion] ?? region;
-  const lineExclusions = INSURANCE_LINE_EXCLUSIONS[country]?.[upperRegion] ?? [];
-  const restricted = lineExclusions.includes(line);
   const detail = LINE_DETAIL[line];
 
   const restrictedCopy =
@@ -139,15 +180,6 @@ export default function InsuranceModule({
           label: `Licensed broker required in ${regionName}`,
           body: `This coverage line isn't available as a sponsored placement in ${regionName} — we simply point you to a licensed broker who can place it.`,
         };
-
-  const vendors = restricted
-    ? []
-    : getVendorsForSurface(country, region, mode, surface, "insurance").filter((v) => v.lines?.includes(line));
-
-  const hero = vendors[0];
-  const pills = vendors.slice(1, 3);
-  const noMatch = !restricted && vendors.length === 0;
-  const hasSponsoredCard = Boolean(hero);
 
   function buildProfileUrl(vendorId?: string): string {
     const params = new URLSearchParams({ country, region: upperRegion, line, address });
@@ -231,6 +263,7 @@ export default function InsuranceModule({
           <div className="flex flex-wrap gap-3">
             {hero && (
               <Link
+                ref={heroImpressionRef}
                 href={buildProfileUrl(hero.id)}
                 onClick={() => handleClick(hero.id, true)}
                 className="relative flex-1 min-w-[220px] basis-full sm:basis-auto overflow-hidden border border-border rounded-xl p-5 pl-6 bg-white hover:border-foreground/20 hover:shadow-sm transition-all group"
@@ -249,9 +282,10 @@ export default function InsuranceModule({
               </Link>
             )}
 
-            {pills.map((vendor) => (
+            {pills.map((vendor, i) => (
               <Link
                 key={vendor.id}
+                ref={i === 0 ? pill0ImpressionRef : pill1ImpressionRef}
                 href={buildProfileUrl(vendor.id)}
                 onClick={() => handleClick(vendor.id, true)}
                 className="relative flex-1 min-w-[150px] basis-full sm:basis-auto overflow-hidden border border-border rounded-xl p-4 pl-5 bg-white hover:border-foreground/20 hover:shadow-sm transition-all group"
@@ -269,6 +303,7 @@ export default function InsuranceModule({
 
             {noMatch && (
               <Link
+                ref={heroImpressionRef}
                 href={buildProfileUrl()}
                 onClick={() => handleClick("licensed-broker", false)}
                 className="relative flex-1 min-w-[220px] overflow-hidden border border-border rounded-xl p-5 pl-6 bg-white hover:border-foreground/20 hover:shadow-sm transition-all group"

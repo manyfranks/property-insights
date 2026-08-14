@@ -27,7 +27,14 @@ import type {
   SurfaceKey,
 } from "@/config/affiliate-vendors";
 import { getVendorsForRegion, getVendorsForSurface, type Vertical } from "@/config/affiliate-vendors";
-import { FTC_DISCLOSURE, resolveUrl, trackClick, useOptedOut } from "@/lib/partner-cta-shared";
+import {
+  FTC_DISCLOSURE,
+  resolveUrl,
+  trackClick,
+  useOptedOut,
+  usePartnerCtaImpression,
+  type PartnerCtaImpressionPayload,
+} from "@/lib/partner-cta-shared";
 
 interface PartnerCtaBlockProps {
   /** property country — "CA" for all current listings (BC/ON/AB) */
@@ -65,10 +72,29 @@ export default function PartnerCta({
   const vendors = surface
     ? getVendorsForSurface(country, state, mode, surface, preferVertical)
     : getVendorsForRegion(country, state, mode);
-  if (vendors.length === 0) return null;
 
-  const [heroVendor, ...rest] = vendors;
-  const pillVendors = rest.slice(0, 2);
+  const heroVendor = vendors[0];
+  const pillVendors = vendors.slice(1, 3);
+
+  // Impression payloads mirror trackClick()'s exact field names — see
+  // usePartnerCtaImpression's doc comment. Computed (and the hooks below
+  // called) unconditionally, before the `vendors.length === 0` early return
+  // a few lines down, so hook call order never depends on data (Rules of
+  // Hooks) — a hook whose ref never attaches to a rendered element is inert.
+  const heroPayload: PartnerCtaImpressionPayload | null = heroVendor
+    ? { vendor: heroVendor.id, vertical: heroVendor.vertical, source, ...(state ? { state } : {}) }
+    : null;
+  const pill0Payload: PartnerCtaImpressionPayload | null = pillVendors[0]
+    ? { vendor: pillVendors[0].id, vertical: pillVendors[0].vertical, source, ...(state ? { state } : {}) }
+    : null;
+  const pill1Payload: PartnerCtaImpressionPayload | null = pillVendors[1]
+    ? { vendor: pillVendors[1].id, vertical: pillVendors[1].vertical, source, ...(state ? { state } : {}) }
+    : null;
+  const heroImpressionRef = usePartnerCtaImpression(heroPayload);
+  const pill0ImpressionRef = usePartnerCtaImpression(pill0Payload);
+  const pill1ImpressionRef = usePartnerCtaImpression(pill1Payload);
+
+  if (vendors.length === 0) return null;
 
   const hero = { vendor: heroVendor, resolved: resolveUrl(heroVendor.id, source, optedOut) };
   const pills = pillVendors.map((vendor) => ({
@@ -85,6 +111,7 @@ export default function PartnerCta({
         <div className="flex flex-wrap gap-3">
           {/* Hero CTA — larger card, offer copy front and center */}
           <a
+            ref={heroImpressionRef}
             href={hero.resolved.url}
             target="_blank"
             rel="noopener noreferrer sponsored"
@@ -121,9 +148,10 @@ export default function PartnerCta({
           </a>
 
           {/* Pill CTAs — up to 2, same visual language as before */}
-          {pills.map(({ vendor, resolved }) => (
+          {pills.map(({ vendor, resolved }, i) => (
             <a
               key={vendor.id}
+              ref={i === 0 ? pill0ImpressionRef : pill1ImpressionRef}
               href={resolved.url}
               target="_blank"
               rel="noopener noreferrer sponsored"
