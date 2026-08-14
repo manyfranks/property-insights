@@ -17,6 +17,12 @@
  * whatever geo/line/address context the visitor had already entered.
  * Rate-limited per IP like /api/coverage-profile (one-shot submission,
  * anonymous by design).
+ *
+ * Intentionally accepts every region, including ones in
+ * INSURANCE_STATE_EXCLUSIONS (QC/NB/WA) — "notify me" capture carries no
+ * referral or broker handoff, so the permanent-exclusion compliance
+ * boundary that gates /coverage-profile and the result-page module doesn't
+ * apply here.
  */
 
 import { NextResponse } from "next/server";

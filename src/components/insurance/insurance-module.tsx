@@ -34,6 +34,7 @@ import {
   INSURANCE_STATE_EXCLUSIONS,
 } from "@/config/affiliate-vendors";
 import { stageAtLeast } from "@/config/insurance-stage";
+import { isLive } from "@/config/insurance-rollout";
 import { FTC_DISCLOSURE, trackClick, useOptedOut } from "@/lib/partner-cta-shared";
 
 export interface InsuranceModuleProps {
@@ -115,6 +116,13 @@ export default function InsuranceModule({
 
   const upperRegion = region ? region.toUpperCase() : "";
   if (INSURANCE_STATE_EXCLUSIONS[country]?.includes(upperRegion)) return null;
+  // Rollout gate, distinct from the exclusions check above: AB/ON/NS etc.
+  // aren't excluded (no permanent regulatory ban) but also aren't isLive()
+  // yet — referral-fee legality there is still unresolved, so partner cards
+  // must not render there even though the region itself isn't off-limits.
+  // Same null-return pattern as the exclusions check (this module simply
+  // doesn't render rather than showing a broken/dead-end card).
+  if (!isLive(country, upperRegion)) return null;
 
   const regionName = REGION_NAMES[upperRegion] ?? region;
   const lineExclusions = INSURANCE_LINE_EXCLUSIONS[country]?.[upperRegion] ?? [];

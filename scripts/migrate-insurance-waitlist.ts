@@ -4,6 +4,10 @@
 // Must be run (once, against the production DB) before the /insurance
 // landing page's waitlist mode is deployed — POST /api/insurance/waitlist
 // will 500 on every request until this table exists.
+//
+// REDUNDANT: POST /api/db/migrate (src/app/api/db/migrate/route.ts) now
+// includes this same idempotent DDL and is the canonical provisioning path
+// for insurance_waitlist. This script is kept only as a manual fallback.
 import { loadEnvLocal } from "./lib/ingest-shared";
 loadEnvLocal();
 

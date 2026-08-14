@@ -208,9 +208,10 @@ CREATE INDEX IF NOT EXISTS idx_coverage_profiles_line ON coverage_profiles (line
 -- visitor's region isn't "live" yet (src/config/insurance-rollout.ts) or the
 -- intake flag is off entirely. Deliberately thinner than coverage_profiles —
 -- no property confirmation, no underwriting questions, no broker handoff —
--- just "notify me when this opens." Run via scripts/migrate-insurance-waitlist.ts
--- (one-time, delivered not executed) before the landing page's waitlist mode
--- is deployed.
+-- just "notify me when this opens." Provisioned via POST /api/db/migrate
+-- (canonical path); scripts/migrate-insurance-waitlist.ts (one-time,
+-- delivered not executed) is kept only as a manual fallback. Either must run
+-- before the landing page's waitlist mode is deployed.
 CREATE TABLE IF NOT EXISTS insurance_waitlist (
   id            UUID PRIMARY KEY,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),

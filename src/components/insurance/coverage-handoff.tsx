@@ -17,17 +17,14 @@
  * otherwise a plain, visibly-unsponsored "match me" mailto fallback. Every
  * currently-enabled insurance vendor is CA-only (Square One, APOLLO), so on
  * US traffic (and for lines no enabled vendor writes) the fallback is what
- * actually renders today — that's expected, not a bug.
+ * actually renders today — that's expected, not a bug. The resolver itself
+ * lives in resolve-vendor.ts (shared with coverage-profile-wizard.tsx, which
+ * needs the same eligibility logic reactively for its consent copy).
  */
 
 import { useState } from "react";
-import {
-  AFFILIATE_VENDORS,
-  getAffiliateUrl,
-  type AffiliateVendor,
-  type Country,
-  type InsuranceLine,
-} from "@/config/affiliate-vendors";
+import { getAffiliateUrl, type AffiliateSource, type Country, type InsuranceLine } from "@/config/affiliate-vendors";
+import { resolveVendor } from "@/components/insurance/resolve-vendor";
 import { ProvenanceChip, type ProvenanceSource } from "@/components/insurance/coverage-provenance-chip";
 
 export interface HandoffRow {
@@ -41,43 +38,15 @@ const CONTACT_EMAIL = "insights@mail.propertyinsights.xyz";
 const COMPLIANCE_NOTE =
   "Availability varies by state/province. You'll only ever be matched with a licensed broker — Property Insights does not sell, quote, or bind insurance.";
 
-/** Landlord/commercial/strata lines are rental & building-ownership
- *  concerns, closer to the app's "investor" audience mode; homeowner/tenant
- *  map to "buyer". Local to this component rather than goal-line-map.ts,
- *  which is owned by a different in-flight change on this branch. */
-function audienceModeForLine(line: InsuranceLine): "buyer" | "investor" {
-  return line === "landlord" || line === "commercial" || line === "strata" ? "investor" : "buyer";
-}
-
-function resolveVendor(
-  country: Country,
-  region: string,
-  line: InsuranceLine,
-  vendorParam: string | null
-): AffiliateVendor | null {
-  const mode = audienceModeForLine(line);
-  const eligible = AFFILIATE_VENDORS.filter(
-    (v) =>
-      v.enabled &&
-      v.vertical === "insurance" &&
-      v.country === country &&
-      v.audienceMode.includes(mode) &&
-      (!v.lines || v.lines.includes(line)) &&
-      !v.stateExclusions?.includes(region)
-  );
-
-  if (vendorParam) {
-    const requested = eligible.find((v) => v.id === vendorParam);
-    if (requested) return requested;
-  }
-
-  const sorted = [...eligible].sort((a, b) => {
-    if (b.cpaTier !== a.cpaTier) return b.cpaTier - a.cpaTier;
-    return Number(b.affiliateReady) - Number(a.affiliateReady);
-  });
-
-  return sorted[0] ?? null;
-}
+// This screen is only ever reached via the /coverage-profile wizard (Stage 2
+// intake), not directly from an assessment result page — "assess-result"
+// (the value this used to be hardcoded to) misrepresented the surface for
+// both click-through analytics and the sub_id on the affiliate URL.
+// "property-page" is the closest existing AffiliateSource bucket (see its
+// doc comment in src/config/affiliate-vendors.ts for why a dedicated
+// "coverage-profile" value isn't used instead — it would break a hardcoded
+// list in a file out of scope for this change).
+const HANDOFF_SOURCE: AffiliateSource = "property-page";
 
 function trackHandoffClick(payload: Record<string, unknown>) {
   void fetch("/api/partner-connect", {
@@ -105,7 +74,11 @@ export default function CoverageHandoff({
 }) {
   const [clicked, setClicked] = useState(false);
   const vendor = resolveVendor(country, region, line, vendorParam);
-  const resolved = vendor ? getAffiliateUrl(vendor.id, "assess-result") : null;
+  // subId = profileId: per-referral attribution, so this click's outbound
+  // URL carries the same id that markProfileHandoff stamps onto
+  // coverage_profiles.vendor_id (the authoritative reconciliation record).
+  // See getAffiliateUrl's doc comment for the per-partner sub_id caveat.
+  const resolved = vendor ? getAffiliateUrl(vendor.id, HANDOFF_SOURCE, profileId) : null;
   const partnerName = vendor?.name ?? "a licensed broker";
 
   function handleClick() {
@@ -114,7 +87,7 @@ export default function CoverageHandoff({
       vendor: vendor?.id ?? "broker-referral-fallback",
       vertical: "insurance",
       state: region,
-      source: "assess-result",
+      source: HANDOFF_SOURCE,
       affiliate: resolved?.isAffiliate ?? false,
       profileId,
     });

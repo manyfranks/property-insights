@@ -4,9 +4,10 @@
  * Entry point for Stage 2 of the insurance path: screen 2 (the intake
  * wizard) and, after submission, screen 4 (the handoff) — both rendered by
  * the client wizard component this page hands prefill data to. Thin server
- * component: parse + validate the query contract, gate on the feature flag
- * and jurisdiction exclusions, load listing data for prefill when a
- * listingId is present, then render.
+ * component: parse + validate the query contract, gate on the feature flag,
+ * jurisdiction exclusions, and rollout live-status (isLive(), src/config/
+ * insurance-rollout.ts), load listing data for prefill when a listingId is
+ * present, then render.
  *
  * URL contract (see docs/plans/18-INSURANCE-PATH-BUILD.md):
  *   /coverage-profile?country=..&region=..&line=..&address=..
@@ -29,14 +30,16 @@ import {
   type InsuranceLine,
 } from "@/config/affiliate-vendors";
 import { stageAtLeast } from "@/config/insurance-stage";
+import { isLive } from "@/config/insurance-rollout";
 import { getListingBySlug } from "@/lib/kv/listings";
 import { slugify } from "@/lib/utils";
 import { buildCoveragePrefill } from "@/components/insurance/coverage-prefill";
 import { CoverageExcludedNotice } from "@/components/insurance/coverage-excluded-notice";
+import { CoverageNotLiveNotice } from "@/components/insurance/coverage-not-live-notice";
 import CoverageProfileWizard from "@/components/insurance/coverage-profile-wizard";
 
 export const metadata: Metadata = {
-  title: "Build your coverage profile — Property Insights",
+  title: "Build your coverage profile",
   description:
     "Confirm your property details and get matched with a licensed insurance broker for this address.",
   robots: { index: false, follow: false },
@@ -125,6 +128,17 @@ export default async function CoverageProfilePage({
   }
   if ((INSURANCE_LINE_EXCLUSIONS[effectiveCountry][effectiveRegion] ?? []).includes(line)) {
     return <CoverageExcludedNotice region={effectiveRegion} />;
+  }
+
+  // Rollout gate — distinct from the exclusions gate above. A region can
+  // clear exclusions (it's not a permanent regulatory ban) and still not be
+  // `isLive()` yet: AB/ON/NS etc. have unresolved referral-fee legality, so
+  // the intake flow stays off there even though they're on the rollout
+  // roadmap. See CoverageNotLiveNotice's doc comment for why this is a
+  // separate component/message from CoverageExcludedNotice rather than a
+  // shared "unavailable" state.
+  if (!isLive(effectiveCountry, effectiveRegion)) {
+    return <CoverageNotLiveNotice country={effectiveCountry} region={effectiveRegion} />;
   }
 
   const prefill = buildCoveragePrefill({

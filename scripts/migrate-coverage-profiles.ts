@@ -1,6 +1,10 @@
 // One-time: create coverage_profiles in Neon (mirrors src/lib/db/schema.sql).
 // Delivered, not executed — do not run this against a real database as part
 // of this change; see src/lib/db/coverage-profiles.ts for the write path.
+//
+// REDUNDANT: POST /api/db/migrate (src/app/api/db/migrate/route.ts) now
+// includes this same idempotent DDL and is the canonical provisioning path
+// for coverage_profiles. This script is kept only as a manual fallback.
 import { loadEnvLocal } from "./lib/ingest-shared";
 loadEnvLocal();
 

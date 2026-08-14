@@ -163,5 +163,50 @@ export async function POST(request: Request) {
   `;
   await db`CREATE INDEX IF NOT EXISTS idx_user_assessments_owner_updated ON user_assessments (user_id, updated_at DESC)`;
 
+  // --- Insurance path, Stage 2 (coverage_profiles + insurance_waitlist) ---
+  // DDL copied verbatim from src/lib/db/schema.sql (see that file for the
+  // full rationale comments on each table). This is now the canonical
+  // provisioning path for both tables — scripts/migrate-coverage-profiles.ts
+  // and scripts/migrate-insurance-waitlist.ts are kept only as redundant
+  // manual fallbacks.
+  await db`
+    CREATE TABLE IF NOT EXISTS coverage_profiles (
+      id             UUID PRIMARY KEY,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      user_id        TEXT,
+      country        TEXT NOT NULL CHECK (country IN ('US', 'CA')),
+      region         TEXT NOT NULL,
+      address        TEXT NOT NULL,
+      line           TEXT NOT NULL CHECK (line IN ('homeowner', 'landlord', 'tenant', 'strata', 'commercial')),
+      property       JSONB NOT NULL,
+      answers        JSONB NOT NULL,
+      vendor_id      TEXT,
+      consent        BOOLEAN NOT NULL CHECK (consent = TRUE),
+      consent_text   TEXT NOT NULL,
+      consented_at   TIMESTAMPTZ,
+      source         TEXT
+    )
+  `;
+
+  await db`CREATE INDEX IF NOT EXISTS idx_coverage_profiles_created ON coverage_profiles (created_at)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_coverage_profiles_region ON coverage_profiles (region)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_coverage_profiles_line ON coverage_profiles (line)`;
+
+  await db`
+    CREATE TABLE IF NOT EXISTS insurance_waitlist (
+      id            UUID PRIMARY KEY,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      email         TEXT NOT NULL,
+      country       TEXT NOT NULL CHECK (country IN ('US', 'CA')),
+      region        TEXT NOT NULL,
+      line          TEXT CHECK (line IN ('homeowner', 'landlord', 'tenant', 'strata', 'commercial')),
+      address       TEXT
+    )
+  `;
+
+  await db`CREATE INDEX IF NOT EXISTS idx_insurance_waitlist_created ON insurance_waitlist (created_at)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_insurance_waitlist_region ON insurance_waitlist (region)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_insurance_waitlist_email ON insurance_waitlist (email)`;
+
   return NextResponse.json({ ok: true, message: "Migration complete" });
 }

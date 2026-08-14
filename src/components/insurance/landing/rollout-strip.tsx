@@ -2,10 +2,11 @@
  * components/insurance/landing/rollout-strip.tsx
  *
  * Five-column rollout strip (src/components/insurance/landing/data.ts's
- * ROLLOUT_COLUMNS) plus the honest geo-detection note. "Most provinces"
- * rather than "Rest of Canada" — QC and NB are permanently excluded
- * (INSURANCE_STATE_EXCLUSIONS), not just "not yet," so a nationwide claim
- * there would be false.
+ * ROLLOUT_COLUMNS, itself derived from src/config/insurance-rollout.ts's
+ * CA_REGIONS — see that file's rolloutStripColumns()) plus the honest
+ * geo-detection note. "Most provinces" rather than "Rest of Canada" — QC
+ * and NB are permanently excluded (INSURANCE_STATE_EXCLUSIONS), not just
+ * "not yet," so a nationwide claim there would be false.
  */
 
 import { ROLLOUT_COLUMNS } from "./data";

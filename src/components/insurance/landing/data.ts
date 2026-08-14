@@ -13,6 +13,7 @@
  */
 
 import type { InsuranceLine } from "@/config/affiliate-vendors";
+import { rolloutStripColumns, type RolloutStripColumn } from "@/config/insurance-rollout";
 
 export interface CoverageLineInfo {
   id: InsuranceLine;
@@ -133,20 +134,13 @@ export const FAQ_ITEMS: FaqItem[] = [
   },
 ];
 
-export interface RolloutColumn {
-  label: string;
-  country: string;
-  status: string;
-  live: boolean;
-}
+export type RolloutColumn = RolloutStripColumn;
 
-export const ROLLOUT_COLUMNS: RolloutColumn[] = [
-  { label: "British Columbia", country: "Canada", status: "Live now", live: true },
-  { label: "Alberta", country: "Canada", status: "Next", live: false },
-  { label: "Ontario", country: "Canada", status: "After that", live: false },
-  // QC + NB are permanently excluded (see INSURANCE_STATE_EXCLUSIONS) — "most
-  // provinces" rather than "rest of Canada" so this column stays honest
-  // about the two that aren't coming.
-  { label: "Most provinces", country: "Rest of Canada", status: "Rolling out", live: false },
-  { label: "United States", country: "Geo-targeted", status: "Rolling out", live: false },
-];
+// Derived from src/config/insurance-rollout.ts's CA_REGIONS (via
+// rolloutStripColumns()) rather than hand-duplicated here — this used to be
+// a standalone five-entry literal that could silently drift from the
+// rollout config's actual live/next/soon statuses (the module-load
+// consistency assertion in insurance-rollout.ts doesn't cover this list, so
+// nothing else would have caught the drift). Single source of truth now;
+// see that file's doc comment for the full rationale.
+export const ROLLOUT_COLUMNS: RolloutColumn[] = rolloutStripColumns();

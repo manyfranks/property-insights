@@ -4,13 +4,14 @@
  * Uses the same Upstash Redis instance as our KV storage.
  * Keys are prefixed with "rl:" to avoid collisions with listing/event data.
  *
- * Six limiters:
+ * Seven limiters:
  *   1. apiLimiter               — general per-IP limit for public endpoints (60 req/min)
  *   2. authApiLimiter           — per-user limit for authenticated endpoints (30 req/min)
  *   3. assessLimiter            — per-user daily cap for /api/assess (15/day)
  *   4. insuranceLookupLimiter   — per-IP limit for /api/insurance/address-lookup (30 req/min)
  *   5. insuranceProfileLimiter  — per-IP limit for /api/coverage-profile (5 req/min)
  *   6. insuranceWaitlistLimiter — per-IP limit for /api/insurance/waitlist (5 req/min)
+ *   7. partnerConnectLimiter    — per-IP limit for /api/partner-connect (20 req/min)
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -43,6 +44,7 @@ let _assessLimiter: Ratelimit | null = null;
 let _insuranceLookupLimiter: Ratelimit | null = null;
 let _insuranceProfileLimiter: Ratelimit | null = null;
 let _insuranceWaitlistLimiter: Ratelimit | null = null;
+let _partnerConnectLimiter: Ratelimit | null = null;
 
 /** 60 requests per 60 seconds, per IP — for public endpoints */
 export function apiLimiter(): Ratelimit | null {
@@ -134,4 +136,24 @@ export function insuranceWaitlistLimiter(): Ratelimit | null {
     prefix: "rl:ins-waitlist",
   });
   return _insuranceWaitlistLimiter;
+}
+
+/**
+ * 20 requests per 60 seconds, per IP — for /api/partner-connect. Looser than
+ * the one-shot-submission limiters above since a single page view can fire
+ * several partner-connect clicks (multiple CTA cards render per surface),
+ * but still tight enough to deter scripted click/attribution spam against an
+ * endpoint that (unlike the others) writes an append-only row per request
+ * with no per-visitor cap of its own.
+ */
+export function partnerConnectLimiter(): Ratelimit | null {
+  if (_partnerConnectLimiter) return _partnerConnectLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _partnerConnectLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(20, "60 s"),
+    prefix: "rl:partner-connect",
+  });
+  return _partnerConnectLimiter;
 }

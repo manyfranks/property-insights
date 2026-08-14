@@ -5,9 +5,16 @@
  * docs/proposals/insurance-distribution-proposal.html, "Stages" + "seam"
  * sections): stores a coverage profile — the prefilled property snapshot
  * plus the ~6 questions only the user can answer — ahead of a handoff to a
- * licensed partner, who becomes broker of record. This route only persists
- * the profile and returns its id; the handoff redirect/deep-link and the
- * eventual `markProfileHandoff()` call are a separate concern.
+ * licensed partner, who becomes broker of record. After a successful
+ * insert, this route best-effort notifies the operator inbox
+ * (sendCoverageProfileNotification in src/lib/email.ts — OPERATOR_NOTIFY_EMAIL
+ * env var, defaults to insights@mail.propertyinsights.xyz) so the handoff
+ * has a human-visible trigger; a failed notification never fails the
+ * submission (the profile is already durably stored) but is never
+ * swallowed either — it's console.error'd and reported via the response's
+ * `operatorNotified` field, per the project's fail-loud policy. The handoff
+ * redirect/deep-link and the eventual `markProfileHandoff()` call remain a
+ * separate concern.
  *
  * Stage-gated: returns 404 while NEXT_PUBLIC_INSURANCE_STAGE hasn't reached
  * "intake" (see src/config/insurance-stage.ts — supersedes the old
@@ -32,11 +39,17 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { dbAvailable } from "@/lib/db";
-import { createCoverageProfile, type CreateCoverageProfileInput } from "@/lib/db/coverage-profiles";
+import {
+  createCoverageProfile,
+  validateCoverageProperty,
+  validateCoverageAnswers,
+  type CreateCoverageProfileInput,
+} from "@/lib/db/coverage-profiles";
 import type { AffiliateSource, Country, InsuranceLine } from "@/config/affiliate-vendors";
 import { isOptedOutRequest } from "@/lib/privacy";
 import { insuranceProfileLimiter } from "@/lib/rate-limit";
 import { stageAtLeast } from "@/config/insurance-stage";
+import { sendCoverageProfileNotification } from "@/lib/email";
 
 const VALID_COUNTRIES: Country[] = ["US", "CA"];
 const VALID_LINES: InsuranceLine[] = ["homeowner", "landlord", "tenant", "strata", "commercial"];
@@ -168,13 +181,49 @@ export async function POST(req: Request) {
     source,
   };
 
+  let profile: Awaited<ReturnType<typeof createCoverageProfile>>;
   try {
-    const profile = await createCoverageProfile(input);
-    return NextResponse.json({ id: profile.id });
+    profile = await createCoverageProfile(input);
   } catch (err) {
     // Fail loud: a malformed or unconsented profile is a 400, not a
     // swallowed error — see src/lib/db/coverage-profiles.ts's validators.
     const message = err instanceof Error ? err.message : "Failed to save coverage profile";
     return NextResponse.json({ error: message }, { status: 400 });
   }
+
+  // Operator notification is best-effort: a failed send never turns a
+  // successful intake into an error response (the profile is already
+  // durably stored), but per the project's fail-loud policy it must never
+  // be silently swallowed either — log it distinctively and report the
+  // real outcome to the caller via `operatorNotified` rather than copying
+  // sendAssessmentEmail's silent-soft-fail pattern.
+  let operatorNotified = false;
+  try {
+    const notifyResult = await sendCoverageProfileNotification({
+      id: profile.id,
+      createdAt: profile.createdAt,
+      country,
+      region,
+      address,
+      line,
+      // Re-validate the already-inserted raw payload to get the typed
+      // shape for the email — createCoverageProfile() validated the same
+      // body.property/body.answers to succeed above, so this cannot throw
+      // on data that just passed the identical validators.
+      property: validateCoverageProperty(body.property),
+      answers: validateCoverageAnswers(body.answers),
+      consentText,
+    });
+    operatorNotified = notifyResult.success;
+    if (!notifyResult.success) {
+      console.error("[coverage-profile] operator email FAILED:", notifyResult.error);
+    }
+  } catch (err) {
+    console.error(
+      "[coverage-profile] operator email FAILED:",
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+
+  return NextResponse.json({ id: profile.id, operatorNotified });
 }

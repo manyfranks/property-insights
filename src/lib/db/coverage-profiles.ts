@@ -319,7 +319,22 @@ export async function createCoverageProfile(
   return { id: row.id, createdAt: new Date(row.created_at).toISOString() };
 }
 
-/** Records that a profile was handed off to a licensed partner (registry id from src/config/affiliate-vendors.ts). */
+/**
+ * Records that a profile was handed off to a licensed partner (registry id
+ * from src/config/affiliate-vendors.ts) — the authoritative reconciliation
+ * record for a coverage-profile handoff (see getAffiliateUrl's doc comment
+ * in src/config/affiliate-vendors.ts for why the click URL's sub_id isn't
+ * itself authoritative).
+ *
+ * First-write-wins: the UPDATE only matches a profile whose vendor_id is
+ * still NULL, so a duplicate or replayed partner-connect click (the POST is
+ * fire-and-forget over a plain `<a>` click, not idempotency-keyed) can't
+ * overwrite an earlier, possibly-different stamp. Returns `false` — not an
+ * error — when the profile doesn't exist, the id is malformed in a way that
+ * still passed isCoverageProfileId (shouldn't happen), or it was already
+ * stamped; callers that only want best-effort click attribution, not to
+ * enforce uniqueness, should treat `false` as a silent no-op.
+ */
 export async function markProfileHandoff(id: string, vendorId: string): Promise<boolean> {
   if (!dbAvailable()) throw new Error("DATABASE_URL not set — cannot update coverage profile");
   if (!isCoverageProfileId(id)) throw new Error("Invalid coverage profile id");
@@ -329,7 +344,7 @@ export async function markProfileHandoff(id: string, vendorId: string): Promise<
   const rows = (await db`
     UPDATE coverage_profiles
     SET vendor_id = ${vendor}
-    WHERE id = ${id}
+    WHERE id = ${id} AND vendor_id IS NULL
     RETURNING id
   `) as Array<{ id: string }>;
   return rows.length === 1;

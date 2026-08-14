@@ -68,6 +68,23 @@ export type AffiliateSource =
   | "resources"
   | "blog";
 
+/**
+ * NOTE (2026-08-14): the Stage 2 insurance handoff screen
+ * (coverage-handoff.tsx) used to hardcode `source: "assess-result"` for its
+ * partner-connect click, which is wrong — "assess-result" names the /assess
+ * result page (src/components/us-assessment-result.tsx), and this screen is
+ * reached only via the separate /coverage-profile wizard. It now uses
+ * "property-page" instead — the closest existing bucket for a buyer-facing
+ * result-adjacent surface (see the SurfaceKey doc comment below, which
+ * already groups "assess-result" and "property-page" together). A true
+ * "coverage-profile" value would be more accurate, but adding one here
+ * would break src/app/api/coverage-profile/route.ts's `VALID_SOURCES`
+ * (a hardcoded, non-deriving copy of this list, not touchable in this
+ * change — see that route's TODO potential: switch it to
+ * `AffiliateSource[]` so the two lists can't drift). Flagged here rather
+ * than silently worked around.
+ */
+
 export interface AffiliateVendor {
   /** env var key: NEXT_PUBLIC_AFFILIATE_URL_{ID} (uppercased, hyphens -> underscores) */
   id: string;
@@ -215,7 +232,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     envKey: "NEXT_PUBLIC_SQUAREONE_URL",
     lines: ["homeowner", "landlord", "tenant"],
     notes:
-      "2026-08-14: corrected from stateCoverage 'all' (verified Aug 2026 partner research). Licensed BC/AB/SK/MB/ON only (absent NS/PEI/NL + territories). Paid affiliate program covers BC/AB/SK/ON only — MB is licensed but not affiliate-payable, see `affiliateRegions`.",
+      "2026-08-14: corrected from stateCoverage 'all' (verified Aug 2026 partner research). Licensed BC/AB/SK/MB/ON only (absent NS/PEI/NL + territories). Paid affiliate program covers BC/AB/SK/ON only — MB is licensed but not affiliate-payable, see `affiliateRegions`. Prod tracking URL confirmed by owner 2026-08-14: https://www.squareone.ca/propertyinsights (vanity path — attribution is site-level per their program docs; appended sub_id honoring unconfirmed).",
   },
   {
     id: "apollo",
@@ -238,7 +255,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     description: "Online quote and policy in minutes, no phone call needed",
     shortCta: "Get quote",
     notes:
-      "APPROVED (auto) Aug 2026. Co-branded landing page: apollocover.com/lp/propertyinsights (set NEXT_PUBLIC_AFFILIATE_URL_APOLLO). A second URL, covertrack.ca/propertyinsights, was also issued — confirm in the partner portal which carries attribution. Commission rate not disclosed publicly; cpaTier 1 is a conservative placeholder pending dashboard confirmation.",
+      "APPROVED (auto) Aug 2026. Prod URL confirmed by owner 2026-08-14: apollocover.com/lp/propertyinsights (set as NEXT_PUBLIC_AFFILIATE_URL_APOLLO in Vercel). NOTE: a second issued URL, covertrack.ca/propertyinsights, remains unreconciled — verify in the partner portal that the lp URL carries attribution (if covertrack is the tracker, clicks on the lp URL may not credit). Commission rate not disclosed publicly; cpaTier 1 is a conservative placeholder pending dashboard confirmation.",
     lines: ["homeowner", "landlord", "tenant", "commercial"],
   },
   {
@@ -968,15 +985,15 @@ const ENV_URL_MAP: Record<string, string | undefined> = {
   choicehomewarranty: process.env.NEXT_PUBLIC_AFFILIATE_URL_CHOICEHOMEWARRANTY,
 };
 
-function appendSubId(url: string, source: string): string {
+function appendSubId(url: string, subId: string): string {
   try {
     const u = new URL(url);
-    u.searchParams.set("sub_id", source);
+    u.searchParams.set("sub_id", subId);
     return u.toString();
   } catch {
     // Relative or otherwise unparseable URL — fall back to naive append.
     const sep = url.includes("?") ? "&" : "?";
-    return `${url}${sep}sub_id=${encodeURIComponent(source)}`;
+    return `${url}${sep}sub_id=${encodeURIComponent(subId)}`;
   }
 }
 
@@ -989,19 +1006,36 @@ export interface ResolvedAffiliateUrl {
 /**
  * Resolves the outbound URL for a vendor: the env-configured affiliate URL
  * when present, otherwise the vendor's plain fallback `url`. Appends
- * `sub_id={source}` only when the resolved URL is the affiliate one —
- * sub_id has no meaning on a plain homepage link.
+ * `sub_id={subId ?? source}` only when the resolved URL is the affiliate one
+ * — sub_id has no meaning on a plain homepage link.
+ *
+ * `subId` is an optional per-referral override (e.g. a coverage-profile id)
+ * so a single click can be reconciled 1:1 against a specific record, rather
+ * than only bucketed by `source`'s surface-level grouping. Whether a given
+ * partner's tracking actually *honors* an arbitrary per-click sub_id is
+ * unconfirmed per-partner: Square One's affiliate link today attributes at
+ * the site level with no documented click-level sub_id passthrough; APOLLO's
+ * support for it is an open BD question. Set it anyway — worst case it's an
+ * inert query param, not lost attribution. Either way, this URL param is not
+ * the authoritative reconciliation record: that's `coverage_profiles.vendor_id`
+ * (src/lib/db/coverage-profiles.ts), first-write-wins-stamped by
+ * markProfileHandoff() from /api/partner-connect. Note partner_clicks
+ * (src/lib/db/partner-clicks.ts) does not currently carry profileId at all —
+ * it has no such column — so it cannot serve as a reconciliation key today;
+ * that would need a schema change owned by src/app/api/db/migrate/route.ts.
  */
 export function getAffiliateUrl(
   id: string,
-  source?: AffiliateSource
+  source?: AffiliateSource,
+  subId?: string
 ): ResolvedAffiliateUrl {
   const vendor = AFFILIATE_VENDORS.find((v) => v.id === id);
   const envUrl = ENV_URL_MAP[id];
+  const trackingId = subId ?? source;
 
   if (envUrl) {
     return {
-      url: source ? appendSubId(envUrl, source) : envUrl,
+      url: trackingId ? appendSubId(envUrl, trackingId) : envUrl,
       isAffiliate: true,
     };
   }

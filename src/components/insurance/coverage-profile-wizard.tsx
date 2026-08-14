@@ -14,9 +14,20 @@
  * this whole directory is scanned by scripts/check-insurance-copy.ts for
  * solicitation-adjacent terms — keep any new copy here framed as "get
  * matched with a licensed broker," never a quote or a ranking of insurers.
+ *
+ * Consent copy is vendor-aware, not static: step 4 resolves the same vendor
+ * coverage-handoff.tsx will hand this profile off to (resolve-vendor.ts,
+ * shared with that component) and renders one of two approved variants —
+ * one naming the vendor + a referral-fee disclosure when a vendor resolves,
+ * one with no fee sentence (no fee arrangement exists) for the mailto
+ * fallback path. `line` is the only piece of that resolution that's live
+ * wizard state through step 4, so the resolved vendor — and the rendered
+ * copy — can change if the visitor goes back and changes it; whatever text
+ * is on screen at submit time is exactly what's persisted as `consentText`,
+ * by construction (both read the same derived value).
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { InsuranceLine } from "@/config/affiliate-vendors";
 import type { CoverageOccupancy } from "@/lib/db/coverage-profiles";
 import {
@@ -27,9 +38,30 @@ import {
 } from "@/components/insurance/coverage-prefill";
 import { ProvenanceChip, type ProvenanceSource } from "@/components/insurance/coverage-provenance-chip";
 import CoverageHandoff, { type HandoffRow } from "@/components/insurance/coverage-handoff";
+import { resolveVendor, regionFullName } from "@/components/insurance/resolve-vendor";
 
-const CONSENT_TEXT =
-  "I agree to be contacted by a licensed broker about coverage for this property. Property Insights does not sell, quote, or bind insurance.";
+/**
+ * Approved copy, verbatim, with [Brokerage Name]/[Region] filled at render
+ * time. The fee-disclosure sentence only appears here — the vendor actually
+ * resolved to a paid affiliate/referral relationship — never in the
+ * no-vendor variant below, where no fee arrangement exists.
+ */
+function consentTextWithVendor(vendorName: string, regionName: string): string {
+  return (
+    `Yes — share my property details with ${vendorName} (licensed in ${regionName}) so they can contact me ` +
+    `about insurance. I understand Property Insights may earn a referral fee if I do business with them, and ` +
+    `that ${vendorName} alone provides any insurance quotes, advice, or coverage.`
+  );
+}
+
+/**
+ * Approved copy, verbatim, for the mailto fallback path (no resolved
+ * vendor). No fee sentence — this isn't a sponsored placement.
+ */
+const CONSENT_TEXT_WITHOUT_VENDOR =
+  "Yes — share my property details with a licensed insurance brokerage for my region so they can contact me " +
+  "about insurance. Any insurance quotes, advice, or coverage come from that licensed brokerage — Property " +
+  "Insights does not sell, quote, or bind insurance.";
 
 const STEP_META = [
   {
@@ -240,6 +272,28 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
   const [coverageExpiryMonth, setCoverageExpiryMonth] = useState("");
   const [consent, setConsent] = useState(false);
 
+  // The same vendor coverage-handoff.tsx will resolve for this profile.
+  // country/region/vendorParam are fixed for the life of the wizard (from
+  // prefill); `line` is the only live piece, so this recomputes only when
+  // the visitor changes step 2. Keyed to prefill.country/region/vendorParam
+  // too so a change of `prefill` identity (shouldn't happen mid-mount, but
+  // cheap to be correct about) doesn't leave a stale resolution.
+  const resolvedVendor = useMemo(
+    () => resolveVendor(prefill.country, prefill.region, line, prefill.vendorParam),
+    [prefill.country, prefill.region, prefill.vendorParam, line]
+  );
+
+  // Exactly what's rendered in the step-4 checkbox label — and, by using
+  // this same value at submit time below, exactly what's persisted as
+  // consentText. Never diverge these into two separate strings.
+  const consentText = useMemo(
+    () =>
+      resolvedVendor
+        ? consentTextWithVendor(resolvedVendor.name, regionFullName(prefill.region))
+        : CONSENT_TEXT_WITHOUT_VENDOR,
+    [resolvedVendor, prefill.region]
+  );
+
   const [submittedProfileId, setSubmittedProfileId] = useState<string | null>(null);
   const [handoffRows, setHandoffRows] = useState<HandoffRow[]>([]);
 
@@ -345,7 +399,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
         },
       },
       consent: true,
-      consentText: CONSENT_TEXT,
+      consentText,
       source: "assess-result",
     };
 
@@ -658,7 +712,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
                 onChange={(e) => setConsent(e.target.checked)}
                 className="mt-0.5"
               />
-              <span className="text-xs text-muted leading-relaxed">{CONSENT_TEXT}</span>
+              <span className="text-xs text-muted leading-relaxed">{consentText}</span>
             </label>
           </div>
         )}

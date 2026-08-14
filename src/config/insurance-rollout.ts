@@ -4,7 +4,12 @@
  * Single source of truth for insurance rollout status by region — what
  * stage of availability a country/region is in. Consumed by the /insurance
  * landing page's hero status line, region picker, coverage-tile chips, and
- * rollout strip (src/components/insurance/landing/*).
+ * rollout strip (src/components/insurance/landing/*) — the rollout strip's
+ * five-column data (src/components/insurance/landing/data.ts's
+ * ROLLOUT_COLUMNS) is itself derived from CA_REGIONS via
+ * `rolloutStripColumns()` below rather than hand-duplicated, so the strip
+ * can never silently disagree with the isLive() gate that
+ * coverage-profile/page.tsx and insurance-module.tsx enforce.
  *
  * Must agree with INSURANCE_STATE_EXCLUSIONS (src/config/affiliate-vendors.ts):
  * a region marked "live" here implies referral CTAs actually work there, so
@@ -103,7 +108,60 @@ export function regionName(
 }
 
 // ---------------------------------------------------------------------------
+// Rollout strip derivation — /insurance landing page
+// ---------------------------------------------------------------------------
+
+export interface RolloutStripColumn {
+  label: string;
+  country: string;
+  status: string;
+  live: boolean;
+}
+
+/** Positional display copy for the strip's first three columns — distinct
+ *  from STATUS_LABEL because the strip's copy reads as a sequence ("Live
+ *  now" → "Next" → "After that") rather than a standalone status word. */
+const STRIP_STATUS_COPY: Record<"live" | "next" | "soon", string> = {
+  live: "Live now",
+  next: "Next",
+  soon: "After that",
+};
+
+/**
+ * Builds the /insurance rollout strip's five columns from CA_REGIONS
+ * instead of a hand-maintained duplicate list — see the module doc comment.
+ * Picks the (at most one) CA_REGIONS entry at each of "live"/"next"/"soon"
+ * for the first three columns, then a "rest of Canada" aggregate and a US
+ * aggregate. "Most provinces" rather than "Rest of Canada" — QC and NB are
+ * permanently excluded (INSURANCE_STATE_EXCLUSIONS), not just "not yet," so
+ * a nationwide claim there would be false. Returns the same five entries as
+ * today's config for the current rollout state; this is a refactor for
+ * single-source-of-truth, not a presentation change.
+ */
+export function rolloutStripColumns(): RolloutStripColumn[] {
+  const columns: RolloutStripColumn[] = [];
+  for (const statusKey of ["live", "next", "soon"] as const) {
+    const region = CA_REGIONS.find((r) => r.status === statusKey);
+    if (!region) continue;
+    columns.push({
+      label: region.name,
+      country: "Canada",
+      status: STRIP_STATUS_COPY[statusKey],
+      live: statusKey === "live",
+    });
+  }
+  columns.push({ label: "Most provinces", country: "Rest of Canada", status: "Rolling out", live: false });
+  columns.push({ label: "United States", country: "Geo-targeted", status: "Rolling out", live: false });
+  return columns;
+}
+
+// ---------------------------------------------------------------------------
 // Consistency guard — fails loudly at module load, not at request time.
+//
+// Note: this only guards CA_REGIONS/US_UNAVAILABLE against
+// INSURANCE_STATE_EXCLUSIONS — it does not (and doesn't need to) separately
+// guard the rollout strip, since rolloutStripColumns() above reads directly
+// from CA_REGIONS rather than keeping its own copy of the data.
 // ---------------------------------------------------------------------------
 (function assertRolloutConsistency() {
   for (const r of CA_REGIONS) {
