@@ -339,38 +339,41 @@ export default function InsuranceLandingForm({
     <div id={anchorId} className="w-full">
       {/* Address pill: icon + input + CTA, matching the approved design's chunky widget */}
       <div className="relative">
-        <div className="flex items-center gap-2.5 bg-white border-[1.5px] border-border rounded-full py-1.5 pl-5 pr-1.5 shadow-[0_14px_40px_-18px_rgba(26,26,46,0.35)]">
-          <span className="flex items-center text-muted shrink-0" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinejoin="round"
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5 bg-white border-[1.5px] border-border rounded-[28px] sm:rounded-full p-1.5 sm:py-1.5 sm:pl-5 sm:pr-1.5 shadow-[0_14px_40px_-18px_rgba(26,26,46,0.35)]">
+          {/* Icon + input share a row even when the CTA drops below them on mobile */}
+          <div className="flex items-center gap-2.5 pl-3.5 sm:pl-0 sm:flex-1 sm:min-w-0">
+            <span className="flex items-center text-muted shrink-0" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinejoin="round"
+                />
+                <circle cx="12" cy="10" r="2.4" stroke="currentColor" strokeWidth="1.8" />
+              </svg>
+            </span>
+            <label className="flex-1 min-w-0">
+              <span className="sr-only">Property address</span>
+              <input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                onFocus={() => setDropdownOpen(suggestions.length > 0)}
+                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handlePrimaryCta();
+                  if (e.key === "Escape") setDropdownOpen(false);
+                }}
+                placeholder="Enter your address"
+                className="w-full min-w-0 border-none bg-transparent text-[15px] sm:text-base py-2.5 px-1 focus:outline-none"
               />
-              <circle cx="12" cy="10" r="2.4" stroke="currentColor" strokeWidth="1.8" />
-            </svg>
-          </span>
-          <label className="flex-1 min-w-0">
-            <span className="sr-only">Property address</span>
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              onFocus={() => setDropdownOpen(suggestions.length > 0)}
-              onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handlePrimaryCta();
-                if (e.key === "Escape") setDropdownOpen(false);
-              }}
-              placeholder="Enter your address"
-              className="w-full min-w-0 border-none bg-transparent text-[15px] sm:text-base py-2.5 px-1 focus:outline-none"
-            />
-          </label>
+            </label>
+          </div>
           <button
             type="button"
             onClick={handlePrimaryCta}
             disabled={!ready || waitlistSubmitting}
-            className={`shrink-0 rounded-full px-5 sm:px-6 py-3 text-sm font-semibold text-white whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${ctaButtonClass}`}
+            className={`w-full sm:w-auto shrink-0 rounded-full px-5 sm:px-6 py-3 text-sm font-semibold text-white whitespace-normal sm:whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${ctaButtonClass}`}
           >
             {ctaLabel}
           </button>
