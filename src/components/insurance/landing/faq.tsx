@@ -11,7 +11,7 @@ import { FAQ_ITEMS } from "./data";
 
 export default function Faq() {
   return (
-    <section className="[background-image:radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:22px_22px] py-20 sm:py-24 px-6">
+    <section className="py-20 sm:py-24 px-6">
       <div className="max-w-2xl mx-auto">
         <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-center mb-10">The honest answers</h2>
         <div className="flex flex-col gap-3">

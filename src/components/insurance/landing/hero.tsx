@@ -50,7 +50,7 @@ export default function Hero({
   country: Country;
 }) {
   return (
-    <section className="relative overflow-hidden flex flex-col min-h-[calc(100vh-56px)] [background-image:radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:22px_22px]">
+    <section className="relative overflow-hidden flex flex-col min-h-[calc(100vh-56px)]">
       <div className="flex-1 flex items-center">
         <div className="max-w-4xl mx-auto px-6 py-16 text-center w-full">
           <h1 className="text-4xl sm:text-5xl md:text-[64px] leading-[1.02] md:leading-[0.98] font-semibold tracking-tight text-balance mx-auto max-w-3xl">
