@@ -37,6 +37,7 @@ import {
 } from "@/lib/db/coverage-profiles";
 import type { AffiliateSource, Country, InsuranceLine } from "@/config/affiliate-vendors";
 import { isOptedOutRequest } from "@/lib/privacy";
+import { insuranceProfileLimiter } from "@/lib/rate-limit";
 
 const VALID_COUNTRIES: Country[] = ["US", "CA"];
 const VALID_LINES: InsuranceLine[] = ["homeowner", "landlord", "tenant", "strata", "commercial"];
@@ -72,6 +73,21 @@ export async function POST(req: Request) {
   // silently-dropped submission.
   if (!dbAvailable()) {
     return NextResponse.json({ error: "Database not configured (DATABASE_URL not set)" }, { status: 500 });
+  }
+
+  // Per-IP rate limit — submissions are anonymous-allowed (see doc comment
+  // above) and write PII rows, so this is checked early, before any body
+  // parsing. Fail loud on limit (429 JSON), never a silent empty success.
+  const limiter = insuranceProfileLimiter();
+  if (limiter) {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const result = await limiter.limit(ip);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil((result.reset - Date.now()) / 1000)) } }
+      );
+    }
   }
 
   // Optional auth — anonymous submissions are still stored (see doc comment above).

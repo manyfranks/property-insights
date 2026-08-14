@@ -11,8 +11,17 @@
  * surface — 404s while the flag is off. All user-facing copy lives in
  * src/components/insurance/ (insurance-landing.tsx) so the
  * prohibited-terms build guard scans it; this file is a thin shell.
+ *
+ * Geo: read directly from Vercel's edge-injected geo headers per request
+ * (same headers /api/geo reads — see src/app/api/geo/route.ts — but read
+ * here in-process rather than calling that route) and passed down as
+ * `initialGeo`. Deliberately independent of the shared `useVisitorGeo` /
+ * `pi_geo_override` system the homepage explorer uses: no localStorage
+ * caching, no cross-page pollution, and every load reflects the visitor's
+ * current IP (so a VPN change shows up immediately).
  */
 
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getAllStatesWithCounties } from "@/lib/us-counties";
@@ -24,7 +33,7 @@ export const metadata: Metadata = {
     "Enter an address, build a coverage profile, and get matched with a licensed insurance broker for your region.",
 };
 
-export default function InsuranceLandingPage() {
+export default async function InsuranceLandingPage() {
   if (process.env.NEXT_PUBLIC_INSURANCE_INTAKE !== "1") {
     notFound();
   }
@@ -33,5 +42,11 @@ export default function InsuranceLandingPage() {
     .map((s) => ({ code: s.state, name: s.stateName }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  return <InsuranceLanding usStates={usStates} />;
+  const headerList = await headers();
+  const initialGeo = {
+    country: headerList.get("x-vercel-ip-country") || null,
+    region: headerList.get("x-vercel-ip-country-region") || null,
+  };
+
+  return <InsuranceLanding usStates={usStates} initialGeo={initialGeo} />;
 }

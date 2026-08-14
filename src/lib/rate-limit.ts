@@ -4,10 +4,12 @@
  * Uses the same Upstash Redis instance as our KV storage.
  * Keys are prefixed with "rl:" to avoid collisions with listing/event data.
  *
- * Three limiters:
- *   1. apiLimiter     — general per-IP limit for public endpoints (60 req/min)
- *   2. authApiLimiter — per-user limit for authenticated endpoints (30 req/min)
- *   3. assessLimiter  — per-user daily cap for /api/assess (15/day)
+ * Five limiters:
+ *   1. apiLimiter               — general per-IP limit for public endpoints (60 req/min)
+ *   2. authApiLimiter           — per-user limit for authenticated endpoints (30 req/min)
+ *   3. assessLimiter            — per-user daily cap for /api/assess (15/day)
+ *   4. insuranceLookupLimiter   — per-IP limit for /api/insurance/address-lookup (30 req/min)
+ *   5. insuranceProfileLimiter  — per-IP limit for /api/coverage-profile (5 req/min)
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -37,6 +39,8 @@ function getRedis(): Redis | null {
 let _apiLimiter: Ratelimit | null = null;
 let _authApiLimiter: Ratelimit | null = null;
 let _assessLimiter: Ratelimit | null = null;
+let _insuranceLookupLimiter: Ratelimit | null = null;
+let _insuranceProfileLimiter: Ratelimit | null = null;
 
 /** 60 requests per 60 seconds, per IP — for public endpoints */
 export function apiLimiter(): Ratelimit | null {
@@ -75,4 +79,39 @@ export function assessLimiter(): Ratelimit | null {
     prefix: "rl:assess",
   });
   return _assessLimiter;
+}
+
+/**
+ * 30 requests per 60 seconds, per IP — for /api/insurance/address-lookup.
+ * The typeahead is debounced 250ms client-side, so 30/min comfortably
+ * covers real typing while throttling brute-force enumeration of the
+ * tracked-listing address set (unauthenticated, 6 results per query).
+ */
+export function insuranceLookupLimiter(): Ratelimit | null {
+  if (_insuranceLookupLimiter) return _insuranceLookupLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _insuranceLookupLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(30, "60 s"),
+    prefix: "rl:ins-lookup",
+  });
+  return _insuranceLookupLimiter;
+}
+
+/**
+ * 5 requests per 60 seconds, per IP — for /api/coverage-profile. Profile
+ * submission is a one-shot action (the wizard posts once at the end), so a
+ * tight cap here mainly deters scripted/anonymous PII-row spam.
+ */
+export function insuranceProfileLimiter(): Ratelimit | null {
+  if (_insuranceProfileLimiter) return _insuranceProfileLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _insuranceProfileLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(5, "60 s"),
+    prefix: "rl:ins-profile",
+  });
+  return _insuranceProfileLimiter;
 }

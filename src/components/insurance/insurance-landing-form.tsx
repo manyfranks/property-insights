@@ -7,16 +7,23 @@
  * Stage 2) for visitors who arrive without a property assessment in
  * context.
  *
- * Region handling: visitor geo (useVisitorGeo — same detection the
- * homepage explorer uses) assumes the country/region; the visitor can
- * change it via a quiet "Change" link rather than a prominent toggle, and
- * a manual choice persists as the shared geo override.
+ * Region handling: initial country/region come from the `initialGeo` prop
+ * — read once per request, server-side, from Vercel's edge geo headers
+ * (see app/insurance/page.tsx) — and seed this component's state on first
+ * render. The visitor can change it via a quiet "Change" link rather than
+ * a prominent toggle; that choice lives only in this component's local
+ * state and is never persisted anywhere. This is deliberately disconnected
+ * from the shared `useVisitorGeo` / `pi_geo_override` system the homepage
+ * explorer uses: no 24h localStorage cache (so a VPN/IP change is reflected
+ * on the very next load), and no risk of a manual change here leaking into
+ * the homepage's region default.
  *
  * Address handling: a typeahead against /api/insurance/address-lookup
  * (the listings we already track) lets a known property be picked
  * directly — its slug rides along as listingId so the wizard pre-fills
  * every detail we hold. Free-typed addresses still work; the wizard just
- * has less to pre-fill.
+ * has less to pre-fill. Picking a suggestion snaps country/region to the
+ * listing's location — property location wins over visitor location.
  *
  * Excluded regions (e.g. QC) stay selectable on purpose: the wizard page
  * renders a visible availability notice for them rather than this form
@@ -29,7 +36,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Country, InsuranceLine } from "@/config/affiliate-vendors";
-import { useVisitorGeo } from "@/lib/geo/visitor-geo";
 
 const CA_PROVINCES: { code: string; name: string }[] = [
   { code: "BC", name: "British Columbia" },
@@ -62,16 +68,27 @@ interface AddressHit {
 
 export default function InsuranceLandingForm({
   usStates,
+  initialGeo,
 }: {
   /** USPS code + name pairs, passed server-side to keep the county JSON out of the client bundle */
   usStates: { code: string; name: string }[];
+  /** Visitor geo read server-side (per request) from Vercel's edge headers — see app/insurance/page.tsx. */
+  initialGeo: { country: string | null; region: string | null };
 }) {
   const router = useRouter();
-  const { geo, loading: geoLoading, setRegionOverride } = useVisitorGeo();
 
-  const [country, setCountry] = useState<Country>("CA");
-  const [region, setRegion] = useState("BC");
-  const [regionTouched, setRegionTouched] = useState(false);
+  const [country, setCountry] = useState<Country>(() => (initialGeo.country === "US" ? "US" : "CA"));
+  const [region, setRegion] = useState<string>(() => {
+    if (initialGeo.country === "US") {
+      const valid = initialGeo.region && usStates.some((s) => s.code === initialGeo.region);
+      return valid ? (initialGeo.region as string) : "TX";
+    }
+    if (initialGeo.country === "CA") {
+      const valid = initialGeo.region && CA_PROVINCES.some((p) => p.code === initialGeo.region);
+      return valid ? (initialGeo.region as string) : "BC";
+    }
+    return "BC";
+  });
   const [changingRegion, setChangingRegion] = useState(false);
 
   const [address, setAddress] = useState("");
@@ -88,21 +105,6 @@ export default function InsuranceLandingForm({
   // overwrite a newer one that already landed (no AbortController here —
   // this is a cheap sequence guard instead).
   const requestSeqRef = useRef(0);
-
-  // Adopt detected geo until the visitor touches the region controls.
-  useEffect(() => {
-    if (geoLoading || regionTouched) return;
-    if (geo.country === "US") {
-      setCountry("US");
-      const valid = geo.region && usStates.some((s) => s.code === geo.region);
-      setRegion(valid ? (geo.region as string) : "TX");
-    } else if (geo.country === "CA") {
-      setCountry("CA");
-      const valid = geo.region && CA_PROVINCES.some((p) => p.code === geo.region);
-      setRegion(valid ? (geo.region as string) : "BC");
-    }
-    // Any other / unknown country keeps the CA/BC default.
-  }, [geo, geoLoading, regionTouched, usStates]);
 
   // Debounced typeahead.
   useEffect(() => {
@@ -147,7 +149,6 @@ export default function InsuranceLandingForm({
     setAddress(hit.address);
     setCountry(hit.country);
     setRegion(hit.region);
-    setRegionTouched(true);
     setSuggestions([]);
     setDropdownOpen(false);
   }
@@ -155,9 +156,6 @@ export default function InsuranceLandingForm({
   function applyRegionChange(nextCountry: Country, nextRegion: string) {
     setCountry(nextCountry);
     setRegion(nextRegion);
-    setRegionTouched(true);
-    // Keep the shared homepage/explorer geo in sync with the manual choice.
-    setRegionOverride({ country: nextCountry, region: nextRegion });
   }
 
   const regions = country === "CA" ? CA_PROVINCES : usStates;

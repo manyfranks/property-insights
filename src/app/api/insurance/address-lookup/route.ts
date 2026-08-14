@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import { getAllListings } from "@/lib/kv/listings";
 import { slugify } from "@/lib/utils";
+import { insuranceLookupLimiter } from "@/lib/rate-limit";
 
 interface AddressHit {
   address: string;
@@ -59,6 +60,23 @@ export async function GET(req: Request) {
       { error: "Insurance intake is not enabled (NEXT_PUBLIC_INSURANCE_INTAKE)" },
       { status: 404 }
     );
+  }
+
+  // Per-IP rate limit — unauthenticated typeahead over the tracked-listing
+  // address set can otherwise be brute-forced 3-char query at a time to
+  // enumerate all addresses 6 results per request. Checked before any KV
+  // work. Fail loud on limit (429 JSON), never a silent empty 200 that would
+  // mask throttling from the client.
+  const limiter = insuranceLookupLimiter();
+  if (limiter) {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const result = await limiter.limit(ip);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil((result.reset - Date.now()) / 1000)) } }
+      );
+    }
   }
 
   const { searchParams } = new URL(req.url);

@@ -18,8 +18,11 @@ const STEPS: [string, string][] = [
 
 export default function InsuranceLanding({
   usStates,
+  initialGeo,
 }: {
   usStates: { code: string; name: string }[];
+  /** Visitor geo read server-side (per request) from Vercel's edge headers — see app/insurance/page.tsx. */
+  initialGeo: { country: string | null; region: string | null };
 }) {
   return (
     <main className="max-w-2xl mx-auto px-6 py-10 sm:py-14">
@@ -31,7 +34,7 @@ export default function InsuranceLanding({
         for your region.
       </p>
 
-      <InsuranceLandingForm usStates={usStates} />
+      <InsuranceLandingForm usStates={usStates} initialGeo={initialGeo} />
 
       <div className="mt-8 grid sm:grid-cols-3 gap-3">
         {STEPS.map(([title, body]) => (
