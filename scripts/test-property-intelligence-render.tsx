@@ -15,7 +15,7 @@
 
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AssessmentJourneyPanel } from "../src/components/assessment-journey";
+import { AssessmentJourneyFocus, AssessmentJourneyPanel } from "../src/components/assessment-journey";
 import CanadaRentalScreen from "../src/components/canada-rental-screen";
 import { deriveCaRentalJourneyStatus } from "../src/lib/property-intelligence/journey";
 import { classifyProperty } from "../src/lib/property-intelligence/classification";
@@ -133,6 +133,91 @@ test("clean residential without CMHC: CanadaRentalScreen renders with the no-ben
   );
   assert.match(markup, /No CMHC benchmark is mapped for this city yet/);
   assert.match(markup, /id="canada-rent-scenario"/, "the rent-scenario input must still render for a non-excluded class");
+});
+
+test("supported result renders address and primary offer before a collapsed focus control", () => {
+  const resolved = subject({
+    listing: { address: "10 Oak St, Victoria, BC", source: "zoocasa_listing" },
+    propertyRecord: { address: "10 Oak St, Victoria, BC", propertyType: "Single Family" },
+  });
+  const classification = classifyProperty({
+    subject: resolved,
+    evidence: evidence([
+      { value: "Single Family", scope: "listing" },
+      { value: "Single Family", scope: "provider_record" },
+    ]),
+  });
+  const capabilities = evaluatePropertyCapabilities({
+    subject: resolved,
+    classification,
+    facts: {
+      addressSaleValue: { available: true, scope: "building" },
+      activeListing: true,
+      offerComputed: true,
+      insurancePrefillCore: true,
+    },
+  });
+  const markup = renderToStaticMarkup(
+    <AssessmentJourneyPanel
+      enabled
+      initialGoal="buy_home"
+      country="CA"
+      subjectScope={resolved.scope}
+      capabilities={capabilities}
+      gateUnsupported
+      lead={<><h1>10 Oak St</h1><div>Recommended Offer</div></>}
+    >
+      <div>The Signal</div>
+    </AssessmentJourneyPanel>
+  );
+
+  assert.ok(markup.indexOf("10 Oak St") < markup.indexOf("Recommended Offer"));
+  assert.ok(markup.indexOf("Recommended Offer") < markup.indexOf("data-p4-journey-panel"));
+  assert.ok(markup.indexOf("data-p4-journey-panel") < markup.indexOf("The Signal"));
+  assert.match(markup, /<details[^>]*class=/);
+  assert.doesNotMatch(markup, /<details[^>]* open/);
+  assert.match(markup, /Buying a home/);
+  assert.match(markup, /Change/);
+});
+
+test("embedded result placement renders exactly one focus control between the primary result and persona module", () => {
+  const resolved = subject({
+    propertyRecord: { address: "10 Oak St, Victoria, BC", propertyType: "Single Family" },
+  });
+  const classification = classifyProperty({
+    subject: resolved,
+    evidence: evidence([{ value: "Single Family", scope: "provider_record" }]),
+  });
+  const capabilities = evaluatePropertyCapabilities({
+    subject: resolved,
+    classification,
+    facts: {
+      addressSaleValue: { available: true, scope: "building" },
+      activeListing: true,
+      offerComputed: true,
+    },
+  });
+  const markup = renderToStaticMarkup(
+    <AssessmentJourneyPanel
+      enabled
+      initialGoal="buy_home"
+      country="CA"
+      subjectScope={resolved.scope}
+      capabilities={capabilities}
+      gateUnsupported
+      focusPlacement="embedded"
+    >
+      <h1>10 Oak St</h1>
+      <div>Recommended Offer</div>
+      <AssessmentJourneyFocus />
+      <div>Persona module</div>
+    </AssessmentJourneyPanel>
+  );
+
+  assert.equal((markup.match(/data-p4-journey-panel/g) ?? []).length, 1);
+  assert.ok(markup.indexOf("10 Oak St") < markup.indexOf("Recommended Offer"));
+  assert.ok(markup.indexOf("Recommended Offer") < markup.indexOf("data-p4-journey-panel"));
+  assert.ok(markup.indexOf("data-p4-journey-panel") < markup.indexOf("Persona module"));
 });
 
 console.log(`\n${passed}/${passed} render-shaped fixtures passed\n`);

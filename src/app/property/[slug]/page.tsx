@@ -413,6 +413,107 @@ export default async function PropertyPage({
     effectiveCapabilities,
     listing.propertyClassification
   );
+  const caResultLead = (
+    <>
+      <Link
+        href={`/discover/${cityToSlug(listing.city)}`}
+        className="text-sm text-muted hover:text-foreground transition-colors"
+      >
+        &larr; {listing.city}
+      </Link>
+
+      <div className="mt-6 mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {listing.url ? (
+              <a
+                href={listing.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
+                {listing.address}
+              </a>
+            ) : (
+              listing.address
+            )}
+          </h1>
+          <p className="text-sm text-muted mt-0.5">
+            {listing.city}, {listing.province}
+          </p>
+        </div>
+        {!verifiedLandListing && <TierBadge tier={score.tier} />}
+      </div>
+
+      {landPriceContext ? <LandPriceContextCard context={landPriceContext} /> : (
+        <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
+          {offer ? (
+            <>
+              <div className="text-xs uppercase tracking-widest text-muted mb-2">
+                {offer.anchorType === "language" ? "Estimated Offer" : "Recommended Offer"}
+              </div>
+              <div className="text-4xl sm:text-5xl font-mono font-bold mb-2">
+                {fmt(offer.finalOffer)}
+              </div>
+              <div className="text-sm text-green-600 mb-4">
+                Save {fmt(offer.savings)} &middot; {pct(offer.percentOfList)} of list
+              </div>
+              {offer.anchorType === "language" && (
+                <p className="text-xs text-muted mb-4 max-w-sm mx-auto">
+                  Based on listing language and market duration. No government assessment available.
+                </p>
+              )}
+              <div className="border-t border-border pt-4 flex justify-center gap-4 sm:gap-8 text-center">
+                <div>
+                  <div className="text-xs text-muted">List Price</div>
+                  <div className="font-mono font-medium">{fmt(listing.price)}</div>
+                </div>
+                {offer.anchorType === "assessment" && (
+                  <>
+                    <div>
+                      <div className="text-xs text-muted">Assessed</div>
+                      <div className="font-mono font-medium">
+                        {assessment ? fmt(assessment.totalValue) : "N/A"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted">Ratio</div>
+                      <div className="font-mono font-medium">
+                        {offer.listToAssessedRatio.toFixed(2)}x
+                      </div>
+                    </div>
+                  </>
+                )}
+                {offer.anchorType === "language" && (
+                  <>
+                    <div>
+                      <div className="text-xs text-muted">Signals</div>
+                      <div className="font-mono font-medium">
+                        {offer.signalTags.length || "0"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted">DOM</div>
+                      <div className="font-mono font-medium">{listing.dom}d</div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="py-4">
+              <div className="text-xs uppercase tracking-widest text-muted mb-2">
+                List Price
+              </div>
+              <div className="font-mono text-4xl sm:text-5xl font-bold mb-3">
+                {fmt(listing.price)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
@@ -446,6 +547,7 @@ export default async function PropertyPage({
         capabilities={effectiveCapabilities}
         gateUnsupported
         goalStatusOverrides={{ rental_investment: caRentalJourneyStatus }}
+        lead={caResultLead}
         goalContent={{
           rental_investment: (
             <CanadaRentalScreen
@@ -467,107 +569,6 @@ export default async function PropertyPage({
           ),
         }}
       >
-      {/* A. Back link */}
-      <Link
-        href={`/discover/${cityToSlug(listing.city)}`}
-        className="text-sm text-muted hover:text-foreground transition-colors"
-      >
-        &larr; {listing.city}
-      </Link>
-
-      {/* B. Header */}
-      <div className="mt-6 mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {listing.url ? (
-              <a
-                href={listing.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline"
-              >
-                {listing.address}
-              </a>
-            ) : (
-              listing.address
-            )}
-          </h1>
-          <p className="text-sm text-muted mt-0.5">
-            {listing.city}, {listing.province}
-          </p>
-        </div>
-        {!verifiedLandListing && <TierBadge tier={score.tier} />}
-      </div>
-
-      {/* C. Hero Card — Recommended Offer */}
-      {landPriceContext ? <LandPriceContextCard context={landPriceContext} /> : (
-      <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
-        {offer ? (
-          <>
-            <div className="text-xs uppercase tracking-widest text-muted mb-2">
-              {offer.anchorType === "language" ? "Estimated Offer" : "Recommended Offer"}
-            </div>
-            <div className="text-4xl sm:text-5xl font-mono font-bold mb-2">
-              {fmt(offer.finalOffer)}
-            </div>
-            <div className="text-sm text-green-600 mb-4">
-              Save {fmt(offer.savings)} &middot; {pct(offer.percentOfList)} of list
-            </div>
-            {offer.anchorType === "language" && (
-              <p className="text-xs text-muted mb-4 max-w-sm mx-auto">
-                Based on listing language and market duration. No government assessment available.
-              </p>
-            )}
-            <div className="border-t border-border pt-4 flex justify-center gap-4 sm:gap-8 text-center">
-              <div>
-                <div className="text-xs text-muted">List Price</div>
-                <div className="font-mono font-medium">{fmt(listing.price)}</div>
-              </div>
-              {offer.anchorType === "assessment" && (
-                <>
-                  <div>
-                    <div className="text-xs text-muted">Assessed</div>
-                    <div className="font-mono font-medium">
-                      {assessment ? fmt(assessment.totalValue) : "N/A"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted">Ratio</div>
-                    <div className="font-mono font-medium">
-                      {offer.listToAssessedRatio.toFixed(2)}x
-                    </div>
-                  </div>
-                </>
-              )}
-              {offer.anchorType === "language" && (
-                <>
-                  <div>
-                    <div className="text-xs text-muted">Signals</div>
-                    <div className="font-mono font-medium">
-                      {offer.signalTags.length || "0"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted">DOM</div>
-                    <div className="font-mono font-medium">{listing.dom}d</div>
-                  </div>
-                </>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="py-4">
-            <div className="text-xs uppercase tracking-widest text-muted mb-2">
-              List Price
-            </div>
-            <div className="font-mono text-4xl sm:text-5xl font-bold mb-3">
-              {fmt(listing.price)}
-            </div>
-          </div>
-        )}
-      </div>
-      )}
-
       {!journeyEnabled && (
         <PropertyJourneyHandoff assessmentInput={propertyAssessmentInput} goalStatuses={caGoalStatuses} />
       )}

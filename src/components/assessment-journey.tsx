@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { PropertyCapabilities } from "@/lib/property-intelligence/capabilities";
 import {
   ASSESSMENT_GOALS,
@@ -59,6 +59,17 @@ const SUBJECT_CHOICES: Array<{
     detail: "Keep uncertain property-level claims withheld",
   },
 ];
+
+interface AssessmentJourneyContextValue {
+  goal: AssessmentGoal;
+  effectiveStatus: JourneyCapabilityStatus;
+  subjectEvidenceGap: boolean;
+  gateUnsupported: boolean;
+  statusForGoal: (goal: AssessmentGoal) => JourneyCapabilityStatus;
+  switchGoal: (goal: AssessmentGoal) => void;
+}
+
+const AssessmentJourneyContext = createContext<AssessmentJourneyContextValue | null>(null);
 
 type JourneyEventData = Record<string, string | number | boolean>;
 
@@ -309,6 +320,8 @@ export function AssessmentJourneyPanel({
   gateUnsupported = false,
   goalStatusOverrides,
   goalContent,
+  lead,
+  focusPlacement = "after-lead",
   children,
 }: {
   enabled?: boolean;
@@ -321,6 +334,8 @@ export function AssessmentJourneyPanel({
   gateUnsupported?: boolean;
   goalStatusOverrides?: Partial<Record<AssessmentGoal, JourneyCapabilityStatus>>;
   goalContent?: Partial<Record<AssessmentGoal, ReactNode>>;
+  lead?: ReactNode;
+  focusPlacement?: "after-lead" | "embedded";
   children?: ReactNode;
 }) {
   const [goal, setGoal] = useState<AssessmentGoal>(initialGoal ?? "buy_home");
@@ -377,56 +392,24 @@ export function AssessmentJourneyPanel({
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
   }
 
-  const badgeClass = effectiveStatus.availability === "supported"
-    ? "bg-emerald-100 text-emerald-700"
-    : effectiveStatus.availability === "limited"
-      ? "bg-amber-100 text-amber-700"
-      : "bg-zinc-100 text-zinc-600";
   const selectedContent = goalContent?.[goal] ?? children;
 
-  if (!enabled) return <>{children}</>;
+  if (!enabled) return <>{lead}{children}</>;
+
+  const contextValue: AssessmentJourneyContextValue = {
+    goal,
+    effectiveStatus,
+    subjectEvidenceGap,
+    gateUnsupported,
+    statusForGoal,
+    switchGoal,
+  };
+  const renderAutomaticFocus = focusPlacement === "after-lead" || effectiveStatus.availability === "unavailable";
 
   return (
-    <>
-      <section
-        className="border border-border rounded-xl p-4 sm:p-5 bg-white mb-6"
-        data-p4-journey-panel="true"
-        data-p4-selected-goal={goal}
-        data-p4-goal-capability={effectiveStatus.availability}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div>
-            <div className="text-xs uppercase tracking-widest text-muted">Assessment focus</div>
-            <p className="text-xs text-muted mt-1">Your selection changes the view state, never the property facts.</p>
-          </div>
-          <span className={`text-xs px-2 py-1 rounded-full ${badgeClass}`}>{effectiveStatus.availability}</span>
-        </div>
-
-        <div className="flex flex-wrap gap-2 mb-3" aria-label="Assessment focus">
-          {ASSESSMENT_GOALS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={goal === option}
-              onClick={() => switchGoal(option)}
-              className={`min-h-11 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                goal === option
-                  ? "border-foreground bg-foreground text-white"
-                  : "border-border bg-white text-foreground hover:border-foreground/40"
-              }`}
-            >
-              {GOAL_LABELS[option].label}
-            </button>
-          ))}
-        </div>
-
-        <p className="text-sm text-foreground">{effectiveStatus.message}</p>
-        <p className="text-xs text-muted mt-2">
-          {gateUnsupported
-            ? "Evidence-gated modules and partner links appear only when they match this subject and focus."
-            : "The current report modules and partner links remain unchanged for this focus."}
-        </p>
-      </section>
+    <AssessmentJourneyContext.Provider value={contextValue}>
+      {lead}
+      {renderAutomaticFocus && <AssessmentJourneyFocus />}
       {gateUnsupported && effectiveStatus.availability === "unavailable" ? (
         <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 mb-6" data-p4-capability-gate="true">
           <div className="text-xs uppercase tracking-widest text-amber-700 mb-2">Report withheld for this focus</div>
@@ -442,6 +425,97 @@ export function AssessmentJourneyPanel({
           </p>
         </section>
       ) : selectedContent}
-    </>
+    </AssessmentJourneyContext.Provider>
+  );
+}
+
+/**
+ * Compact, supplemental result-view control. It must be rendered after the
+ * address and primary valuation/offer surface, never as the report headline.
+ */
+export function AssessmentJourneyFocus() {
+  const journey = useContext(AssessmentJourneyContext);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  if (!journey) return null;
+
+  const badgeClass = journey.effectiveStatus.availability === "supported"
+    ? "bg-emerald-100 text-emerald-700"
+    : journey.effectiveStatus.availability === "limited"
+      ? "bg-amber-100 text-amber-700"
+      : "bg-zinc-100 text-zinc-600";
+
+  const chooseGoal = (nextGoal: AssessmentGoal) => {
+    journey.switchGoal(nextGoal);
+    detailsRef.current?.removeAttribute("open");
+  };
+
+  return (
+    <section
+      className="mb-6"
+      data-p4-journey-panel="true"
+      data-p4-selected-goal={journey.goal}
+      data-p4-goal-capability={journey.effectiveStatus.availability}
+    >
+      <details ref={detailsRef} className="group border border-border rounded-xl bg-white">
+        <summary className="cursor-pointer list-none px-4 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50 rounded-xl">
+          <span>
+            <span className="block text-xs uppercase tracking-widest text-muted">Assessment focus</span>
+            <span className="block text-sm font-medium text-foreground mt-0.5">
+              {GOAL_LABELS[journey.goal].label}
+            </span>
+          </span>
+          <span className="flex items-center gap-2">
+            <span className={`text-xs px-2 py-1 rounded-full ${badgeClass}`}>
+              {journey.effectiveStatus.availability}
+            </span>
+            <span className="text-xs text-muted group-open:hidden">Change</span>
+            <span aria-hidden="true" className="text-lg text-muted transition-transform group-open:rotate-45">+</span>
+          </span>
+        </summary>
+        <div className="border-t border-border p-4">
+          <p className="text-xs text-muted mb-3">
+            Optional · changes this assessment view only. It does not label your profile or change the property facts.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label="Assessment focus">
+            {ASSESSMENT_GOALS.map((option) => {
+              const status = journey.subjectEvidenceGap
+                ? { availability: "unavailable" as const, message: "Resolve the assessment subject before using this view." }
+                : journey.statusForGoal(option);
+              const selected = journey.goal === option;
+              const unavailable = status.availability === "unavailable";
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  disabled={selected || unavailable}
+                  aria-pressed={selected}
+                  data-journey-option={option}
+                  data-journey-availability={status.availability}
+                  onClick={() => chooseGoal(option)}
+                  className={`rounded-lg border p-3 text-left transition-colors disabled:cursor-default ${
+                    selected
+                      ? "border-foreground bg-gray-50"
+                      : unavailable
+                        ? "border-border bg-gray-50 opacity-60"
+                        : "border-border bg-white hover:border-foreground/40"
+                  }`}
+                >
+                  <span className="block text-sm font-semibold text-foreground">{GOAL_LABELS[option].label}</span>
+                  <span className="block text-xs text-muted mt-1">
+                    {unavailable ? status.message : GOAL_LABELS[option].detail}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted mt-3">{journey.effectiveStatus.message}</p>
+          <p className="text-xs text-muted/80 mt-1">
+            {journey.gateUnsupported
+              ? "Modules and partner links appear only when the current evidence supports them."
+              : "The underlying report remains unchanged when a view has no additional supported module."}
+          </p>
+        </div>
+      </details>
+    </section>
   );
 }

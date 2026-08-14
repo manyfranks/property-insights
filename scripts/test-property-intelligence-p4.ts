@@ -5,6 +5,7 @@ import {
   journeyCapabilityStatus,
   parseAssessmentGoal,
   persistedConfirmedSubjectScope,
+  shouldStartAssessmentImmediately,
 } from "../src/lib/property-intelligence/journey";
 import type { PropertyCapabilities } from "../src/lib/property-intelligence/capabilities";
 import type { AssessmentSubject } from "../src/lib/property-intelligence/subject";
@@ -95,6 +96,23 @@ const cases: Array<[string, () => void]> = [
     assert.equal(parseAssessmentGoal("rental_investment"), "rental_investment");
     assert.equal(parseAssessmentGoal("investor"), null);
     assert.equal(parseAssessmentGoal(null), null);
+  }],
+  ["an explicit handoff goal skips the duplicate preflight chooser", () => {
+    assert.equal(shouldStartAssessmentImmediately({
+      journeyEnabled: true,
+      initialGoal: "buy_home",
+      hasRestoredAssessment: false,
+    }), true);
+    assert.equal(shouldStartAssessmentImmediately({
+      journeyEnabled: true,
+      initialGoal: null,
+      hasRestoredAssessment: false,
+    }), false);
+    assert.equal(shouldStartAssessmentImmediately({
+      journeyEnabled: true,
+      initialGoal: null,
+      hasRestoredAssessment: true,
+    }), true);
   }],
   ["specific-unit confirmation requires an actual unit identifier", () => {
     assert.throws(() => confirmAssessmentSubject(subject(), "specific_unit"), /unit identifier/i);

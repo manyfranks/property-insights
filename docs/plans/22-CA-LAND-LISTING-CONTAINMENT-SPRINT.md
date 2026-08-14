@@ -116,8 +116,8 @@ their visibility or placement.
 - [x] No property-level residential module or CTA renders for verified land.
 - [x] No land listing is presented with an unsupported recommended offer or
   seller-motivation narrative.
-- [x] Focus switching is visually supplemental, below the primary hero, and
-  remains assessment-level state.
+- [x] The base-property handoff is visually supplemental below the primary
+  hero and remains assessment-level state.
 - [x] Residential CA and US regression fixtures pass.
 - [x] TypeScript, touched-file lint, pipeline guard (`16/16`), and production
   build pass.
@@ -142,3 +142,12 @@ their visibility or placement.
     control did not inherit the land exclusion.
 - The only local console error is the known Clerk production-domain rejection
   on `localhost`; it does not alter the server-rendered page evidence above.
+
+## Post-deploy correction
+
+Production replay found that the result-side `AssessmentJourneyPanel` still
+wrapped the entire report and rendered its own expanded focus selector before
+the address and offer. Sprint 22 correctly moved the base-property handoff,
+but its exit evidence overstated the result-view change. Sprint 23 owns and
+corrects that separate composition defect; this note preserves the distinction
+instead of rewriting the original acceptance record.

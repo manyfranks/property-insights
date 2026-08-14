@@ -77,6 +77,14 @@ Local browser replay passed for both incident records and a residential
 control; broad testing remains paused only until the deployed records pass the
 same production replay.
 
+Production replay then exposed a composition defect outside the land
+containment itself: an explicit goal from a property handoff still passed
+through the goal chooser, and the result-side focus selector still rendered as
+an expanded primary panel above the property identity and valuation. Sprint 23
+defines the cross-geo correction: an explicit handoff goal starts the
+assessment immediately, and a single collapsed focus switch appears after the
+primary offer/value surface without refetching.
+
 ## Release gate
 
 Each release touching journeys must pass:
@@ -90,6 +98,11 @@ Each release touching journeys must pass:
    residential Canadian assessment, and one unchanged plain `/assess` buyer
    flow.
 5. Post-deploy live acceptance before the full asset matrix is expanded.
+
+Result-order acceptance is explicit: property identity, then the primary
+offer/value surface, then one collapsed assessment-focus control, then any
+goal-specific module and the remainder of the report. A selected goal carried
+by the handoff URL must not trigger a second goal-selection screen.
 
 If the live pass finds a release-blocking defect, revert the release commit.
 Do not add a lasting per-feature environment mode as the repair.

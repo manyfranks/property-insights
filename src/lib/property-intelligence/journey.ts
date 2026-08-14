@@ -63,6 +63,19 @@ export function parseAssessmentGoal(value: unknown): AssessmentGoal | null {
     : null;
 }
 
+/**
+ * A goal already present in the journey URL came from an explicit handoff
+ * selection. Asking the same question again is redundant; only journey entry
+ * without a goal needs the preflight chooser.
+ */
+export function shouldStartAssessmentImmediately(args: {
+  journeyEnabled: boolean;
+  initialGoal: AssessmentGoal | null;
+  hasRestoredAssessment: boolean;
+}): boolean {
+  return !args.journeyEnabled || !!args.initialGoal || args.hasRestoredAssessment;
+}
+
 export function parseSubjectScope(value: unknown): SubjectScope | null {
   return typeof value === "string" && ["unit", "building", "parcel", "listing", "unknown"].includes(value)
     ? value as SubjectScope

@@ -11,7 +11,7 @@ import {
 } from "@/components/assessment-journey";
 import type { AssessmentGoal } from "@/lib/property-intelligence/journey";
 import type { AssessmentSubject } from "@/lib/property-intelligence/subject";
-import { confirmAssessmentSubject } from "@/lib/property-intelligence/journey";
+import { confirmAssessmentSubject, shouldStartAssessmentImmediately } from "@/lib/property-intelligence/journey";
 
 interface Step {
   label: string;
@@ -85,7 +85,11 @@ export default function AssessmentProgress({
   const [apiDone, setApiDone] = useState(false);
   const [slug, setSlug] = useState("");
   const [retryCount, setRetryCount] = useState(0);
-  const [assessmentStarted, setAssessmentStarted] = useState(!journeyEnabled || !!restoredAssessment);
+  const [assessmentStarted, setAssessmentStarted] = useState(() => shouldStartAssessmentImmediately({
+    journeyEnabled,
+    initialGoal,
+    hasRestoredAssessment: !!restoredAssessment,
+  }));
   const [selectedGoal, setSelectedGoal] = useState<AssessmentGoal | null>(initialGoal);
   const selectedGoalRef = useRef<AssessmentGoal | null>(initialGoal);
   const [confirmedSubject, setConfirmedSubject] = useState<AssessmentSubject | null>(null);
@@ -318,6 +322,7 @@ export default function AssessmentProgress({
           capabilities={result.propertyCapabilities}
           onGoalChange={handleGoalChange}
           gateUnsupported
+          focusPlacement="embedded"
         >
           <UsAssessmentResult
             data={result}

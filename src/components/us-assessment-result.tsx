@@ -23,6 +23,7 @@ import PartnerCta from "@/components/partner-cta";
 import PartnerCtaRow from "@/components/partner-cta-row";
 import ExpandableSection from "@/components/expandable-section";
 import TierBadge from "@/components/tier-badge";
+import { AssessmentJourneyFocus } from "@/components/assessment-journey";
 import {
   US_COUNTY_FALLBACK_LABEL,
   usCountyFallbackDisclosure,
@@ -548,6 +549,8 @@ function UsLimitedListedRentalView({
         <TierBadge tier={data.score.tier} />
       </div>
 
+      <AssessmentJourneyFocus />
+
       <RentalScreen model={model} />
 
       <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 mb-6">
@@ -829,8 +832,6 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
         <TierBadge tier={score.tier} />
       </div>
 
-      {rentalScreen && <RentalScreen model={rentalScreen} />}
-
       {/* Hero — recommended offer */}
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
         {offer ? (
@@ -871,6 +872,10 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
           </div>
         )}
       </div>
+
+      <AssessmentJourneyFocus />
+
+      {rentalScreen && <RentalScreen model={rentalScreen} />}
 
       <div className="mb-6">
         <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
@@ -1158,6 +1163,7 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
           <h1 className="text-2xl font-semibold tracking-tight">{data.address}</h1>
           <p className="text-sm text-muted mt-0.5">{data.countyName}, {data.state}</p>
         </div>
+        <AssessmentJourneyFocus />
         <RentalScreen model={rentalScreen} />
         <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 mb-6">
           <div className="text-xs uppercase tracking-widest text-amber-700 mb-2">Property yield withheld</div>
@@ -1202,8 +1208,6 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
         </p>
       </div>
 
-      {rentalScreen && <RentalScreen model={rentalScreen} />}
-
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
         {assessment?.found ? (
           <>
@@ -1230,6 +1234,10 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
           <p className="text-sm text-muted py-4">No value estimate available for this address yet.</p>
         )}
       </div>
+
+      <AssessmentJourneyFocus />
+
+      {rentalScreen && <RentalScreen model={rentalScreen} />}
 
       <div className="mb-6">
         <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
@@ -1316,8 +1324,6 @@ function UsFallbackView({ data, activeGoal }: { data: UsFallbackResult; activeGo
         </p>
       </div>
 
-      {rentalScreen && <RentalScreen model={rentalScreen} />}
-
       <div
         className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-amber-900"
         data-property-data-unavailable-reason={data.propertyDataUnavailableReason}
@@ -1345,6 +1351,10 @@ function UsFallbackView({ data, activeGoal }: { data: UsFallbackResult; activeGo
           <p className="text-sm text-muted py-4">No assessment data available for this county yet.</p>
         )}
       </div>
+
+      <AssessmentJourneyFocus />
+
+      {rentalScreen && <RentalScreen model={rentalScreen} />}
 
       <div className="mb-6">
         <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />

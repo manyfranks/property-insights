@@ -68,7 +68,7 @@ These are release-blocking requirements, not preferences:
 | **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
 | **P2 — Subject resolution** | `[x] Complete 2026-08-11` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | 23/23 resolver fixtures + common subject envelope |
 | **P3 — Classification/capabilities** | `[~] In progress — shadow built; P3.5 acceptance active 2026-08-11` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
-| **P4 — Goal UX/instrumentation** | `[~] Containment complete; post-deploy acceptance pending 2026-08-14` | Optional per-assessment goal, conditional scope clarification, private restore, manual view switching | P3 | Funnel events + route-specific rollout |
+| **P4 — Goal UX/instrumentation** | `[~] Result hierarchy correction built; post-deploy acceptance pending 2026-08-14` | Optional per-assessment goal, conditional scope clarification, private restore, manual view switching | P3 | Funnel events + route-specific rollout |
 | **P5 — Investor/Landlord V1** | `[~] CA land containment built 2026-08-14; post-deploy acceptance pending` | Address-level US rental screen; capability-gated Canadian version | P4 | End-to-end journey QA + KPI baseline |
 | **P6 — Buyer/Owner convergence** | `[ ]` | Existing buyer parity plus current-owner/landlord view on shared contracts | P5 | Regression parity + owner journey QA |
 | **I1 — Insurance distribution test** | `[ ] Parallel after P4` | Measure intent-matched insurance demand without claiming underwriting | P4; preferably P5 | Pre-registered test + measured results |
@@ -375,6 +375,7 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 - Cross-country correction (2026-08-13): Canadian rental focus now renders a limited, interactive user-rent scenario against the listing price, with CMHC shown only where available and always labeled regional. RentCast `Multi-Family`/`Apartment` rent AVMs are explicitly scoped to one unit while value/listing evidence remains whole-building, preventing false building yields such as the Salt Lake City acceptance case.
 - Acceptance failure (2026-08-14): production records `2496-rosstown-rd` and `1827-main-st` both contain high-confidence Zoocasa `Land` evidence and deterministic `listingScope: parcel`, but `parcelUse` remains `unknown`. `residentialExclusion()` reads `parcelUse`, not the resolved listing-scope land decision, so rental/offer/insurance capabilities report `missing_field` or `available` instead of `provider_exclusion`. Both pages consequently present the four-goal handoff and residential partner CTAs; `1827-main-st` also renders unsupported seller-motivation narrative. P5 acceptance is paused pending `22-CA-LAND-LISTING-CONTAINMENT-SPRINT.md`.
 - Containment implementation (2026-08-14): deterministic/high-confidence `listingScope: parcel` now excludes residential valuation, rent, offer, gross-yield, and insurance capabilities without promoting listing evidence into `parcelUse`. A read-time reconciliation contains pre-fix persisted envelopes. Property pages use a collapsed focus control below the primary result, withhold incompatible partner actions, and replace land offer/motivation output with evidence-scoped land price context. Local browser replay against both stored records passed; production replay remains the release gate.
+- Result-hierarchy correction (2026-08-14): production replay of `2820-cosgrove-cres` showed that Sprint 22 moved the base-property handoff but not the journey result wrapper. Explicit handoff goals now bypass the redundant chooser, and CA plus all US result variants render one collapsed focus switch after the address and primary offer/value surface. See `23-ASSESSMENT-FOCUS-RESULT-HIERARCHY.md`.
 - Contract fixtures: `scripts/test-property-intelligence-p5.ts` covers explicit-goal routing, supported address-level output, regional-only degradation, capability withholding, legacy composition parity, and zero provider calls.
 - Commit/PR: _TBD_
 - Production examples: _TBD_
@@ -544,13 +545,18 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 | 2026-08-14 | Journeys use an explicit product route, not a permanent environment mode | Stacked feature switches obscure production behavior and become technical debt; plain `/assess` still preserves buyer parity | P6 deliberately migrates the plain assessment flow |
 | 2026-08-14 | Only durable `user_confirmation` provenance restores subject scope | URL scope is forgeable and an application-only version disappears on DB reads | Persistence schema or trust contract changes |
 | 2026-08-14 | Pause broad P5 acceptance for listing-only land containment | Real CA land listings resolve to parcel scope but bypass residential exclusions, partner gating, and narrative safeguards | Sprint 22 fixtures and curated acceptance matrix pass |
+| 2026-08-14 | Assessment focus is a supplemental result control | A user already selected a goal at handoff; repeating the chooser and placing focus above the property result makes routing state look like the product's primary output | Sprint 23 post-deploy replay fails the fixed order or needs a refetch |
 
 ## Immediate next implementation slice
 
-Deploy and accept **Sprint 22: Canadian listing-only land containment** before expanding the asset matrix:
+Deploy and accept **Sprint 23: assessment-focus result hierarchy** before expanding the asset matrix:
 
-1. Deploy the containment commit.
-2. Replay `2496-rosstown-rd`, `1827-main-st`, and the Canadian residential control in production.
-3. Confirm the deployed results match the local browser evidence in Sprint 22.
-4. Resume the remaining curated asset matrix only after those checks pass.
-5. Continue P5 with user-supplied operating assumptions and saved per-assessment scenarios; keep occupancy personalization and commercial financial claims out of scope.
+1. Deploy the focus-hierarchy correction.
+2. Replay the exact `2820-cosgrove-cres` buy-home result and its rental switch.
+3. Confirm the property handoff starts lookup without a second goal chooser.
+4. Spot-check one US listed result, one US off-market/fallback result, and one
+   unavailable land goal for a single focus control and the fixed result order.
+5. Resume the remaining curated asset matrix only after those checks pass.
+6. Continue P5 with user-supplied operating assumptions and saved
+   per-assessment scenarios; keep occupancy personalization and commercial
+   financial claims out of scope.
