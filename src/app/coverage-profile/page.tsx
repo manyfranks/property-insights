@@ -28,6 +28,7 @@ import {
   type InsuranceLine,
 } from "@/config/affiliate-vendors";
 import { getListingBySlug } from "@/lib/kv/listings";
+import { slugify } from "@/lib/utils";
 import { buildCoveragePrefill } from "@/components/insurance/coverage-prefill";
 import { CoverageExcludedNotice } from "@/components/insurance/coverage-excluded-notice";
 import CoverageProfileWizard from "@/components/insurance/coverage-profile-wizard";
@@ -85,14 +86,20 @@ export default async function CoverageProfilePage({
   // listing degrades to query-params-only prefill rather than failing the
   // page; buildCoveragePrefill renders "— not on file" for anything it
   // can't source, never a fabricated value.
-  const listing = listingId ? await getListingBySlug(listingId).catch(() => null) : null;
+  //
+  // Address-first entries (the /insurance landing page) arrive with no
+  // listingId — try the slugified address against tracked listings so a
+  // known property still gets full prefill. A miss just means
+  // params-only prefill; it is never an error.
+  const lookupSlug = listingId ?? slugify(address);
+  const listing = lookupSlug ? await getListingBySlug(lookupSlug).catch(() => null) : null;
 
   const prefill = buildCoveragePrefill({
     country,
     region,
     line,
     address,
-    listingSlug: listingId,
+    listingSlug: listing ? lookupSlug : listingId,
     vendorParam,
     listing,
   });
