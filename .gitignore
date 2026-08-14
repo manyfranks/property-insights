@@ -47,3 +47,12 @@ next-env.d.ts
 
 # keep the example env template tracked
 !.env.example
+
+# generated sitemaps — both public/sitemap.xml and public/sitemap-main.xml
+# are prebuild artifacts written fresh on every deploy by
+# scripts/generate-sitemap.ts (~2.1MB each, ~11.8k <url> entries). They were
+# previously committed, which produced a full-file diff on every deploy for
+# no reason (the files are reproducible from KV + static data at build
+# time). See scripts/generate-sitemap.ts for why there are two files.
+public/sitemap.xml
+public/sitemap-main.xml

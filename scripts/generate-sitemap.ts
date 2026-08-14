@@ -101,12 +101,22 @@ async function main() {
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;
+
+  // Two on-disk copies, byte-identical, written from the same buffer:
+  //   - public/sitemap.xml       legacy path, still reachable/indexed, kept
+  //                              live so nothing that already fetched it 404s.
+  //   - public/sitemap-main.xml  the URL robots.ts actually advertises (see
+  //                              src/app/robots.ts) — sitemap.xml is pinned
+  //                              in a GSC fetch-failure state from an
+  //                              earlier incident, so crawlers are pointed
+  //                              at this fresh path instead.
+  // Both are gitignored (see .gitignore): they're ~2.1MB regenerated
+  // artifacts, and committing them turned every deploy into a ~47k-line
+  // diff for no benefit — they're fully reproducible from KV + static data
+  // at build time. Do not remove either write path without first checking
+  // robots.ts for which URL is currently advertised.
   const out = join(process.cwd(), "public", "sitemap.xml");
   writeFileSync(out, xml);
-  // Identical copy at a fresh URL: GSC's sitemap pipeline can pin a stale
-  // failure state to a URL (this one failed since March even after the
-  // content became a static file, while live URL-inspection passed) — a
-  // never-before-submitted path gets a clean fetch state.
   const out2 = join(process.cwd(), "public", "sitemap-main.xml");
   writeFileSync(out2, xml);
   console.log(`[sitemap] wrote ${out} + sitemap-main.xml: ${urls.length} URLs (${propertySlugs.length} unique properties from ${listings.length} listings)`);
