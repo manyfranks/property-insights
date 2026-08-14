@@ -1,0 +1,351 @@
+/**
+ * db/coverage-profiles.ts
+ *
+ * Persistence for Stage 2 of the insurance path (see
+ * docs/proposals/insurance-distribution-proposal.html, "Stages" + "seam"
+ * sections): the user confirms pre-filled property data, answers ~6
+ * questions only they can answer, consents, and is handed off to a
+ * licensed partner with the profile. The partner is broker of record at
+ * this stage; the stored profile row is the strategic asset (warm pipeline
+ * + conversion proof for the eventual Stage 3 internal-brokerage
+ * submission), distinct from the affiliate click log in partner-clicks.ts.
+ *
+ * Ships stage-gated behind NEXT_PUBLIC_INSURANCE_STAGE reaching "intake" —
+ * see stageAtLeast("intake") in src/config/insurance-stage.ts and the API
+ * route, which 404s below that stage. This mirrors the reasoning in the
+ * updated partner-connect
+ * doc comment: the insurance handoff shares consented user data with a
+ * partner, which the public privacy pages haven't yet been amended to
+ * disclose.
+ *
+ * Validation throws with clear messages (fail loud — a malformed or
+ * unconsented profile must never be silently dropped or half-written). The
+ * API route turns a thrown error into a 400.
+ */
+
+import { randomUUID } from "node:crypto";
+import { dbAvailable, sql } from "@/lib/db";
+import type { AffiliateSource, Country, InsuranceLine } from "@/config/affiliate-vendors";
+
+export type CoverageFieldSource = "known" | "modeled";
+export type CoverageOccupancy =
+  | "owner"
+  | "long_term_rental"
+  | "short_term_rental"
+  | "vacant"
+  | "strata_corp";
+export type ContactPreference = "email" | "phone" | "either";
+
+/** Prefilled snapshot handed to the user for confirmation. Each field group
+ *  carries its own `source` — "known" when it comes from our own listing /
+ *  assessment data, "modeled" when it's an estimate (e.g. RentCast AVM,
+ *  regional-econ fallback) — so the confirmation UI and the partner both
+ *  know which numbers are authoritative vs. inferred. */
+export interface CoverageProfileProperty {
+  identity: {
+    type: string;
+    yearBuilt: number | null;
+    beds: number | null;
+    baths: number | null;
+    sqft: number | null;
+    source: CoverageFieldSource;
+  };
+  value: {
+    estimatedValue: number | null;
+    estimatedRent: number | null;
+    source: CoverageFieldSource;
+  };
+  hazards: {
+    flood: number | null;
+    wildfire: number | null;
+    wind: number | null;
+    source: CoverageFieldSource;
+  };
+}
+
+/** The ~6 questions only the user can answer. */
+export interface CoverageProfileAnswers {
+  occupancy: CoverageOccupancy;
+  unitCount: number;
+  claims5yr: number;
+  coverageExpiry: string | null; // ISO date (YYYY-MM-DD), null if unknown/none
+  roofAge: number | null;
+  contact: {
+    name: string;
+    email: string | null;
+    phone: string | null;
+    preference: ContactPreference;
+  };
+}
+
+export interface CreateCoverageProfileInput {
+  /** Clerk user id, or null when signed out / opted out of sale-share. */
+  userId: string | null;
+  country: Country;
+  region: string;
+  address: string;
+  line: InsuranceLine;
+  /** Raw, not-yet-validated payload — validated by validateCoverageProperty() inside createCoverageProfile(). */
+  property: unknown;
+  /** Raw, not-yet-validated payload — validated by validateCoverageAnswers() inside createCoverageProfile(). */
+  answers: unknown;
+  consent: boolean;
+  consentText: string;
+  source?: AffiliateSource | null;
+}
+
+export interface CoverageProfile {
+  id: string;
+  createdAt: string;
+}
+
+interface CoverageProfileRow {
+  id: string;
+  created_at: string | Date;
+}
+
+const COUNTRIES: Country[] = ["US", "CA"];
+const LINES: InsuranceLine[] = ["homeowner", "landlord", "tenant", "strata", "commercial"];
+const OCCUPANCIES: CoverageOccupancy[] = [
+  "owner",
+  "long_term_rental",
+  "short_term_rental",
+  "vacant",
+  "strata_corp",
+];
+const CONTACT_PREFERENCES: ContactPreference[] = ["email", "phone", "either"];
+const FIELD_SOURCES: CoverageFieldSource[] = ["known", "modeled"];
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Same UUID shape as user-assessments.ts's ASSESSMENT_ID. */
+const COVERAGE_PROFILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isCoverageProfileId(value: unknown): value is string {
+  return typeof value === "string" && COVERAGE_PROFILE_ID.test(value);
+}
+
+function requireString(value: unknown, label: string, maxLen: number): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${label} is required`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > maxLen) {
+    throw new Error(`${label} exceeds maximum length of ${maxLen}`);
+  }
+  return trimmed;
+}
+
+function requireNullableNumber(value: unknown, label: string): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label} must be a number or null`);
+  }
+  return value;
+}
+
+function requireFieldSource(value: unknown, label: string): CoverageFieldSource {
+  if (typeof value !== "string" || !FIELD_SOURCES.includes(value as CoverageFieldSource)) {
+    throw new Error(`${label}.source must be one of: ${FIELD_SOURCES.join(", ")}`);
+  }
+  return value as CoverageFieldSource;
+}
+
+function requireObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} is required`);
+  }
+  return value as Record<string, unknown>;
+}
+
+export function validateCoverageProperty(input: unknown): CoverageProfileProperty {
+  const raw = requireObject(input, "property");
+
+  const identityRaw = requireObject(raw.identity, "property.identity");
+  const identity = {
+    type: requireString(identityRaw.type, "property.identity.type", 40),
+    yearBuilt: requireNullableNumber(identityRaw.yearBuilt, "property.identity.yearBuilt"),
+    beds: requireNullableNumber(identityRaw.beds, "property.identity.beds"),
+    baths: requireNullableNumber(identityRaw.baths, "property.identity.baths"),
+    sqft: requireNullableNumber(identityRaw.sqft, "property.identity.sqft"),
+    source: requireFieldSource(identityRaw.source, "property.identity"),
+  };
+
+  const valueRaw = requireObject(raw.value, "property.value");
+  const value = {
+    estimatedValue: requireNullableNumber(valueRaw.estimatedValue, "property.value.estimatedValue"),
+    estimatedRent: requireNullableNumber(valueRaw.estimatedRent, "property.value.estimatedRent"),
+    source: requireFieldSource(valueRaw.source, "property.value"),
+  };
+
+  const hazardsRaw = requireObject(raw.hazards, "property.hazards");
+  const hazards = {
+    flood: requireNullableNumber(hazardsRaw.flood, "property.hazards.flood"),
+    wildfire: requireNullableNumber(hazardsRaw.wildfire, "property.hazards.wildfire"),
+    wind: requireNullableNumber(hazardsRaw.wind, "property.hazards.wind"),
+    source: requireFieldSource(hazardsRaw.source, "property.hazards"),
+  };
+
+  return { identity, value, hazards };
+}
+
+export function validateCoverageAnswers(input: unknown): CoverageProfileAnswers {
+  const raw = requireObject(input, "answers");
+
+  if (typeof raw.occupancy !== "string" || !OCCUPANCIES.includes(raw.occupancy as CoverageOccupancy)) {
+    throw new Error(`answers.occupancy must be one of: ${OCCUPANCIES.join(", ")}`);
+  }
+  if (
+    typeof raw.unitCount !== "number" ||
+    !Number.isInteger(raw.unitCount) ||
+    raw.unitCount < 0 ||
+    raw.unitCount > 500
+  ) {
+    throw new Error("answers.unitCount must be a non-negative integer");
+  }
+  if (
+    typeof raw.claims5yr !== "number" ||
+    !Number.isInteger(raw.claims5yr) ||
+    raw.claims5yr < 0 ||
+    raw.claims5yr > 50
+  ) {
+    throw new Error("answers.claims5yr must be a non-negative integer");
+  }
+
+  let coverageExpiry: string | null = null;
+  if (raw.coverageExpiry !== null && raw.coverageExpiry !== undefined) {
+    if (typeof raw.coverageExpiry !== "string" || !ISO_DATE_RE.test(raw.coverageExpiry)) {
+      throw new Error("answers.coverageExpiry must be an ISO date (YYYY-MM-DD) or null");
+    }
+    coverageExpiry = raw.coverageExpiry;
+  }
+
+  const roofAge = requireNullableNumber(raw.roofAge, "answers.roofAge");
+  if (roofAge !== null && (roofAge < 0 || roofAge > 200)) {
+    throw new Error("answers.roofAge is out of range");
+  }
+
+  const contactRaw = requireObject(raw.contact, "answers.contact");
+  const name = requireString(contactRaw.name, "answers.contact.name", 120);
+  if (
+    typeof contactRaw.preference !== "string" ||
+    !CONTACT_PREFERENCES.includes(contactRaw.preference as ContactPreference)
+  ) {
+    throw new Error(`answers.contact.preference must be one of: ${CONTACT_PREFERENCES.join(", ")}`);
+  }
+
+  let email: string | null = null;
+  if (contactRaw.email !== null && contactRaw.email !== undefined) {
+    if (
+      typeof contactRaw.email !== "string" ||
+      contactRaw.email.length > 254 ||
+      !EMAIL_RE.test(contactRaw.email)
+    ) {
+      throw new Error("answers.contact.email is invalid");
+    }
+    email = contactRaw.email;
+  }
+
+  let phone: string | null = null;
+  if (contactRaw.phone !== null && contactRaw.phone !== undefined) {
+    if (
+      typeof contactRaw.phone !== "string" ||
+      contactRaw.phone.length > 30 ||
+      contactRaw.phone.replace(/[^0-9]/g, "").length < 7
+    ) {
+      throw new Error("answers.contact.phone is invalid");
+    }
+    phone = contactRaw.phone;
+  }
+
+  if (!email && !phone) {
+    throw new Error("answers.contact requires at least one of email or phone");
+  }
+
+  return {
+    occupancy: raw.occupancy as CoverageOccupancy,
+    unitCount: raw.unitCount,
+    claims5yr: raw.claims5yr,
+    coverageExpiry,
+    roofAge,
+    contact: { name, email, phone, preference: contactRaw.preference as ContactPreference },
+  };
+}
+
+/**
+ * Insert a new coverage profile. Throws on any validation failure —
+ * including `consent !== true`, which the schema's CHECK constraint also
+ * enforces at the data layer as a second line of defense.
+ */
+export async function createCoverageProfile(
+  input: CreateCoverageProfileInput
+): Promise<CoverageProfile> {
+  if (!dbAvailable()) throw new Error("DATABASE_URL not set — cannot persist coverage profile");
+
+  if (!COUNTRIES.includes(input.country)) {
+    throw new Error(`country must be one of: ${COUNTRIES.join(", ")}`);
+  }
+  const region = requireString(input.region, "region", 10).toUpperCase();
+  const address = requireString(input.address, "address", 300);
+  if (!LINES.includes(input.line)) {
+    throw new Error(`line must be one of: ${LINES.join(", ")}`);
+  }
+  const property = validateCoverageProperty(input.property);
+  const answers = validateCoverageAnswers(input.answers);
+  if (input.consent !== true) {
+    throw new Error("consent must be explicitly true");
+  }
+  const consentText = requireString(input.consentText, "consentText", 4000);
+  const source = input.source ? requireString(input.source, "source", 60) : null;
+  const userId = input.userId ? requireString(input.userId, "userId", 200) : null;
+
+  const id = randomUUID();
+  const db = sql();
+  const rows = (await db`
+    INSERT INTO coverage_profiles (
+      id, user_id, country, region, address, line, property, answers,
+      consent, consent_text, consented_at, source
+    ) VALUES (
+      ${id}, ${userId}, ${input.country}, ${region}, ${address}, ${input.line},
+      ${JSON.stringify(property)}, ${JSON.stringify(answers)},
+      ${input.consent}, ${consentText}, NOW(), ${source}
+    )
+    RETURNING id, created_at
+  `) as CoverageProfileRow[];
+
+  const row = rows[0];
+  if (!row) throw new Error("coverage_profiles insert returned no row");
+  return { id: row.id, createdAt: new Date(row.created_at).toISOString() };
+}
+
+/**
+ * Records that a profile was handed off to a licensed partner (registry id
+ * from src/config/affiliate-vendors.ts) — the authoritative reconciliation
+ * record for a coverage-profile handoff (see getAffiliateUrl's doc comment
+ * in src/config/affiliate-vendors.ts for why the click URL's sub_id isn't
+ * itself authoritative).
+ *
+ * First-write-wins: the UPDATE only matches a profile whose vendor_id is
+ * still NULL, so a duplicate or replayed partner-connect click (the POST is
+ * fire-and-forget over a plain `<a>` click, not idempotency-keyed) can't
+ * overwrite an earlier, possibly-different stamp. Returns `false` — not an
+ * error — when the profile doesn't exist, the id is malformed in a way that
+ * still passed isCoverageProfileId (shouldn't happen), or it was already
+ * stamped; callers that only want best-effort click attribution, not to
+ * enforce uniqueness, should treat `false` as a silent no-op.
+ */
+export async function markProfileHandoff(id: string, vendorId: string): Promise<boolean> {
+  if (!dbAvailable()) throw new Error("DATABASE_URL not set — cannot update coverage profile");
+  if (!isCoverageProfileId(id)) throw new Error("Invalid coverage profile id");
+  const vendor = requireString(vendorId, "vendorId", 60);
+
+  const db = sql();
+  const rows = (await db`
+    UPDATE coverage_profiles
+    SET vendor_id = ${vendor}
+    WHERE id = ${id} AND vendor_id IS NULL
+    RETURNING id
+  `) as Array<{ id: string }>;
+  return rows.length === 1;
+}

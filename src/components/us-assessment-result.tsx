@@ -23,6 +23,8 @@ import type {
 import { fmt, pct } from "@/lib/utils";
 import PartnerCta from "@/components/partner-cta";
 import PartnerCtaRow from "@/components/partner-cta-row";
+import InsuranceModule from "@/components/insurance/insurance-module";
+import { lineForGoal } from "@/components/insurance/goal-line-map";
 import ExpandableSection from "@/components/expandable-section";
 import TierBadge from "@/components/tier-badge";
 import { AssessmentJourneyFocus } from "@/components/assessment-journey";
@@ -1158,6 +1160,23 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
         />
       </div>
 
+      {/* Insurance module (Insurance Path Stage 2, Screen 1) */}
+      <div className="mb-6">
+        <InsuranceModule
+          country="US"
+          region={data.state}
+          address={data.address}
+          source="assess-result"
+          mode={audience.mode}
+          surface={audience.surface}
+          listingId={listing.mlsNumber}
+          yearBuilt={listing.yearBuilt}
+          estimatedValue={assessment?.totalValue ?? listing.price}
+          estimatedRent={investorYield?.monthlyRent}
+          initialLine={lineForGoal(activeGoal)}
+        />
+      </div>
+
       <div className="mb-2 pt-4 border-t border-border">
         <div className="text-xs uppercase tracking-widest text-muted mb-3">County Context</div>
         <MarketPanelSection marketPanel={marketPanel} />
@@ -1354,6 +1373,21 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
           surface={audience.surface}
           heading="Act on this analysis"
           city={data.city}
+        />
+      </div>
+
+      {/* Insurance module (Insurance Path Stage 2, Screen 1) */}
+      <div className="mb-6">
+        <InsuranceModule
+          country="US"
+          region={data.state}
+          address={data.address}
+          source="assess-result"
+          mode={audience.mode}
+          surface={audience.surface}
+          estimatedValue={assessment?.totalValue}
+          estimatedRent={rent?.value}
+          initialLine={lineForGoal(activeGoal)}
         />
       </div>
 

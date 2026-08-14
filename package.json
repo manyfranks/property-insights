@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "tsx scripts/generate-sitemap.ts",
+    "prebuild": "tsx scripts/check-insurance-copy.ts && tsx scripts/generate-sitemap.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { buildCityMetadata } from "@/lib/data/city-metadata";
 import { getAllListings } from "@/lib/kv/listings";
+import Link from "next/link";
 import HomeCta from "@/components/home-cta";
 import ProvinceExplorer from "@/components/province-explorer";
 import HomeAddressSearch from "@/components/home-address-search";
@@ -90,6 +91,11 @@ export default async function Home() {
 
         <p className="text-xs text-muted mt-12 text-center">
           Search any address, or request an assessment for any property in Canada or the US.
+          Already own or buying? See how{" "}
+          <Link href="/insurance" className="text-foreground hover:underline">
+            property insurance matching
+          </Link>{" "}
+          works.
         </p>
       </div>
     </main>

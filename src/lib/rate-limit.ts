@@ -4,10 +4,14 @@
  * Uses the same Upstash Redis instance as our KV storage.
  * Keys are prefixed with "rl:" to avoid collisions with listing/event data.
  *
- * Three limiters:
- *   1. apiLimiter     — general per-IP limit for public endpoints (60 req/min)
- *   2. authApiLimiter — per-user limit for authenticated endpoints (30 req/min)
- *   3. assessLimiter  — per-user daily cap for /api/assess (15/day)
+ * Seven limiters:
+ *   1. apiLimiter               — general per-IP limit for public endpoints (60 req/min)
+ *   2. authApiLimiter           — per-user limit for authenticated endpoints (30 req/min)
+ *   3. assessLimiter            — per-user daily cap for /api/assess (15/day)
+ *   4. insuranceLookupLimiter   — per-IP limit for /api/insurance/address-lookup (30 req/min)
+ *   5. insuranceProfileLimiter  — per-IP limit for /api/coverage-profile (5 req/min)
+ *   6. insuranceWaitlistLimiter — per-IP limit for /api/insurance/waitlist (5 req/min)
+ *   7. partnerConnectLimiter    — per-IP limit for /api/partner-connect (20 req/min)
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -37,6 +41,10 @@ function getRedis(): Redis | null {
 let _apiLimiter: Ratelimit | null = null;
 let _authApiLimiter: Ratelimit | null = null;
 let _assessLimiter: Ratelimit | null = null;
+let _insuranceLookupLimiter: Ratelimit | null = null;
+let _insuranceProfileLimiter: Ratelimit | null = null;
+let _insuranceWaitlistLimiter: Ratelimit | null = null;
+let _partnerConnectLimiter: Ratelimit | null = null;
 
 /** 60 requests per 60 seconds, per IP — for public endpoints */
 export function apiLimiter(): Ratelimit | null {
@@ -75,4 +83,77 @@ export function assessLimiter(): Ratelimit | null {
     prefix: "rl:assess",
   });
   return _assessLimiter;
+}
+
+/**
+ * 30 requests per 60 seconds, per IP — for /api/insurance/address-lookup.
+ * The typeahead is debounced 250ms client-side, so 30/min comfortably
+ * covers real typing while throttling brute-force enumeration of the
+ * tracked-listing address set (unauthenticated, 6 results per query).
+ */
+export function insuranceLookupLimiter(): Ratelimit | null {
+  if (_insuranceLookupLimiter) return _insuranceLookupLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _insuranceLookupLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(30, "60 s"),
+    prefix: "rl:ins-lookup",
+  });
+  return _insuranceLookupLimiter;
+}
+
+/**
+ * 5 requests per 60 seconds, per IP — for /api/coverage-profile. Profile
+ * submission is a one-shot action (the wizard posts once at the end), so a
+ * tight cap here mainly deters scripted/anonymous PII-row spam.
+ */
+export function insuranceProfileLimiter(): Ratelimit | null {
+  if (_insuranceProfileLimiter) return _insuranceProfileLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _insuranceProfileLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(5, "60 s"),
+    prefix: "rl:ins-profile",
+  });
+  return _insuranceProfileLimiter;
+}
+
+/**
+ * 5 requests per 60 seconds, per IP — for /api/insurance/waitlist. Same
+ * one-shot-submission reasoning as insuranceProfileLimiter: a visitor joins
+ * a waitlist once, so a tight cap mainly deters scripted email-collection
+ * spam rather than throttling real usage.
+ */
+export function insuranceWaitlistLimiter(): Ratelimit | null {
+  if (_insuranceWaitlistLimiter) return _insuranceWaitlistLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _insuranceWaitlistLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(5, "60 s"),
+    prefix: "rl:ins-waitlist",
+  });
+  return _insuranceWaitlistLimiter;
+}
+
+/**
+ * 20 requests per 60 seconds, per IP — for /api/partner-connect. Looser than
+ * the one-shot-submission limiters above since a single page view can fire
+ * several partner-connect clicks (multiple CTA cards render per surface),
+ * but still tight enough to deter scripted click/attribution spam against an
+ * endpoint that (unlike the others) writes an append-only row per request
+ * with no per-visitor cap of its own.
+ */
+export function partnerConnectLimiter(): Ratelimit | null {
+  if (_partnerConnectLimiter) return _partnerConnectLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _partnerConnectLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(20, "60 s"),
+    prefix: "rl:partner-connect",
+  });
+  return _partnerConnectLimiter;
 }
