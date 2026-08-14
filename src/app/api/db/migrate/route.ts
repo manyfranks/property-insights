@@ -208,5 +208,48 @@ export async function POST(request: Request) {
   await db`CREATE INDEX IF NOT EXISTS idx_insurance_waitlist_region ON insurance_waitlist (region)`;
   await db`CREATE INDEX IF NOT EXISTS idx_insurance_waitlist_email ON insurance_waitlist (email)`;
 
+  // --- Anonymous analytics event spine (W1-SPINE) ---
+  // Additive and standalone — deliberately NOT a replacement for
+  // user_events/user_profiles above, and neither of those tables nor
+  // /api/track is touched by this change. This table exists because
+  // /api/track requires a Clerk session and therefore can never see
+  // signed-out traffic; analytics_events captures anonymous behavioral
+  // events keyed by anon_id/session_id (two httpOnly cookies minted by
+  // src/proxy.ts, only for visitors who have not opted out).
+  //
+  // user_id is nullable and populated only when the visitor is signed in
+  // at event time; earlier anonymous rows for the same anon_id can be
+  // backfilled with a user_id after the fact via stitchUserId() (see
+  // src/lib/db/analytics-events.ts) once they sign in, so pre-signup
+  // activity isn't permanently orphaned from the account.
+  //
+  // Privacy: no IP address or user agent column exists here by design (see
+  // the house pattern in src/lib/privacy.ts). referrer_host stores only the
+  // hostname of the referring page (e.g. "www.google.com"), never the full
+  // referrer URL, since a full URL can carry query strings that leak
+  // search terms or other PII from the referring site.
+  await db`
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id            BIGSERIAL PRIMARY KEY,
+      anon_id       UUID        NOT NULL,
+      session_id    UUID        NOT NULL,
+      user_id       TEXT,
+      event_type    TEXT        NOT NULL,
+      data          JSONB       NOT NULL DEFAULT '{}',
+      path          TEXT,
+      referrer_host TEXT,
+      utm_source    TEXT,
+      utm_medium    TEXT,
+      utm_campaign  TEXT,
+      country       TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await db`CREATE INDEX IF NOT EXISTS idx_analytics_events_type_created ON analytics_events (event_type, created_at DESC)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_analytics_events_session ON analytics_events (session_id, created_at)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_analytics_events_anon ON analytics_events (anon_id, created_at)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_analytics_events_user ON analytics_events (user_id, created_at) WHERE user_id IS NOT NULL`;
+
   return NextResponse.json({ ok: true, message: "Migration complete" });
 }

@@ -4,7 +4,7 @@
  * Uses the same Upstash Redis instance as our KV storage.
  * Keys are prefixed with "rl:" to avoid collisions with listing/event data.
  *
- * Seven limiters:
+ * Eight limiters:
  *   1. apiLimiter               — general per-IP limit for public endpoints (60 req/min)
  *   2. authApiLimiter           — per-user limit for authenticated endpoints (30 req/min)
  *   3. assessLimiter            — per-user daily cap for /api/assess (15/day)
@@ -12,6 +12,7 @@
  *   5. insuranceProfileLimiter  — per-IP limit for /api/coverage-profile (5 req/min)
  *   6. insuranceWaitlistLimiter — per-IP limit for /api/insurance/waitlist (5 req/min)
  *   7. partnerConnectLimiter    — per-IP limit for /api/partner-connect (20 req/min)
+ *   8. signalLimiter            — per-IP limit for /api/signal (60 req/min)
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -45,6 +46,7 @@ let _insuranceLookupLimiter: Ratelimit | null = null;
 let _insuranceProfileLimiter: Ratelimit | null = null;
 let _insuranceWaitlistLimiter: Ratelimit | null = null;
 let _partnerConnectLimiter: Ratelimit | null = null;
+let _signalLimiter: Ratelimit | null = null;
 
 /** 60 requests per 60 seconds, per IP — for public endpoints */
 export function apiLimiter(): Ratelimit | null {
@@ -156,4 +158,29 @@ export function partnerConnectLimiter(): Ratelimit | null {
     prefix: "rl:partner-connect",
   });
   return _partnerConnectLimiter;
+}
+
+/**
+ * 60 requests per 60 seconds, per IP — for /api/signal, the anonymous
+ * event-spine ingest route. Given its own prefix (rather than reusing
+ * apiLimiter) so a burst of anonymous behavioral-event batches never
+ * competes with, or is throttled by, unrelated public endpoints
+ * (autocomplete/search/discover) sharing the generic bucket. The limit
+ * itself is generous: a single visitor's client-side queue
+ * (src/lib/signal.ts) batches up to 10 events per request and flushes at
+ * most every 5s or on tab-hide, so legitimate traffic sits well under this
+ * even with several tabs open; it exists to deter scripted event-flood
+ * abuse of an endpoint that (like partner_clicks) accepts anonymous,
+ * unauthenticated writes.
+ */
+export function signalLimiter(): Ratelimit | null {
+  if (_signalLimiter) return _signalLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _signalLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(60, "60 s"),
+    prefix: "rl:signal",
+  });
+  return _signalLimiter;
 }
