@@ -43,6 +43,25 @@ export const metadata: Metadata = {
 const VALID_COUNTRIES: Country[] = ["US", "CA"];
 const VALID_LINES: InsuranceLine[] = ["homeowner", "landlord", "tenant", "strata", "commercial"];
 
+// Used only to classify a matched listing's province as CA/US for the
+// jurisdiction gate below (see effectiveCountry) — mirrors the set in
+// src/app/api/insurance/address-lookup/route.ts.
+const CA_PROVINCE_CODES = new Set([
+  "BC",
+  "AB",
+  "SK",
+  "MB",
+  "ON",
+  "QC",
+  "NB",
+  "NS",
+  "PE",
+  "NL",
+  "YT",
+  "NT",
+  "NU",
+]);
+
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -72,15 +91,6 @@ export default async function CoverageProfilePage({
     notFound();
   }
 
-  // Jurisdiction gates — a visible notice, not a silent empty flow or a
-  // bare 404 (see CoverageExcludedNotice's doc comment).
-  if (INSURANCE_STATE_EXCLUSIONS[country].includes(region)) {
-    return <CoverageExcludedNotice region={region} />;
-  }
-  if ((INSURANCE_LINE_EXCLUSIONS[country][region] ?? []).includes(line)) {
-    return <CoverageExcludedNotice region={region} />;
-  }
-
   // listingId is treated as a listing slug (this app's addressing scheme
   // everywhere else, e.g. /property/[slug]) — a missing or unresolved
   // listing degrades to query-params-only prefill rather than failing the
@@ -94,9 +104,30 @@ export default async function CoverageProfilePage({
   const lookupSlug = listingId ?? slugify(address);
   const listing = lookupSlug ? await getListingBySlug(lookupSlug).catch(() => null) : null;
 
+  // Jurisdiction gates — a visible notice, not a silent empty flow or a
+  // bare 404 (see CoverageExcludedNotice's doc comment). Country/region
+  // come from client-supplied query params, which the address-first
+  // landing page and its typeahead can leave out of sync with a matched
+  // listing (e.g. picking a suggestion, then editing the region via
+  // "Change", or free-typing an address that exact-matches a tracked
+  // listing without ever touching the region field — both leave `region`
+  // holding something other than the property's real province). When a
+  // listing is matched, its own province is ground truth for the gate, so
+  // an excluded-region property can never slip through on a stale/mismatched
+  // region param.
+  const effectiveRegion = listing ? listing.province.toUpperCase() : region;
+  const effectiveCountry = listing ? (CA_PROVINCE_CODES.has(effectiveRegion) ? "CA" : "US") : country;
+
+  if (INSURANCE_STATE_EXCLUSIONS[effectiveCountry].includes(effectiveRegion)) {
+    return <CoverageExcludedNotice region={effectiveRegion} />;
+  }
+  if ((INSURANCE_LINE_EXCLUSIONS[effectiveCountry][effectiveRegion] ?? []).includes(line)) {
+    return <CoverageExcludedNotice region={effectiveRegion} />;
+  }
+
   const prefill = buildCoveragePrefill({
-    country,
-    region,
+    country: effectiveCountry,
+    region: effectiveRegion,
     line,
     address,
     listingSlug: listing ? lookupSlug : listingId,

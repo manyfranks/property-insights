@@ -84,6 +84,10 @@ export default function InsuranceLandingForm({
   const [lookupNote, setLookupNote] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped per fired lookup request so a slower, older response can't
+  // overwrite a newer one that already landed (no AbortController here —
+  // this is a cheap sequence guard instead).
+  const requestSeqRef = useRef(0);
 
   // Adopt detected geo until the visitor touches the region controls.
   useEffect(() => {
@@ -113,8 +117,10 @@ export default function InsuranceLandingForm({
     }
 
     debounceRef.current = setTimeout(async () => {
+      const seq = ++requestSeqRef.current;
       try {
         const res = await fetch(`/api/insurance/address-lookup?q=${encodeURIComponent(q)}`);
+        if (seq !== requestSeqRef.current) return; // a newer request already resolved
         if (!res.ok) {
           setLookupNote("Address suggestions are unavailable right now — you can still type the full address.");
           setSuggestions([]);
@@ -125,6 +131,7 @@ export default function InsuranceLandingForm({
         setSuggestions(body.results ?? []);
         setDropdownOpen((body.results ?? []).length > 0);
       } catch {
+        if (seq !== requestSeqRef.current) return;
         setLookupNote("Address suggestions are unavailable right now — you can still type the full address.");
         setSuggestions([]);
       }

@@ -415,8 +415,16 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
               <ConfirmRow label="Address" value={prefill.address} source="known" />
               {!editing ? (
                 <>
-                  {!missing.type && <ConfirmRow label="Property type" value={typeDraft} source="known" />}
-                  {!missing.yearBuilt && <ConfirmRow label="Year built" value={yearBuiltDraft} source="known" />}
+                  {!missing.type && (
+                    <ConfirmRow label="Property type" value={typeDraft.trim() || "— not on file"} source="known" />
+                  )}
+                  {!missing.yearBuilt && (
+                    <ConfirmRow
+                      label="Year built"
+                      value={parseNumericField(yearBuiltDraft) !== null ? yearBuiltDraft : "— not on file"}
+                      source="known"
+                    />
+                  )}
                   {sizeOnFile && (
                     <ConfirmRow
                       label="Size"
