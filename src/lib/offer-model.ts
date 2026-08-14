@@ -1,5 +1,20 @@
-import { Listing, Assessment, OfferResult } from "./types";
+import { Listing, Assessment, OfferResult, type PrecomputedOffer } from "./types";
 import { getSignals } from "./signals";
+
+/**
+ * Old cached listings do not persist an explicit anchor type. A real
+ * assessment-anchored offer always has a positive list/assessment ratio;
+ * language offers intentionally persist ratio=0. Do not relabel the latter as
+ * assessment-anchored merely because a separate assessment record exists.
+ */
+export function precomputedOfferAnchorType(
+  pre: Pick<PrecomputedOffer, "ratio">,
+  assessment: Assessment | null
+): OfferResult["anchorType"] {
+  return assessment?.found && Number.isFinite(pre.ratio) && pre.ratio > 0
+    ? "assessment"
+    : "language";
+}
 
 export function offerModel(listing: Listing, assessment: Assessment): OfferResult | null {
   if (!assessment?.found) return null;

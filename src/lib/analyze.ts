@@ -1,6 +1,6 @@
 import { Listing, Assessment, AnalysisResult, OfferResult, ListingHistory } from "./types";
 import { scoreV2 } from "./scoring";
-import { offerModel, offerModelLanguage } from "./offer-model";
+import { offerModel, offerModelLanguage, precomputedOfferAnchorType } from "./offer-model";
 import { getSignals } from "./signals";
 import { lookupAssessmentSync, lookupAssessment } from "./assessment";
 import { buildDetailUrl } from "./zoocasa";
@@ -25,7 +25,7 @@ function preOfferToResult(
   return {
     anchor: pre.anchor,
     anchorTag: pre.anchor_tag,
-    anchorType: assessment?.found ? "assessment" : "language",
+    anchorType: precomputedOfferAnchorType(pre, assessment),
     listToAssessedRatio: pre.ratio,
     domAdjusted: pre.dom_adjusted,
     domMultiplier: pre.dom_mult,

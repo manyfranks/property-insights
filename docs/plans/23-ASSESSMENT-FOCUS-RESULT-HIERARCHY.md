@@ -63,3 +63,21 @@ data-provider feature._
 - [x] Full property-intelligence, pipeline, TypeScript, lint, and production
   build checks pass.
 - [ ] Production replay passes after deployment.
+
+## Production replay — 2026-08-14
+
+The hierarchy deployed, but the first Canadian rental replay exposed three
+remaining acceptance defects:
+
+- the nested Canada rental module repeated the property address;
+- focus-panel padding did not align with the result cards; and
+- the assessment-origin page served a stale ten-minute listing snapshot that
+  displayed `$969,000` offer / `$620,000` assessment / `0.00x`, while the
+  current stored record was `$815,000` / `$800,000` / `1.30x`.
+
+The correction removes the nested identity, aligns the collapsed/expanded
+focus content to the same result gutter, bypasses the KV read cache only for
+assessment-origin results, and refuses to relabel a cached language offer as
+assessment-anchored merely because a separate assessment exists. Discover
+retains normal caching. Production acceptance remains pending until this
+correction deploys.

@@ -20,7 +20,6 @@ function percent(value: number): string {
 }
 
 export interface CanadaRentalScreenProps {
-  address: string;
   city: string;
   province: string;
   propertySlug: string;
@@ -37,7 +36,6 @@ export interface CanadaRentalScreenProps {
 }
 
 export default function CanadaRentalScreen({
-  address,
   city,
   province,
   propertySlug,
@@ -60,11 +58,6 @@ export default function CanadaRentalScreen({
 
   return (
     <div data-p5-canada-rental-screen="limited">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">{address}</h1>
-        <p className="text-sm text-muted mt-0.5">{city}, {province}</p>
-      </div>
-
       <section className="border border-border rounded-xl p-5 sm:p-6 mb-6 bg-white">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
           <div>

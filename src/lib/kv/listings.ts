@@ -49,14 +49,16 @@ function kvHeaders(): HeadersInit {
   };
 }
 
-async function kvGet(key: string): Promise<unknown> {
+async function kvGet(key: string, opts?: { fresh?: boolean }): Promise<unknown> {
   const url = kvUrl();
   if (!url) return null;
 
   const res = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     method: "GET",
     headers: kvHeaders(),
-    next: { revalidate: 300 }, // Cache for 5 min in Next.js
+    ...(opts?.fresh
+      ? { cache: "no-store" as const }
+      : { next: { revalidate: 300 } }), // Discover can tolerate 5 min; assessment-result handoffs cannot.
   });
 
   if (!res.ok) return null;
@@ -339,7 +341,10 @@ export async function getAllListings(opts?: { keyPrefix?: string }): Promise<Lis
 /**
  * Get a single listing by slug. See getAllListings re: `opts.keyPrefix`.
  */
-export async function getListingBySlug(slug: string, opts?: { keyPrefix?: string }): Promise<Listing | null> {
+export async function getListingBySlug(
+  slug: string,
+  opts?: { keyPrefix?: string; fresh?: boolean }
+): Promise<Listing | null> {
   const keyPrefix = opts?.keyPrefix ?? "listings";
 
   if (!kvAvailable()) {
@@ -348,7 +353,7 @@ export async function getListingBySlug(slug: string, opts?: { keyPrefix?: string
   }
 
   try {
-    const raw = await kvGet(`${keyPrefix}:by-slug:${slug}`);
+    const raw = await kvGet(`${keyPrefix}:by-slug:${slug}`, { fresh: opts?.fresh });
     if (raw && typeof raw === "string") {
       return JSON.parse(raw) as Listing;
     }
@@ -621,7 +626,10 @@ export async function getListingsMeta(): Promise<{
       return { ...JSON.parse(raw), source: "kv" };
     }
     if (raw && typeof raw === "object") {
-      return { ...(raw as any), source: "kv" };
+      return {
+        ...(raw as { count: number; cities: string[]; updatedAt: string }),
+        source: "kv",
+      };
     }
   } catch {
     // Fall through

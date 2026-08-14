@@ -457,7 +457,7 @@ export function AssessmentJourneyFocus() {
       data-p4-goal-capability={journey.effectiveStatus.availability}
     >
       <details ref={detailsRef} className="group border border-border rounded-xl bg-white">
-        <summary className="cursor-pointer list-none px-4 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50 rounded-xl">
+        <summary className="cursor-pointer list-none px-5 sm:px-6 py-4 flex items-center justify-between gap-4 hover:bg-gray-50 rounded-xl">
           <span>
             <span className="block text-xs uppercase tracking-widest text-muted">Assessment focus</span>
             <span className="block text-sm font-medium text-foreground mt-0.5">
@@ -472,7 +472,7 @@ export function AssessmentJourneyFocus() {
             <span aria-hidden="true" className="text-lg text-muted transition-transform group-open:rotate-45">+</span>
           </span>
         </summary>
-        <div className="border-t border-border p-4">
+        <div className="border-t border-border p-5 sm:p-6">
           <p className="text-xs text-muted mb-3">
             Optional · changes this assessment view only. It does not label your profile or change the property facts.
           </p>

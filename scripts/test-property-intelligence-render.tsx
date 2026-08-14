@@ -94,7 +94,6 @@ test("excluded class (vacant land): AssessmentJourneyPanel withholds the calcula
       goalContent={{
         rental_investment: (
           <CanadaRentalScreen
-            address="10 Oak St"
             city="Victoria"
             province="BC"
             propertySlug="10-oak-st"
@@ -120,7 +119,6 @@ test("excluded class (vacant land): AssessmentJourneyPanel withholds the calcula
 test("clean residential without CMHC: CanadaRentalScreen renders with the no-benchmark copy", () => {
   const markup = renderToStaticMarkup(
     <CanadaRentalScreen
-      address="402-123 Main St"
       city="Victoria"
       province="BC"
       propertySlug="402-123-main-st"
@@ -133,6 +131,7 @@ test("clean residential without CMHC: CanadaRentalScreen renders with the no-ben
   );
   assert.match(markup, /No CMHC benchmark is mapped for this city yet/);
   assert.match(markup, /id="canada-rent-scenario"/, "the rent-scenario input must still render for a non-excluded class");
+  assert.doesNotMatch(markup, /<h1/, "the nested rental module must not repeat the result-level property identity");
 });
 
 test("supported result renders address and primary offer before a collapsed focus control", () => {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import type { PropertyCapabilities } from "../src/lib/property-intelligence/capabilities";
+import { precomputedOfferAnchorType } from "../src/lib/offer-model";
 import {
   assessmentAudience,
   buildRentalScreenModel,
@@ -188,6 +189,19 @@ const cases: Array<[string, () => void]> = [
     });
     assert.equal(monthlyRentForGrossYield(1_000_000, 0.06), 5_000);
     assert.equal(buildUserRentScenario(1_000_000, 0), null);
+  }],
+  ["a cached language offer cannot be relabeled as assessment-anchored", () => {
+    const assessment = {
+      found: true,
+      totalValue: 620_000,
+      landValue: 0,
+      buildingValue: 0,
+      assessmentYear: "2026",
+      source: "government" as const,
+    };
+    assert.equal(precomputedOfferAnchorType({ ratio: 0 }, assessment), "language");
+    assert.equal(precomputedOfferAnchorType({ ratio: 1.68 }, assessment), "assessment");
+    assert.equal(precomputedOfferAnchorType({ ratio: Number.NaN }, assessment), "language");
   }],
 ];
 

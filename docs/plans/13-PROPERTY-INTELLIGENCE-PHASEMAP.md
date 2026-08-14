@@ -376,6 +376,7 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 - Acceptance failure (2026-08-14): production records `2496-rosstown-rd` and `1827-main-st` both contain high-confidence Zoocasa `Land` evidence and deterministic `listingScope: parcel`, but `parcelUse` remains `unknown`. `residentialExclusion()` reads `parcelUse`, not the resolved listing-scope land decision, so rental/offer/insurance capabilities report `missing_field` or `available` instead of `provider_exclusion`. Both pages consequently present the four-goal handoff and residential partner CTAs; `1827-main-st` also renders unsupported seller-motivation narrative. P5 acceptance is paused pending `22-CA-LAND-LISTING-CONTAINMENT-SPRINT.md`.
 - Containment implementation (2026-08-14): deterministic/high-confidence `listingScope: parcel` now excludes residential valuation, rent, offer, gross-yield, and insurance capabilities without promoting listing evidence into `parcelUse`. A read-time reconciliation contains pre-fix persisted envelopes. Property pages use a collapsed focus control below the primary result, withhold incompatible partner actions, and replace land offer/motivation output with evidence-scoped land price context. Local browser replay against both stored records passed; production replay remains the release gate.
 - Result-hierarchy correction (2026-08-14): production replay of `2820-cosgrove-cres` showed that Sprint 22 moved the base-property handoff but not the journey result wrapper. Explicit handoff goals now bypass the redundant chooser, and CA plus all US result variants render one collapsed focus switch after the address and primary offer/value surface. See `23-ASSESSMENT-FOCUS-RESULT-HIERARCHY.md`.
+- Production cache/layout correction (2026-08-14): the first deployed Cosgrove rental replay proved the hierarchy but exposed a duplicate nested address and a stale, internally inconsistent cached offer/assessment snapshot. Assessment-origin property reads now bypass the five-minute KV fetch cache, cached language offers cannot render an assessment ratio, and the result identity renders once. US provider-backed live acceptance is deferred until the monthly credit reset; no US call is required for this correction.
 - Contract fixtures: `scripts/test-property-intelligence-p5.ts` covers explicit-goal routing, supported address-level output, regional-only degradation, capability withholding, legacy composition parity, and zero provider calls.
 - Commit/PR: _TBD_
 - Production examples: _TBD_
@@ -549,14 +550,16 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 
 ## Immediate next implementation slice
 
-Deploy and accept **Sprint 23: assessment-focus result hierarchy** before expanding the asset matrix:
+Deploy and accept the **Sprint 23 assessment-focus cache/layout correction**, then begin **Sprint 24 operating scenarios**:
 
 1. Deploy the focus-hierarchy correction.
 2. Replay the exact `2820-cosgrove-cres` buy-home result and its rental switch.
 3. Confirm the property handoff starts lookup without a second goal chooser.
-4. Spot-check one US listed result, one US off-market/fallback result, and one
-   unavailable land goal for a single focus control and the fixed result order.
-5. Resume the remaining curated asset matrix only after those checks pass.
-6. Continue P5 with user-supplied operating assumptions and saved
-   per-assessment scenarios; keep occupancy personalization and commercial
-   financial claims out of scope.
+4. Begin the Canada/offline Sprint 24 math and composition fixtures without
+   provider calls.
+5. After US credits reset, spot-check one US listed result and one US
+   off-market/fallback result, then integrate the shared operating scenario.
+6. Add owner-scoped assumption persistence only through an explicit additive
+   schema/privacy slice; do not hide it inside the calculator UI patch.
+7. Resume the remaining curated asset matrix after the cross-geo checks pass;
+   keep occupancy personalization and commercial financial claims out of scope.

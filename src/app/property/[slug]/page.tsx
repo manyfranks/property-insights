@@ -330,11 +330,14 @@ export default async function PropertyPage({
 }) {
   const { slug } = await params;
   const query = await searchParams;
-  const listing = await getListingBySlug(slug);
-  if (!listing) notFound();
-
   const queryValue = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
   const assessmentOrigin = queryValue(query.assessmentOrigin) === "1";
+  // Assessment handoffs may have just refreshed this shared listing. Bypass
+  // the five-minute KV fetch cache so the result cannot combine a stale offer
+  // snapshot with a newly selected journey. Discover pages retain normal ISR.
+  const listing = await getListingBySlug(slug, { fresh: assessmentOrigin });
+  if (!listing) notFound();
+
   const journeyEnabled = assessmentOrigin && queryValue(query.journeys) === "1";
   const requestedAssessmentId = queryValue(query.assessmentId);
   const { userId } = requestedAssessmentId ? await auth() : { userId: null };
@@ -551,7 +554,6 @@ export default async function PropertyPage({
         goalContent={{
           rental_investment: (
             <CanadaRentalScreen
-              address={listing.address}
               city={listing.city}
               province={listing.province}
               propertySlug={slugify(listing.address)}
