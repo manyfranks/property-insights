@@ -11,6 +11,11 @@ import {
 } from "../src/lib/property-intelligence/investor-journey";
 import { assessmentJourneyHref } from "../src/lib/property-intelligence/journey";
 import type { AssessmentSubject } from "../src/lib/property-intelligence/subject";
+import {
+  buildFinancingScenario,
+  buildOperatingScenario,
+  monthlyMortgagePayment,
+} from "../src/lib/property-intelligence/operating-scenario";
 
 let providerCalls = 0;
 globalThis.fetch = async () => {
@@ -202,6 +207,85 @@ const cases: Array<[string, () => void]> = [
     assert.equal(precomputedOfferAnchorType({ ratio: 0 }, assessment), "language");
     assert.equal(precomputedOfferAnchorType({ ratio: 1.68 }, assessment), "assessment");
     assert.equal(precomputedOfferAnchorType({ ratio: Number.NaN }, assessment), "language");
+  }],
+  ["operating math requires explicit costs while allowing zero", () => {
+    const complete = buildOperatingScenario({
+      purchasePrice: 1_000_000,
+      monthlyRent: 6_000,
+      vacancyRatePct: 5,
+      monthlyPropertyTaxes: 500,
+      monthlyInsurance: 150,
+      monthlyMaintenance: 300,
+      monthlyManagement: 400,
+      monthlyUtilities: 0,
+      monthlyOtherCosts: 50,
+    });
+    assert.ok(complete);
+    assert.equal(complete.annualScheduledRent, 72_000);
+    assert.equal(complete.annualVacancyLoss, 3_600);
+    assert.equal(complete.annualOperatingExpenses, 16_800);
+    assert.equal(complete.netOperatingIncome, 51_600);
+    assert.equal(complete.capRatePct, 0.0516);
+
+    assert.equal(buildOperatingScenario({
+      purchasePrice: 1_000_000,
+      monthlyRent: 6_000,
+      vacancyRatePct: 0,
+      monthlyPropertyTaxes: 0,
+      monthlyInsurance: 0,
+      monthlyMaintenance: 0,
+      monthlyManagement: 0,
+      monthlyUtilities: 0,
+      monthlyOtherCosts: 0,
+    })?.netOperatingIncome, 72_000);
+  }],
+  ["blank or invalid operating assumptions withhold NOI and cap rate", () => {
+    const base = {
+      purchasePrice: 1_000_000,
+      monthlyRent: 6_000,
+      vacancyRatePct: 5,
+      monthlyPropertyTaxes: 500,
+      monthlyInsurance: 150,
+      monthlyMaintenance: 300,
+      monthlyManagement: 400,
+      monthlyUtilities: 0,
+      monthlyOtherCosts: 50,
+    };
+    assert.equal(buildOperatingScenario({ ...base, monthlyInsurance: null }), null);
+    assert.equal(buildOperatingScenario({ ...base, vacancyRatePct: 101 }), null);
+    assert.equal(buildOperatingScenario({ ...base, monthlyMaintenance: -1 }), null);
+  }],
+  ["financing math handles zero interest and withholds incomplete inputs", () => {
+    assert.equal(monthlyMortgagePayment(120_000, 0, 10), 1_000);
+    assert.equal(monthlyMortgagePayment(120_000, -1, 10), null);
+
+    const operating = buildOperatingScenario({
+      purchasePrice: 1_000_000,
+      monthlyRent: 6_000,
+      vacancyRatePct: 5,
+      monthlyPropertyTaxes: 500,
+      monthlyInsurance: 150,
+      monthlyMaintenance: 300,
+      monthlyManagement: 400,
+      monthlyUtilities: 0,
+      monthlyOtherCosts: 50,
+    });
+    assert.ok(operating);
+    const financed = buildFinancingScenario(1_000_000, operating, {
+      downPaymentPct: 20,
+      annualInterestRatePct: 5,
+      amortizationYears: 25,
+    });
+    assert.ok(financed);
+    assert.equal(financed.downPayment, 200_000);
+    assert.equal(financed.loanAmount, 800_000);
+    assert.ok(Math.abs(financed.monthlyDebtService - 4_676.72) < 0.01);
+    assert.ok(Math.abs(financed.annualCashFlow - -4_520.64) < 0.1);
+    assert.equal(buildFinancingScenario(1_000_000, operating, {
+      downPaymentPct: 20,
+      annualInterestRatePct: null,
+      amortizationYears: 25,
+    }), null);
   }],
 ];
 

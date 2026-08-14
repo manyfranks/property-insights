@@ -13,6 +13,10 @@ supplemental expansion.
 
 ## Slice A — shared math and Canadian composition
 
+**Implemented locally 2026-08-14; desktop browser acceptance passed.** The
+surface stores inputs only in component state and makes no provider or
+persistence call.
+
 - Add a country-neutral operating-scenario contract for user-supplied vacancy,
   maintenance, management, taxes, insurance, utilities, and other costs.
 - Calculate NOI and cap rate only after every required operating input is
@@ -45,10 +49,23 @@ supplemental expansion.
 
 ## Exit gate
 
-- [ ] Pure math fixtures cover blank vs zero, invalid rates, NOI/cap rate,
+- [x] Pure math fixtures cover blank vs zero, invalid rates, NOI/cap rate,
   mortgage payment, and cash flow with zero provider calls.
 - [ ] Canadian desktop/mobile layout passes with and without CMHC context.
 - [ ] Owner-scoped persistence migration and privacy tests pass.
 - [ ] US listed/off-market/fallback composition passes after credits reset.
-- [ ] No output labels a user assumption or regional benchmark as a property
+- [x] No output labels a user assumption or regional benchmark as a property
   fact, cash-flow guarantee, or cap-rate projection with missing costs.
+
+### Verification evidence
+
+- P5: 14/14, zero provider calls.
+- Render-shaped suite: 4/4; operating scenario is nested and collapsed.
+- Local Cosgrove replay: one property identity, current `$815,000` offer /
+  `$800,000` assessment / `1.30x` ratio; operating outputs remain withheld
+  until rent plus all seven expense inputs are explicit.
+- Completed local example: `$4,500` rent, 5% vacancy, and explicit monthly
+  costs produced `$37,500` scenario NOI and 3.61% cap rate. Adding complete
+  financing inputs produced separately labeled debt service and cash flow.
+- Remaining Slice A acceptance: narrow/mobile viewport and a city with mapped
+  CMHC context.

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import PartnerCta from "@/components/partner-cta";
+import RentalOperatingScenario from "@/components/rental-operating-scenario";
 import {
   buildUserRentScenario,
   monthlyRentForGrossYield,
@@ -158,9 +159,15 @@ export default function CanadaRentalScreen({
           </div>
         </div>
 
+        <RentalOperatingScenario
+          purchasePrice={listPrice}
+          monthlyRent={scenario ? monthlyRent : null}
+          currency="CAD"
+        />
+
         <p className="text-xs text-muted/80">
-          Gross screening only. Financing, vacancy, maintenance, management, utilities, insurance, taxes, and other
-          operating costs are not deducted. This is not a cash-flow or cap-rate projection.
+          The gross screen above does not deduct operating costs or financing. Expand the optional scenario to test
+          your own inputs; its outputs remain assumptions, not property facts or guarantees.
         </p>
       </section>
 

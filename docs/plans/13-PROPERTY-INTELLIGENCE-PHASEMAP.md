@@ -550,16 +550,14 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 
 ## Immediate next implementation slice
 
-Deploy and accept the **Sprint 23 assessment-focus cache/layout correction**, then begin **Sprint 24 operating scenarios**:
+Sprint 23 is deployed. Sprint 24 Slice A is implemented locally with pure-math
+and desktop-browser evidence; finish its cross-viewport gate, then continue:
 
-1. Deploy the focus-hierarchy correction.
-2. Replay the exact `2820-cosgrove-cres` buy-home result and its rental switch.
-3. Confirm the property handoff starts lookup without a second goal chooser.
-4. Begin the Canada/offline Sprint 24 math and composition fixtures without
-   provider calls.
-5. After US credits reset, spot-check one US listed result and one US
+1. Verify the Canadian operating scenario at a narrow/mobile viewport and on
+   one city with mapped CMHC context.
+2. After US credits reset, spot-check one US listed result and one US
    off-market/fallback result, then integrate the shared operating scenario.
-6. Add owner-scoped assumption persistence only through an explicit additive
+3. Add owner-scoped assumption persistence only through an explicit additive
    schema/privacy slice; do not hide it inside the calculator UI patch.
-7. Resume the remaining curated asset matrix after the cross-geo checks pass;
+4. Resume the remaining curated asset matrix after the cross-geo checks pass;
    keep occupancy personalization and commercial financial claims out of scope.

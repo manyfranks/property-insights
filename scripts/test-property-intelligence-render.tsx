@@ -131,6 +131,8 @@ test("clean residential without CMHC: CanadaRentalScreen renders with the no-ben
   );
   assert.match(markup, /No CMHC benchmark is mapped for this city yet/);
   assert.match(markup, /id="canada-rent-scenario"/, "the rent-scenario input must still render for a non-excluded class");
+  assert.match(markup, /data-p5-operating-scenario="collapsed"/, "the operating scenario must remain supplemental and collapsed");
+  assert.match(markup, /Blank means unknown, not zero/, "missing expenses must never be silently zero-filled");
   assert.doesNotMatch(markup, /<h1/, "the nested rental module must not repeat the result-level property identity");
 });
 
