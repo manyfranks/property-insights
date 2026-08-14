@@ -195,6 +195,24 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
     prefill.value.estimatedRent !== null ? String(prefill.value.estimatedRent) : ""
   );
 
+  // Fields absent from the prefill render as open inputs immediately — the
+  // visitor shouldn't have to find "Edit a detail" before they can supply
+  // what we never had. On-file fields stay confirm rows behind the toggle.
+  // Snapshot from prefill (stable per mount), not drafts, so a field the
+  // user fills in doesn't jump between sections mid-edit.
+  const missing = {
+    type: prefill.identity.type === null,
+    yearBuilt: prefill.identity.yearBuilt === null,
+    beds: prefill.identity.beds === null,
+    baths: prefill.identity.baths === null,
+    sqft: prefill.identity.sqft === null,
+    value: prefill.value.estimatedValue === null,
+    rent: prefill.value.estimatedRent === null,
+  };
+  const missingAny = Object.values(missing).some(Boolean);
+  const anyOnFile = Object.values(missing).some((m) => !m);
+  const sizeOnFile = !missing.beds || !missing.baths || !missing.sqft;
+
   // Step 2 — coverage line
   const [line, setLine] = useState<InsuranceLine>(prefill.line);
 
@@ -384,67 +402,120 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
         <h1 className="text-2xl sm:text-[26px] font-semibold tracking-tight text-foreground mb-1.5 text-wrap-balance">
           {STEP_META[step].title}
         </h1>
-        <p className="text-sm text-muted mb-5 max-w-md">{STEP_META[step].sub}</p>
+        <p className="text-sm text-muted mb-5 max-w-md">
+          {step === 0 && missingAny
+            ? "We filled in what we know and left the rest blank — add what you can, it all helps the broker."
+            : STEP_META[step].sub}
+        </p>
 
         {step === 0 && (
           <div>
+            {/* On-file details: confirm rows, editable via the toggle. */}
             <div className="rounded-xl border border-border bg-white px-4 sm:px-5">
               <ConfirmRow label="Address" value={prefill.address} source="known" />
               {!editing ? (
                 <>
-                  <ConfirmRow label="Property type" value={typeDraft || "— not on file"} source="known" />
-                  <ConfirmRow
-                    label="Year built"
-                    value={parseNumericField(yearBuiltDraft) !== null ? yearBuiltDraft : "— not on file"}
-                    source="known"
-                  />
-                  <ConfirmRow
-                    label="Size"
-                    value={formatSize(
-                      parseNumericField(sqftDraft),
-                      parseNumericField(bedsDraft),
-                      parseNumericField(bathsDraft)
-                    )}
-                    source="known"
-                  />
-                  <ConfirmRow
-                    label="Estimated value"
-                    value={
-                      parseNumericField(valueDraft) !== null
-                        ? formatMoney(parseNumericField(valueDraft), prefill.country)
-                        : "— not on file"
-                    }
-                    source="modeled"
-                  />
-                  <ConfirmRow
-                    label="Estimated rent"
-                    value={
-                      parseNumericField(rentDraft) !== null
-                        ? `${formatMoney(parseNumericField(rentDraft), prefill.country)}/mo`
-                        : "— not on file"
-                    }
-                    source="modeled"
-                  />
+                  {!missing.type && <ConfirmRow label="Property type" value={typeDraft} source="known" />}
+                  {!missing.yearBuilt && <ConfirmRow label="Year built" value={yearBuiltDraft} source="known" />}
+                  {sizeOnFile && (
+                    <ConfirmRow
+                      label="Size"
+                      value={formatSize(
+                        parseNumericField(sqftDraft),
+                        parseNumericField(bedsDraft),
+                        parseNumericField(bathsDraft)
+                      )}
+                      source="known"
+                    />
+                  )}
+                  {!missing.value && (
+                    <ConfirmRow
+                      label="Estimated value"
+                      value={
+                        parseNumericField(valueDraft) !== null
+                          ? formatMoney(parseNumericField(valueDraft), prefill.country)
+                          : "— not on file"
+                      }
+                      source="modeled"
+                    />
+                  )}
+                  {!missing.rent && (
+                    <ConfirmRow
+                      label="Estimated rent"
+                      value={
+                        parseNumericField(rentDraft) !== null
+                          ? `${formatMoney(parseNumericField(rentDraft), prefill.country)}/mo`
+                          : "— not on file"
+                      }
+                      source="modeled"
+                    />
+                  )}
                 </>
               ) : (
                 <>
-                  <EditField label="Property type" value={typeDraft} onChange={setTypeDraft} placeholder="House" />
-                  <EditField label="Year built" value={yearBuiltDraft} onChange={setYearBuiltDraft} type="number" />
-                  <EditField label="Beds" value={bedsDraft} onChange={setBedsDraft} type="number" />
-                  <EditField label="Baths" value={bathsDraft} onChange={setBathsDraft} type="number" />
-                  <EditField label="Size (sqft)" value={sqftDraft} onChange={setSqftDraft} type="number" />
-                  <EditField label="Estimated value" value={valueDraft} onChange={setValueDraft} type="number" />
-                  <EditField label="Estimated rent (monthly)" value={rentDraft} onChange={setRentDraft} type="number" />
+                  {!missing.type && (
+                    <EditField label="Property type" value={typeDraft} onChange={setTypeDraft} placeholder="House" />
+                  )}
+                  {!missing.yearBuilt && (
+                    <EditField label="Year built" value={yearBuiltDraft} onChange={setYearBuiltDraft} type="number" />
+                  )}
+                  {!missing.beds && <EditField label="Beds" value={bedsDraft} onChange={setBedsDraft} type="number" />}
+                  {!missing.baths && (
+                    <EditField label="Baths" value={bathsDraft} onChange={setBathsDraft} type="number" />
+                  )}
+                  {!missing.sqft && (
+                    <EditField label="Size (sqft)" value={sqftDraft} onChange={setSqftDraft} type="number" />
+                  )}
+                  {!missing.value && (
+                    <EditField label="Estimated value" value={valueDraft} onChange={setValueDraft} type="number" />
+                  )}
+                  {!missing.rent && (
+                    <EditField
+                      label="Estimated rent (monthly)"
+                      value={rentDraft}
+                      onChange={setRentDraft}
+                      type="number"
+                    />
+                  )}
                 </>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setEditing((e) => !e)}
-              className="mt-3 text-[13px] font-medium text-foreground underline underline-offset-2"
-            >
-              {editing ? "Done editing" : "Edit a detail"}
-            </button>
+            {anyOnFile && (
+              <button
+                type="button"
+                onClick={() => setEditing((e) => !e)}
+                className="mt-3 text-[13px] font-medium text-foreground underline underline-offset-2"
+              >
+                {editing ? "Done editing" : "Edit a detail"}
+              </button>
+            )}
+
+            {/* Not-on-file details: open inputs, no toggle needed. All optional. */}
+            {missingAny && (
+              <div className="mt-4 rounded-xl border border-border bg-white px-4 sm:px-5 py-3">
+                <div className="text-xs font-medium text-foreground mb-0.5">Add what&apos;s not on file</div>
+                <p className="text-xs text-muted mb-1.5">
+                  Optional — anything you add here travels with your profile and saves the broker a question.
+                </p>
+                {missing.type && (
+                  <EditField label="Property type" value={typeDraft} onChange={setTypeDraft} placeholder="House" />
+                )}
+                {missing.yearBuilt && (
+                  <EditField label="Year built" value={yearBuiltDraft} onChange={setYearBuiltDraft} type="number" />
+                )}
+                {missing.beds && <EditField label="Beds" value={bedsDraft} onChange={setBedsDraft} type="number" />}
+                {missing.baths && <EditField label="Baths" value={bathsDraft} onChange={setBathsDraft} type="number" />}
+                {missing.sqft && (
+                  <EditField label="Size (sqft)" value={sqftDraft} onChange={setSqftDraft} type="number" />
+                )}
+                {missing.value && (
+                  <EditField label="Estimated value" value={valueDraft} onChange={setValueDraft} type="number" />
+                )}
+                {missing.rent && (
+                  <EditField label="Estimated rent (monthly)" value={rentDraft} onChange={setRentDraft} type="number" />
+                )}
+              </div>
+            )}
           </div>
         )}
 
