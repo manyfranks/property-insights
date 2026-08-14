@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, SignInButton } from "@clerk/nextjs";
 import { slugify } from "@/lib/utils";
+import { signal } from "@/lib/signal";
 import posthog from "posthog-js";
 
 interface SearchResult {
@@ -26,6 +27,20 @@ function isZoocasaUrl(text: string): boolean {
 
 function isOtherListingUrl(text: string): boolean {
   return !isZoocasaUrl(text) && OTHER_LISTING_RE.test(text);
+}
+
+/**
+ * Country-only inference from a Google Places formatted address string
+ * ("123 Main St, Vancouver, BC V5K 1A1, Canada"). Deliberately only reads
+ * the trailing country token — never returns or logs the address itself —
+ * so the assess_address_entered spine signal below can carry geography
+ * without ever carrying the raw address (house-rule: no PII/raw-address in
+ * anonymous event payloads).
+ */
+function inferCountryFromPlacesText(address: string): "CA" | "US" | undefined {
+  if (/,\s*Canada\s*$/i.test(address)) return "CA";
+  if (/,\s*(?:USA|U\.S\.A\.|United States(?: of America)?)\s*$/i.test(address)) return "US";
+  return undefined;
 }
 
 /**
@@ -124,6 +139,27 @@ export default function HomeAddressSearch() {
     setQuery("");
     setOpen(false);
     posthog.capture("address_searched", { result_type: "assessment_request" });
+    // Anonymous-capable spine signal, top of the assessment funnel this
+    // pairs against assess_completed/assess_failed (both emitted server-side
+    // in /api/assess). Fired here — the single choke point every "request an
+    // assessment" path in this component funnels through (detected Zoocasa
+    // URL, a selected Places suggestion, or a freely typed address) — rather
+    // than at handleSelectPlace, since selecting a suggestion alone doesn't
+    // yet commit to requesting an assessment. Geography only: a detected
+    // Zoocasa URL is always CA (Zoocasa has no US inventory), a Places
+    // selection's country is read off its formatted address text, and a
+    // freely typed address with neither carries no inferable country rather
+    // than a guessed one.
+    const enteredCountry: "CA" | "US" | undefined = detectedUrl
+      ? "CA"
+      : selectedAddress
+        ? inferCountryFromPlacesText(selectedAddress)
+        : undefined;
+    signal("assess_address_entered", {
+      surface: "home_search",
+      matched: !!(detectedUrl || selectedPlaceId),
+      ...(enteredCountry ? { country: enteredCountry } : {}),
+    });
     const placeParam = selectedPlaceId ? `&placeId=${encodeURIComponent(selectedPlaceId)}` : "";
     router.push(`/assess?address=${encodeURIComponent(address)}${placeParam}`);
   }
