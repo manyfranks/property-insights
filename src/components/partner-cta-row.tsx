@@ -21,7 +21,14 @@ import type {
   SurfaceKey,
 } from "@/config/affiliate-vendors";
 import { getVendorsForRegion, getVendorsForSurface } from "@/config/affiliate-vendors";
-import { FTC_DISCLOSURE, resolveUrl, trackClick, useOptedOut } from "@/lib/partner-cta-shared";
+import {
+  FTC_DISCLOSURE,
+  resolveUrl,
+  trackClick,
+  useOptedOut,
+  usePartnerCtaImpression,
+  type PartnerCtaImpressionPayload,
+} from "@/lib/partner-cta-shared";
 
 interface PartnerCtaRowProps {
   country: Country;
@@ -49,6 +56,19 @@ export default function PartnerCtaRow({
   const vendors = (
     surface ? getVendorsForSurface(country, state, mode, surface) : getVendorsForRegion(country, state, mode)
   ).slice(0, 2);
+
+  // See usePartnerCtaImpression's doc comment (src/lib/partner-cta-shared.ts)
+  // for why these are computed and the hooks called unconditionally, before
+  // the `vendors.length === 0` early return below.
+  const unit0Payload: PartnerCtaImpressionPayload | null = vendors[0]
+    ? { vendor: vendors[0].id, vertical: vendors[0].vertical, source, ...(state ? { state } : {}) }
+    : null;
+  const unit1Payload: PartnerCtaImpressionPayload | null = vendors[1]
+    ? { vendor: vendors[1].id, vertical: vendors[1].vertical, source, ...(state ? { state } : {}) }
+    : null;
+  const unit0ImpressionRef = usePartnerCtaImpression(unit0Payload);
+  const unit1ImpressionRef = usePartnerCtaImpression(unit1Payload);
+
   if (vendors.length === 0) return null;
 
   const units = vendors.map((vendor) => ({
@@ -61,8 +81,12 @@ export default function PartnerCtaRow({
   return (
     <div className="space-y-2">
       <div className="flex flex-col sm:flex-row gap-3">
-        {units.map(({ vendor, resolved }) => (
-          <div key={vendor.id} className="flex-1 min-w-0 border border-border rounded-xl p-4 bg-white">
+        {units.map(({ vendor, resolved }, i) => (
+          <div
+            key={vendor.id}
+            ref={i === 0 ? unit0ImpressionRef : unit1ImpressionRef}
+            className="flex-1 min-w-0 border border-border rounded-xl p-4 bg-white"
+          >
             <div className="flex items-start justify-between gap-2 mb-1">
               <span className="text-[13px] font-semibold text-foreground truncate">{vendor.name}</span>
               {resolved.isAffiliate && (

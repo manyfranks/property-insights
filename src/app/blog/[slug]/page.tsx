@@ -5,6 +5,7 @@ import { getBlogPost, getRelatedCities, BLOG_POSTS } from "@/lib/blog";
 import { BASE_URL } from "@/lib/seo";
 import { JsonLd, FaqJsonLd } from "@/components/json-ld";
 import PartnerCta from "@/components/partner-cta";
+import GuideViewSignal from "@/components/guide-view-signal";
 import type { SurfaceKey, Vertical } from "@/config/affiliate-vendors";
 
 /**
@@ -202,9 +203,11 @@ export default async function BlogPostPage({
         </div>
       </div>
 
-      <article className="prose-custom">
-        <Content />
-      </article>
+      <GuideViewSignal slug={post.slug} tags={post.tags}>
+        <article className="prose-custom">
+          <Content />
+        </article>
+      </GuideViewSignal>
 
       {/* Topic-matched CTA — only renders once the registry sets ctaVertical for this post */}
       {post.ctaVertical && (
