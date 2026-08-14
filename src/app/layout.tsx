@@ -117,6 +117,9 @@ export default function RootLayout({
                 <Link href="/dashboard" className="hover:text-foreground transition-colors">
                   Discover
                 </Link>
+                <Link href="/insurance" className="hover:text-foreground transition-colors">
+                  Insurance
+                </Link>
                 <Show when="signed-out">
                   <SignInButton mode="modal">
                     <button className="px-3 py-1 text-sm rounded-full border border-foreground text-foreground hover:bg-foreground hover:text-white transition-all">

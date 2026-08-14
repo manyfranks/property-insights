@@ -37,6 +37,9 @@ export default function MobileNav() {
             <Link href="/dashboard" onClick={() => setOpen(false)} className="hover:text-foreground transition-colors">
               Discover
             </Link>
+            <Link href="/insurance" onClick={() => setOpen(false)} className="hover:text-foreground transition-colors">
+              Insurance
+            </Link>
             <Show when="signed-out">
               <SignInButton mode="modal">
                 <button className="w-fit px-3 py-1 text-sm rounded-full border border-foreground text-foreground hover:bg-foreground hover:text-white transition-all">
