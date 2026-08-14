@@ -53,6 +53,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { signal } from "@/lib/signal";
 import type { Country, InsuranceLine } from "@/config/affiliate-vendors";
 import {
   CA_REGIONS,
@@ -161,6 +162,12 @@ export default function InsuranceLandingForm({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestSeqRef = useRef(0);
 
+  // Tracks the last address text `insurance_address_entered` fired for, so
+  // a re-render (or a waitlist retry after a validation error) that calls
+  // submit() again with the same still-uncommitted text doesn't emit a
+  // duplicate signal — see pickSuggestion() and submit() below.
+  const addressEnteredRef = useRef<string | null>(null);
+
   // Waitlist mode state — only exercised when waitlistMode is true (below).
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
@@ -245,6 +252,11 @@ export default function InsuranceLandingForm({
     setRegion(hit.region);
     setSuggestions([]);
     setDropdownOpen(false);
+
+    if (addressEnteredRef.current !== hit.address) {
+      addressEnteredRef.current = hit.address;
+      signal("insurance_address_entered", { onFile: true, country: hit.country, region: hit.region });
+    }
   }
 
   function applyRegionChange(nextCountry: Country, nextRegion: string) {
@@ -255,6 +267,17 @@ export default function InsuranceLandingForm({
     setWaitlistSuccess(false);
     setWaitlistError(null);
     setWaitlistRevealed(false);
+
+    // Region-level interest is measurable via this follow-up
+    // `insurance_landing_viewed` (picked: true) — distinct from the initial
+    // page-load fire in InsuranceLandingViewTracker, which never sees a
+    // deliberate region choice.
+    signal("insurance_landing_viewed", {
+      country: nextCountry,
+      region: nextRegion,
+      rolloutStatus: statusFor(nextCountry, nextRegion),
+      picked: true,
+    });
   }
 
   const displayName = lookupRegionName(country, region, usStates);
@@ -268,6 +291,18 @@ export default function InsuranceLandingForm({
 
   async function submit() {
     if (!ready) return;
+
+    // Free-typed address commit: fires once per distinct address string,
+    // whichever path (waitlist submit or the direct /coverage-profile
+    // handoff below) actually carries it forward. A typeahead pick already
+    // fired this in pickSuggestion() — `selected` (derived from pickedHit)
+    // tells the two apart, and addressEnteredRef dedupes retries (e.g. a
+    // waitlist submission fixed and resubmitted after a validation error).
+    const trimmedAddress = address.trim();
+    if (!selected && trimmedAddress.length > 0 && addressEnteredRef.current !== trimmedAddress) {
+      addressEnteredRef.current = trimmedAddress;
+      signal("insurance_address_entered", { onFile: false, country, region });
+    }
 
     if (waitlistMode) {
       if (!waitlistEmail.trim()) {
@@ -295,6 +330,7 @@ export default function InsuranceLandingForm({
           setWaitlistSubmitting(false);
           return;
         }
+        signal("insurance_waitlist_submitted", { country, region, line });
         setWaitlistSuccess(true);
       } catch {
         setWaitlistError("Could not reach the server — check your connection and try again.");

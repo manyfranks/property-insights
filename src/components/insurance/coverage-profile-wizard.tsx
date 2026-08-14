@@ -27,7 +27,8 @@
  * by construction (both read the same derived value).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { signal, flushSignals } from "@/lib/signal";
 import type { InsuranceLine } from "@/config/affiliate-vendors";
 import type { CoverageOccupancy } from "@/lib/db/coverage-profiles";
 import {
@@ -304,6 +305,85 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
   const [submittedProfileId, setSubmittedProfileId] = useState<string | null>(null);
   const [handoffRows, setHandoffRows] = useState<HandoffRow[]>([]);
 
+  // --- Telemetry: wizard-started + step-completed + abandonment -----------
+  //
+  // `step`/`line`/`phase` are read from inside the pagehide/visibilitychange
+  // handlers below, which are registered once (mount) and must see
+  // up-to-date values without re-registering on every step/line/phase
+  // change — hence refs kept in sync via effects, rather than depending on
+  // the state directly.
+  const stepRef = useRef(step);
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+  const lineRef = useRef(line);
+  useEffect(() => {
+    lineRef.current = line;
+  }, [line]);
+  const phaseRef = useRef(phase);
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+  // Set the instant POST /api/coverage-profile confirms success (see
+  // submit() below) — deliberately not inferred from `phase === "handoff"`
+  // alone, so there's no window where a visibilitychange/pagehide fired
+  // between "the response resolved" and "the next render committed
+  // phaseRef" could still count as an abandonment.
+  const submittedRef = useRef(false);
+  const mountTimeRef = useRef<number>(Date.now());
+
+  // Mount-once: `coverage_wizard_started`. `anyOnFile` is already the
+  // component's own "was there meaningful prefill data" signal (it drives
+  // whether step 1 shows confirm-rows at all), so it doubles as `prefilled`
+  // here rather than recomputing the same thing under a different name.
+  useEffect(() => {
+    signal("coverage_wizard_started", {
+      country: prefill.country,
+      region: prefill.region,
+      line: prefill.line,
+      prefilled: anyOnFile,
+    });
+    // Deliberately mount-only: prefill/anyOnFile are derived from the
+    // prefill prop, which this wizard treats as fixed for its lifetime
+    // (see the resolvedVendor comment above) — re-firing on their identity
+    // would misrepresent a one-time "wizard opened" moment as recurring.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mount-once: abandonment listener. Fires `coverage_wizard_abandoned` at
+  // most once per mount, only while the wizard hasn't reached a successful
+  // submission (submittedRef) or the handoff screen (phaseRef) — see
+  // src/lib/signal.ts's flushSignals() docstring for why this handler calls
+  // it explicitly instead of relying on that module's own hidden-listener
+  // to flush the event it just enqueued.
+  useEffect(() => {
+    let fired = false;
+
+    function maybeFireAbandon() {
+      if (fired || submittedRef.current || phaseRef.current === "handoff") return;
+      fired = true;
+      const dwellMs = Math.round((Date.now() - mountTimeRef.current) / 1000) * 1000;
+      signal("coverage_wizard_abandoned", {
+        lastStep: stepRef.current + 1,
+        dwellMs,
+        line: lineRef.current,
+      });
+      flushSignals();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") maybeFireAbandon();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", maybeFireAbandon);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", maybeFireAbandon);
+    };
+  }, []);
+  // --------------------------------------------------------------------
+
   if (phase === "handoff" && submittedProfileId) {
     return (
       <CoverageHandoff
@@ -356,6 +436,11 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
       return;
     }
     if (!finalStepReady) return;
+
+    // Step 4's "Continue" IS this submit handler (see handleContinue above)
+    // — its validation (finalStepReady, checked just above) gates the
+    // completion signal exactly the way steps 1-3's canContinue check does.
+    signal("coverage_wizard_step_completed", { step: 4, line });
 
     const roofAgeOption = ROOF_AGE_OPTIONS.find((o) => o.label === roofAgeChoice);
     const normalizedPhone = normalizePhone(phone) || null;
@@ -432,6 +517,11 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
         return;
       }
 
+      // Set before setPhase("handoff") so the abandonment listener's
+      // submittedRef check (above) can never observe a window where the
+      // POST has already succeeded but the ref hasn't caught up yet.
+      submittedRef.current = true;
+      signal("coverage_profile_submitted", { country: prefill.country, region: prefill.region, line });
       setHandoffRows(buildHandoffRows());
       setSubmittedProfileId(id);
       setPhase("handoff");
@@ -451,6 +541,10 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
     if (step < 3) {
       if (!canContinue) return;
       setError(null);
+      // 1-indexed: advancing past step `step` (0-indexed) completes step
+      // `step + 1`. The final step's completion is signaled inside submit()
+      // below instead, since that step's validation lives there.
+      signal("coverage_wizard_step_completed", { step: step + 1, line });
       setStep((s) => s + 1);
       return;
     }

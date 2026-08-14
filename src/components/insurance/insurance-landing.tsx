@@ -5,14 +5,17 @@
  * approved redesign — see the build spec for section-by-section detail).
  * Composes the sections under src/components/insurance/landing/*; the only
  * client-side pieces are InsuranceLandingForm instances embedded in Hero
- * and FinalCta. Kept under src/components/insurance/ so every user-facing
- * string in this file and its landing/ children is scanned by
- * scripts/check-insurance-copy.ts.
+ * and FinalCta, plus InsuranceLandingViewTracker (fires `insurance_landing_viewed`
+ * once per mount — see that file's docstring for why it's split out rather
+ * than folded into the form, which renders twice on this page). Kept under
+ * src/components/insurance/ so every user-facing string in this file and
+ * its landing/ children is scanned by scripts/check-insurance-copy.ts.
  */
 
 import type { InsuranceLine, Country } from "@/config/affiliate-vendors";
 import { getVendorsForSurface } from "@/config/affiliate-vendors";
-import { regionName as lookupRegionName } from "@/config/insurance-rollout";
+import { regionName as lookupRegionName, statusFor } from "@/config/insurance-rollout";
+import InsuranceLandingViewTracker from "./insurance-landing-view-tracker";
 import Hero from "./landing/hero";
 import AvailabilityNote from "./landing/availability-note";
 import CoverageTiles from "./landing/coverage-tiles";
@@ -59,9 +62,11 @@ export default function InsuranceLanding({
   const regionLabel = lookupRegionName(country, region, usStates);
   const countryLabel = country === "CA" ? "Canada" : "United States";
   const waitlistMode = !intakeEnabled; // page-level default for static CTAs; the form itself also factors in per-region status
+  const rolloutStatus = statusFor(country, region);
 
   return (
     <main>
+      <InsuranceLandingViewTracker country={country} region={region} rolloutStatus={rolloutStatus} />
       <Hero
         usStates={usStates}
         initialGeo={initialGeo}

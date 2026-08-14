@@ -85,6 +85,28 @@ function flush(): void {
   });
 }
 
+/**
+ * Forces an immediate flush of the queue, bypassing the debounce timer.
+ *
+ * Exists for callers that enqueue an event from *inside* their own
+ * visibilitychange→hidden (or pagehide) handler — e.g. an "abandoned"
+ * signal fired only when the tab is going away. This module's own
+ * lifecycle listener (attachLifecycleListeners, above) is attached lazily,
+ * on the *first* signal() call anywhere on the page, so a caller that
+ * mounts its hidden-handler after that first call has no guarantee its
+ * handler runs *before* this module's: listener invocation order follows
+ * registration order, and if this module's listener registered first, it
+ * flushes on "hidden" before the caller's own handler has even enqueued its
+ * event — leaving that event stranded in an empty-looking queue with only
+ * the 5s debounce timer to save it, which a closing tab won't wait for.
+ * Calling signal(...) followed by flushSignals() sidesteps the ordering
+ * question entirely: it flushes unconditionally, regardless of which
+ * listener happened to run first.
+ */
+export function flushSignals(): void {
+  flush();
+}
+
 function scheduleFlush(): void {
   if (flushTimer) return;
   flushTimer = setTimeout(flush, FLUSH_DEBOUNCE_MS);
