@@ -54,7 +54,11 @@ function trackHandoffClick(payload: Record<string, unknown>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     keepalive: true,
-  }).catch(() => {});
+  }).catch((err) => {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[track] beacon failed:", err);
+    }
+  });
 }
 
 export default function CoverageHandoff({

@@ -79,7 +79,11 @@ function trackJourneyEvent(type: JourneyEventType, data: JourneyEventData): void
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type, data }),
     keepalive: true,
-  }).catch(() => {});
+  }).catch((err) => {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[track] beacon failed:", err);
+    }
+  });
 }
 
 async function persistAssessmentPatch(

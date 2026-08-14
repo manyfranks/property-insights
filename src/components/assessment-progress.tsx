@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, SignInButton } from "@clerk/nextjs";
+import posthog from "posthog-js";
 import UsAssessmentResult, { UsAssessResult } from "@/components/us-assessment-result";
 import {
   AssessmentGoalPreflight,
@@ -147,6 +148,7 @@ export default function AssessmentProgress({
           return;
         }
         if (data.country === "US") {
+          posthog.capture("assessment_completed", { country: "US", offer_available: !!data.offerAvailable });
           setAssessmentId(typeof data.assessmentId === "string" ? data.assessmentId : restoredAssessment?.id ?? null);
           if (
             restoredAssessment?.subjectSelectedBy === "user_confirmation" &&
@@ -170,6 +172,7 @@ export default function AssessmentProgress({
           setStepStatuses(STEPS.map(() => "complete"));
           setUsResult(data as UsAssessResult);
         } else if (data.slug) {
+          posthog.capture("assessment_completed", { country: "CA" });
           const canadaResult = data as CanadaAssessmentResult;
           const effectiveAssessmentId = canadaResult.assessmentId ?? restoredAssessment?.id ?? null;
           setAssessmentId(effectiveAssessmentId);

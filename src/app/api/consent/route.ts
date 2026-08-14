@@ -53,7 +53,11 @@ export async function POST(req: Request) {
   });
 
   // Sync partner consent to Postgres profile
-  setPartnerConsent(userId, body.partnerSharing).catch(() => {});
+  setPartnerConsent(userId, body.partnerSharing).catch((err) => {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[track] beacon failed:", err);
+    }
+  });
 
   return NextResponse.json({ ok: true, consent });
 }

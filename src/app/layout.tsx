@@ -4,12 +4,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { ClerkProvider, Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import NavbarSearch from "@/components/navbar-search";
 import MobileNav from "@/components/mobile-nav";
 import { OrganizationJsonLd, OrganizationEntityJsonLd } from "@/components/json-ld";
 import Footer from "@/components/footer";
 import ConsentBanner from "@/components/consent-banner";
 import GpcHonor from "@/components/gpc-honor";
+import PostHogIdentify from "@/components/posthog-identify";
 import { BASE_URL, SITE_NAME, SITE_DESCRIPTION, SITE_LOCALE } from "@/lib/seo";
 import "./globals.css";
 
@@ -102,6 +104,7 @@ export default function RootLayout({
         <OrganizationEntityJsonLd url={BASE_URL} />
         <OrganizationJsonLd url={BASE_URL} />
         <ClerkProvider>
+          <PostHogIdentify />
           <header className="relative z-50 border-b border-border bg-white">
             <div className="relative max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
               <Link href="/" className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground" aria-label="Property Insights home">
@@ -139,6 +142,7 @@ export default function RootLayout({
           <GpcHonor />
         </ClerkProvider>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

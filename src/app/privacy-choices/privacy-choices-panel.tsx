@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
+import posthog from "posthog-js";
 import { hasGpcSignal, isOptedOutClient, setOptOutCookie } from "@/lib/privacy";
 
 type Status = "loading" | "ready";
@@ -18,6 +19,11 @@ export default function PrivacyChoicesPanel() {
   const [gpcDetected, setGpcDetected] = useState(false);
   const [optedOut, setOptedOut] = useState(false);
   const [saving, setSaving] = useState(false);
+  // True once we've told the user "tracking resumes next page load" because
+  // they opted back in while PostHog had never been initialized in this tab
+  // (they loaded the page already opted out, so instrumentation-client.ts
+  // skipped posthog.init() entirely).
+  const [resumesOnReload, setResumesOnReload] = useState(false);
 
   useEffect(() => {
     // Deferred via setTimeout (not called synchronously in the effect body)
@@ -36,6 +42,25 @@ export default function PrivacyChoicesPanel() {
     setSaving(true);
     setOptOutCookie(next);
     setOptedOut(next);
+
+    // Mirror the choice into PostHog for the rest of this tab session.
+    // Guarded on __loaded: a visitor who landed on the page already opted
+    // out never had posthog.init() called (see instrumentation-client.ts),
+    // so there's no live client to opt back in here. We deliberately do
+    // NOT attempt a late init() — instrumentation-client.ts is the single
+    // place PostHog gets initialized — so opting back in in that situation
+    // only takes effect starting from the next page load.
+    if (posthog.__loaded) {
+      if (next) {
+        posthog.opt_out_capturing();
+      } else {
+        posthog.opt_in_capturing();
+      }
+      setResumesOnReload(false);
+    } else if (!next) {
+      console.warn("[posthog] opted back in, but tracking resumes on next page load (PostHog was never initialized in this tab)");
+      setResumesOnReload(true);
+    }
 
     // Signed-in users: also turn off partner-sharing consent through the
     // existing consent endpoint so the account-level record agrees with the
@@ -93,6 +118,12 @@ export default function PrivacyChoicesPanel() {
             <span className="text-muted">Not opted out.</span>
           )}
         </p>
+        {resumesOnReload && (
+          <p className="text-sm text-foreground leading-relaxed">
+            Saved. Tracking on this browser resumes the next time you load a page — this tab
+            already had it turned off.
+          </p>
+        )}
       </div>
 
       <button

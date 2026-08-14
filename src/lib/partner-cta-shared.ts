@@ -70,5 +70,9 @@ export function trackClick(opts: {
       ...(opts.city && { city: opts.city }),
       optOut: opts.optOut,
     }),
-  }).catch(() => {}); // fire and forget
+  }).catch((err) => {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[track] beacon failed:", err);
+    }
+  });
 }

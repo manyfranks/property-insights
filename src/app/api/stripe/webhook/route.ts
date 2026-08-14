@@ -20,6 +20,7 @@ import {
   getSubscriptionByCustomerId,
   upsertSubscription,
 } from "@/lib/db/subscriptions";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 /** Statuses that should drop the user back to the free plan. */
 const DOWNGRADE_STATUSES = new Set(["canceled", "unpaid", "incomplete_expired"]);
@@ -102,6 +103,23 @@ export async function POST(req: Request) {
         if (!ok) {
           return NextResponse.json({ error: "Entitlement write failed" }, { status: 500 });
         }
+
+        // Track subscription activation in PostHog
+        try {
+          const posthog = getPostHogClient();
+          posthog.capture({
+            distinctId: userId,
+            event: "subscription_activated",
+            properties: {
+              plan: "pro",
+              stripe_customer_id: customerId,
+              subscription_status: status,
+            },
+          });
+          await posthog.flush();
+        } catch (phErr) {
+          console.error("stripe webhook: posthog capture failed:", phErr);
+        }
         break;
       }
 
@@ -133,6 +151,25 @@ export async function POST(req: Request) {
         });
         if (!ok) {
           return NextResponse.json({ error: "Entitlement write failed" }, { status: 500 });
+        }
+
+        // Track subscription cancellation / downgrade in PostHog
+        if (event.type === "customer.subscription.deleted" || plan === "free") {
+          try {
+            const posthog = getPostHogClient();
+            posthog.capture({
+              distinctId: userId,
+              event: "subscription_canceled",
+              properties: {
+                plan_before: "pro",
+                plan_after: plan,
+                subscription_status: sub.status,
+              },
+            });
+            await posthog.flush();
+          } catch (phErr) {
+            console.error("stripe webhook: posthog capture failed:", phErr);
+          }
         }
         break;
       }

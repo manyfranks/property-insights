@@ -41,6 +41,8 @@
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { after, NextResponse } from "next/server";
+import { getPostHogClient } from "@/lib/posthog-server";
+import { isOptedOutRequest } from "@/lib/privacy";
 import { findAndFetchDetail, fetchDetailByUrl, parseZoocasaUrl, ZoocasaNotFoundError } from "@/lib/zoocasa";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { upsertListing } from "@/lib/kv/listings";
@@ -459,6 +461,29 @@ function buildUsAssessmentSubject(args: {
  * address is confirmed real (geocode match), the same checkpoint the CA
  * path uses ("listing confirmed on Zoocasa").
  */
+
+/**
+ * Shared getPostHogClient()/.capture()/.flush() wrapper for this route's
+ * several capture points (rate-limit hits, assessment_requested variants).
+ * Skips entirely when the request is opted out (Do Not Sell/Share — see
+ * src/lib/privacy.ts's isOptedOutRequest, checked once in POST() and
+ * threaded down as `optedOut`), and fails loud on error instead of the
+ * silent "non-critical" catch this used to be duplicated as five times.
+ */
+async function capturePostHogEvent(
+  optedOut: boolean,
+  event: { distinctId: string; event: string; properties?: Record<string, unknown> }
+): Promise<void> {
+  if (optedOut) return;
+  try {
+    const posthog = getPostHogClient();
+    posthog.capture(event);
+    await posthog.flush();
+  } catch (err) {
+    console.error(`[posthog-server] capture failed for ${event.event}:`, err);
+  }
+}
+
 async function handleUSAssessment({
   userId,
   limiter,
@@ -471,6 +496,7 @@ async function handleUSAssessment({
   selectedPlaceId,
   assessmentGoal,
   journeyStateEnabled,
+  optedOut,
   log,
 }: {
   userId: string;
@@ -484,6 +510,8 @@ async function handleUSAssessment({
   selectedPlaceId?: string;
   assessmentGoal: AssessmentGoal | null;
   journeyStateEnabled: boolean;
+  /** Do Not Sell/Share: true when the originating request is opted out — skips PostHog captures below. */
+  optedOut: boolean;
   log: (step: string, extra?: string) => void;
 }) {
   log("us region", `${street} | ${city} | ${region}`);
@@ -519,6 +547,12 @@ async function handleUSAssessment({
   if (limiter && !pro) {
     const result = await limiter.limit(userId);
     if (!result.success) {
+      // Track that the user hit the cap before we return the 429
+      await capturePostHogEvent(optedOut, {
+        distinctId: userId,
+        event: "assessment_rate_limit_hit",
+        properties: { country: "US", city, state: region },
+      });
       return RATE_LIMIT_RESPONSE(result.reset - Date.now());
     }
   }
@@ -666,7 +700,23 @@ async function handleUSAssessment({
       city,
       state: geo.stateUsps,
       country: "US",
-    }).catch(() => {}); // fire and forget
+    }).catch((err) => {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[track] beacon failed:", err);
+      }
+    });
+
+    // PostHog server-side capture
+    await capturePostHogEvent(optedOut, {
+      distinctId: userId,
+      event: "assessment_requested",
+      properties: {
+        country: "US",
+        city,
+        state: geo.stateUsps,
+        result_variant: "regional_fallback",
+      },
+    });
 
     log("done (US, fallback)", geo.matchedAddress);
 
@@ -710,7 +760,24 @@ async function handleUSAssessment({
     city,
     state: geo.stateUsps,
     country: "US",
-  }).catch(() => {}); // fire and forget
+  }).catch((err) => {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[track] beacon failed:", err);
+    }
+  });
+
+  // PostHog server-side capture (shared by both listed + off-market variants)
+  const phUsAssessmentCapture = (resultVariant: string) =>
+    capturePostHogEvent(optedOut, {
+      distinctId: userId,
+      event: "assessment_requested",
+      properties: {
+        country: "US",
+        city,
+        state: geo.stateUsps,
+        result_variant: resultVariant,
+      },
+    });
 
   // Listed variant — same pipeline as Canada.
   if (bundle.activeListing) {
@@ -946,6 +1013,8 @@ async function handleUSAssessment({
         `narrative=${narrative.length}chars`
     );
 
+    await phUsAssessmentCapture("listed");
+
     const assessmentId = await persistPrivateAssessmentState({
       enabled: journeyStateEnabled,
       userId,
@@ -1107,6 +1176,8 @@ async function handleUSAssessment({
       `equity=${advantage.equitySignal?.tier ?? "none"} triangulation=${advantage.triangulation.confidence}`
   );
 
+  await phUsAssessmentCapture("off_market");
+
   const assessmentId = await persistPrivateAssessmentState({
     enabled: journeyStateEnabled,
     userId,
@@ -1157,6 +1228,12 @@ export async function POST(req: Request) {
   const t0 = Date.now();
   const log = (step: string, extra?: string) =>
     console.log(`[assess] ${step} (${Date.now() - t0}ms)${extra ? " — " + extra : ""}`);
+
+  // Do Not Sell/Share: PostHog captures below are skipped for an opted-out
+  // browser, matching how /api/track short-circuits before recording
+  // anything (src/lib/privacy.ts). Computed once here and threaded into
+  // handleUSAssessment() since that helper doesn't otherwise see `req`.
+  const optedOut = isOptedOutRequest(req);
 
   const { userId } = await auth();
   if (!userId) {
@@ -1254,6 +1331,7 @@ export async function POST(req: Request) {
         selectedPlaceId,
         assessmentGoal,
         journeyStateEnabled,
+        optedOut,
         log,
       });
     }
@@ -1286,6 +1364,12 @@ export async function POST(req: Request) {
   if (limiter && !pro) {
     const result = await limiter.limit(userId);
     if (!result.success) {
+      // Track the rate-limit hit before returning the 429
+      await capturePostHogEvent(optedOut, {
+        distinctId: userId,
+        event: "assessment_rate_limit_hit",
+        properties: { country: "CA" },
+      });
       return RATE_LIMIT_RESPONSE(result.reset - Date.now());
     }
   }
@@ -1431,7 +1515,24 @@ export async function POST(req: Request) {
     city: enriched.city,
     price: enriched.price,
     slug,
-  }).catch(() => {}); // fire and forget
+  }).catch((err) => {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[track] beacon failed:", err);
+    }
+  });
+
+  // PostHog server-side capture
+  await capturePostHogEvent(optedOut, {
+    distinctId: userId,
+    event: "assessment_requested",
+    properties: {
+      country: "CA",
+      city: enriched.city,
+      province: enriched.province,
+      result_variant: "listed",
+      score_tier: enriched.preTier,
+    },
+  });
 
   const assessmentId = await persistPrivateAssessmentState({
     enabled: journeyStateEnabled,

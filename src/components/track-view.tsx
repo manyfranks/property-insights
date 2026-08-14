@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { isOptedOutClient } from "@/lib/privacy";
+import posthog from "posthog-js";
 
 /**
  * Client component that fires a property_view tracking event.
@@ -30,7 +31,7 @@ export default function TrackView({
     const isReturn = !!previousVisit;
     localStorage.setItem(viewedKey, new Date().toISOString());
 
-    // Fire and forget
+    // Fire and forget — existing internal tracking
     fetch("/api/track", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -38,7 +39,17 @@ export default function TrackView({
         type: "property_view",
         data: { slug, city, price, returnVisit: isReturn },
       }),
-    }).catch(() => {});
+    }).catch((err) => {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[track] beacon failed:", err);
+      }
+    });
+
+    // PostHog client-side capture
+    posthog.capture("property_viewed", {
+      city,
+      return_visit: isReturn,
+    });
   }, [isLoaded, isSignedIn, slug, city, price]);
 
   return null;

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, SignInButton } from "@clerk/nextjs";
 import { slugify } from "@/lib/utils";
+import posthog from "posthog-js";
 
 interface SearchResult {
   address: string;
@@ -108,6 +109,7 @@ export default function HomeAddressSearch() {
     setQuery("");
     setOpen(false);
     setSearched(false);
+    posthog.capture("address_searched", { result_type: "existing_listing" });
     router.push(`/property/${slugify(address)}`);
   }
 
@@ -121,6 +123,7 @@ export default function HomeAddressSearch() {
     if (!address) return;
     setQuery("");
     setOpen(false);
+    posthog.capture("address_searched", { result_type: "assessment_request" });
     const placeParam = selectedPlaceId ? `&placeId=${encodeURIComponent(selectedPlaceId)}` : "";
     router.push(`/assess?address=${encodeURIComponent(address)}${placeParam}`);
   }

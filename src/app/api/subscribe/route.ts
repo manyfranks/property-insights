@@ -10,6 +10,8 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { trackEvent } from "@/lib/db/user-events";
+import { getPostHogClient } from "@/lib/posthog-server";
+import { isOptedOutRequest } from "@/lib/privacy";
 
 const MAX_CITIES = 20;
 const CITY_RE = /^[a-zA-Z\s\-'.]+$/; // letters, spaces, hyphens, apostrophes, periods
@@ -59,7 +61,27 @@ export async function POST(req: Request) {
 
   // Track city subscription events
   for (const city of validCities) {
-    trackEvent(userId, "city_subscribe", { city }).catch(() => {});
+    trackEvent(userId, "city_subscribe", { city }).catch((err) => {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[track] beacon failed:", err);
+      }
+    });
+  }
+
+  // PostHog server-side capture — skipped for an opted-out browser, matching
+  // how /api/track short-circuits before recording anything (src/lib/privacy.ts).
+  if (!isOptedOutRequest(req)) {
+    try {
+      const posthog = getPostHogClient();
+      posthog.capture({
+        distinctId: userId,
+        event: "city_subscribed",
+        properties: { city_count: validCities.length },
+      });
+      await posthog.flush();
+    } catch (err) {
+      console.error("[posthog-server] capture failed for city_subscribed:", err);
+    }
   }
 
   return NextResponse.json({ ok: true, cities: validCities });

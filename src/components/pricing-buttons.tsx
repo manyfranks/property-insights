@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import { useUser, SignInButton } from "@clerk/nextjs";
+import posthog from "posthog-js";
 
 interface PricingButtonsProps {
   configured: boolean;
@@ -28,6 +29,14 @@ export default function PricingButtons({ configured, initialPro }: PricingButton
   async function goTo(endpoint: "/api/stripe/checkout" | "/api/stripe/portal") {
     setPending(true);
     setError(null);
+
+    // Capture the intent before the redirect so the event isn't lost
+    if (endpoint === "/api/stripe/checkout") {
+      posthog.capture("checkout_started", { plan: "pro" });
+    } else {
+      posthog.capture("billing_portal_opened");
+    }
+
     try {
       const res = await fetch(endpoint, { method: "POST" });
       const data = await res.json();
