@@ -134,6 +134,7 @@ export function PropertyJsonLd({
   baths,
   price,
   description,
+  assetType = "residential",
 }: {
   url: string;
   address: string;
@@ -143,6 +144,7 @@ export function PropertyJsonLd({
   baths: string;
   price: number;
   description?: string;
+  assetType?: "residential" | "land";
 }) {
   return (
     <JsonLd
@@ -153,7 +155,7 @@ export function PropertyJsonLd({
         url,
         ...(description && { description }),
         about: {
-          "@type": "SingleFamilyResidence",
+          "@type": assetType === "land" ? "Place" : "SingleFamilyResidence",
           address: {
             "@type": "PostalAddress",
             streetAddress: address,
@@ -161,8 +163,10 @@ export function PropertyJsonLd({
             addressRegion: province,
             addressCountry: "CA",
           },
-          numberOfBedrooms: parseInt(beds) || undefined,
-          numberOfBathroomsTotal: parseInt(baths) || undefined,
+          ...(assetType === "residential" && {
+            numberOfBedrooms: parseInt(beds) || undefined,
+            numberOfBathroomsTotal: parseInt(baths) || undefined,
+          }),
         },
         offers: {
           "@type": "Offer",

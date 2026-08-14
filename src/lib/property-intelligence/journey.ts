@@ -278,6 +278,12 @@ export function deriveCaRentalJourneyStatus(
         message: "Residential rental analysis doesn't apply to vacant land. Verified land, assessment, and listing context for this parcel remains visible elsewhere on this page.",
       };
     }
+    if (classification?.listingScope.value === "parcel") {
+      return {
+        availability: "unavailable",
+        message: "Residential rental analysis doesn't apply to a verified land listing. Available land, assessment, and listing context remains visible elsewhere on this page.",
+      };
+    }
     if (parcelUse === "institutional") {
       return {
         availability: "unavailable",

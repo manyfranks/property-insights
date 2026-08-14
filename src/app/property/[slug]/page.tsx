@@ -35,9 +35,17 @@ import CanadaRentalScreen from "@/components/canada-rental-screen";
 import PropertyJourneyHandoff from "@/components/property-journey-handoff";
 import {
   deriveCaRentalJourneyStatus,
+  journeyCapabilityStatus,
   parseAssessmentGoal,
   persistedConfirmedSubjectScope,
 } from "@/lib/property-intelligence/journey";
+import {
+  buildLandPriceContext,
+  containVerifiedLandListingCapabilities,
+  isVerifiedLandListing,
+  residentialPartnerActionsAllowed,
+  type LandPriceContext,
+} from "@/lib/property-intelligence/land-listing";
 import { auth } from "@clerk/nextjs/server";
 import { getUserAssessmentState } from "@/lib/db/user-assessments";
 
@@ -55,7 +63,9 @@ export async function generateMetadata({
 
   const price = `$${(listing.price / 1000).toFixed(0)}K`;
   const title = `${listing.address}, ${listing.city} ${listing.province} — ${price}`;
-  const description = `Property analysis for ${listing.address} in ${listing.city}, ${listing.province}. ${listing.beds} bed, ${listing.baths} bath. Listed at ${fmt(listing.price)}. Get assessment data, offer modeling, and seller motivation signals.`;
+  const description = isVerifiedLandListing(listing.propertyClassification)
+    ? `Land listing and assessment context for ${listing.address} in ${listing.city}, ${listing.province}. Listed at ${fmt(listing.price)}.`
+    : `Property analysis for ${listing.address} in ${listing.city}, ${listing.province}. ${listing.beds} bed, ${listing.baths} bath. Listed at ${fmt(listing.price)}. Get assessment data, offer modeling, and seller motivation signals.`;
   const url = `${BASE_URL}/property/${slug}`;
 
   return {
@@ -88,6 +98,90 @@ function ScoreBreakdown({ breakdown }: { breakdown: Record<string, number> }) {
       ))}
     </div>
   );
+}
+
+function LandPriceContextCard({ context }: { context: LandPriceContext }) {
+  return (
+    <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 bg-white">
+      <div className="text-center">
+        <div className="text-xs uppercase tracking-widest text-muted mb-2">Land price context</div>
+        <div className="font-mono text-4xl sm:text-5xl font-bold mb-3">{fmt(context.listPrice)}</div>
+        <p className="text-xs text-muted max-w-lg mx-auto">
+          {context.kind === "assessed"
+            ? "Listing price compared with a property-specific government assessment. This is context, not an offer recommendation or zoning opinion."
+            : "No property-specific government assessment or comparable-sale evidence is available, so no offer recommendation is generated."}
+        </p>
+      </div>
+      {context.kind === "assessed" && (
+        <div className="border-t border-border pt-4 mt-5 flex flex-wrap justify-center gap-4 sm:gap-8 text-center">
+          <div>
+            <div className="text-xs text-muted">Assessed total</div>
+            <div className="font-mono font-medium">{fmt(context.assessedValue ?? 0)}</div>
+          </div>
+          {context.landValue != null && (
+            <div>
+              <div className="text-xs text-muted">Land</div>
+              <div className="font-mono font-medium">{fmt(context.landValue)}</div>
+            </div>
+          )}
+          {context.improvementValue != null && (
+            <div>
+              <div className="text-xs text-muted">Improvements</div>
+              <div className="font-mono font-medium">{fmt(context.improvementValue)}</div>
+            </div>
+          )}
+          {context.listToAssessedRatio != null && (
+            <div>
+              <div className="text-xs text-muted">List/assessed</div>
+              <div className="font-mono font-medium">{context.listToAssessedRatio.toFixed(2)}x</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LandListingFactsCard({ listing }: { listing: Listing }) {
+  return (
+    <div className="border border-border rounded-xl p-4 bg-white">
+      <div className="text-xs uppercase tracking-widest text-muted mb-3">Land listing</div>
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted">Asset type</span>
+          <span className="font-medium">Land</span>
+        </div>
+        {listing.lotSize && (
+          <div className="flex justify-between">
+            <span className="text-muted">Lot</span>
+            <span className="font-medium">{listing.lotSize}</span>
+          </div>
+        )}
+        {listing.taxes && (
+          <div className="flex justify-between">
+            <span className="text-muted">Taxes</span>
+            <span className="font-medium">{listing.taxes}</span>
+          </div>
+        )}
+      </div>
+      {listing.mlsNumber && (
+        <div className="text-xs text-muted mt-3 pt-2 border-t border-border">MLS# {listing.mlsNumber}</div>
+      )}
+    </div>
+  );
+}
+
+function defaultJourneyGoalStatuses(
+  capabilities: Listing["propertyCapabilities"],
+  classification?: Listing["propertyClassification"]
+) {
+  const effectiveCapabilities = containVerifiedLandListingCapabilities(capabilities, classification);
+  return {
+    buy_home: journeyCapabilityStatus("buy_home", effectiveCapabilities),
+    rental_investment: journeyCapabilityStatus("rental_investment", effectiveCapabilities),
+    own_manage: journeyCapabilityStatus("own_manage", effectiveCapabilities),
+    explore: journeyCapabilityStatus("explore", effectiveCapabilities),
+  };
 }
 
 function OfferCascade({ offer }: { offer: OfferResult }) {
@@ -279,7 +373,6 @@ export default async function PropertyPage({
 
   const analysis = await analyzeListingAsync(listing);
   const { assessment, score, offer, signals, llmSignals, llmConfidence, narrative } = analysis;
-  const listingHistory = analysis.history;
 
   // Canada Advantage — CMHC rent / StatCan NHPI context for this listing's
   // CMA, if it's one of the 8 the CA pipeline covers (see
@@ -295,10 +388,30 @@ export default async function PropertyPage({
   const caInvestorYield = caRent
     ? computeInvestorYield({ priceForYield: listing.price, monthlyRent: caRent.monthlyRent, countyFmr2br: null })
     : null;
-  const caRentalJourneyStatus = deriveCaRentalJourneyStatus(
+  const effectiveCapabilities = containVerifiedLandListingCapabilities(
     listing.propertyCapabilities,
+    listing.propertyClassification
+  );
+  const caRentalJourneyStatus = deriveCaRentalJourneyStatus(
+    effectiveCapabilities,
     listing.propertyClassification,
     { hasCmhcRent: !!caRent, hasRegionalContext: !!caRent }
+  );
+  const landPriceContext = buildLandPriceContext({
+    listPrice: listing.price,
+    assessment,
+    classification: listing.propertyClassification,
+  });
+  const verifiedLandListing = !!landPriceContext;
+  const caGoalStatuses = {
+    buy_home: journeyCapabilityStatus("buy_home", effectiveCapabilities),
+    rental_investment: caRentalJourneyStatus,
+    own_manage: journeyCapabilityStatus("own_manage", effectiveCapabilities),
+    explore: journeyCapabilityStatus("explore", effectiveCapabilities),
+  };
+  const showResidentialPartnerActions = residentialPartnerActionsAllowed(
+    effectiveCapabilities,
+    listing.propertyClassification
   );
 
   return (
@@ -312,6 +425,7 @@ export default async function PropertyPage({
         baths={listing.baths}
         price={listing.price}
         description={listing.description}
+        assetType={verifiedLandListing ? "land" : "residential"}
       />
       <BreadcrumbJsonLd
         items={[
@@ -329,7 +443,7 @@ export default async function PropertyPage({
         subjectScope={confirmedSubjectScope ?? (
           listing.assessmentSubject?.requiresClarification ? "unknown" : listing.assessmentSubject?.scope ?? "unknown"
         )}
-        capabilities={listing.propertyCapabilities}
+        capabilities={effectiveCapabilities}
         gateUnsupported
         goalStatusOverrides={{ rental_investment: caRentalJourneyStatus }}
         goalContent={{
@@ -382,12 +496,11 @@ export default async function PropertyPage({
             {listing.city}, {listing.province}
           </p>
         </div>
-        <TierBadge tier={score.tier} />
+        {!verifiedLandListing && <TierBadge tier={score.tier} />}
       </div>
 
-      {!journeyEnabled && <PropertyJourneyHandoff assessmentInput={propertyAssessmentInput} />}
-
       {/* C. Hero Card — Recommended Offer */}
+      {landPriceContext ? <LandPriceContextCard context={landPriceContext} /> : (
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
         {offer ? (
           <>
@@ -453,6 +566,11 @@ export default async function PropertyPage({
           </div>
         )}
       </div>
+      )}
+
+      {!journeyEnabled && (
+        <PropertyJourneyHandoff assessmentInput={propertyAssessmentInput} goalStatuses={caGoalStatuses} />
+      )}
 
       {/* D. The Signal — LLM narrative */}
       <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
@@ -464,7 +582,13 @@ export default async function PropertyPage({
             </span>
           )}
         </div>
-        {narrative ? (
+        {landPriceContext ? (
+          <p className="text-sm text-foreground leading-relaxed">
+            {landPriceContext.kind === "assessed"
+              ? `The listing is verified as land. Its ${landPriceContext.assessmentYear ?? "current"} government assessment provides parcel price context, including any supplied land and improvement split. Confirm permitted use, services, taxes, and development requirements with the municipality and qualified professionals before relying on the listing's development claims.`
+              : "The listing is verified as land, but no property-specific government assessment or comparable-sale evidence is available. The page therefore preserves the listing facts without generating an offer, seller-motivation conclusion, entitlement claim, or expected residential return."}
+          </p>
+        ) : narrative ? (
           <div className="space-y-3">
             {narrative.split(/\n\n+/).map((para, i) => (
               <p key={i} className="text-sm text-foreground leading-relaxed">{para.trim()}</p>
@@ -480,7 +604,7 @@ export default async function PropertyPage({
       </div>
 
       {/* E. Expandable: Offer Cascade */}
-      {offer && (
+      {offer && !verifiedLandListing && (
         <div className="mb-4">
           <ExpandableSection title="How we calculated this" defaultOpen={false}>
             <OfferCascade offer={offer} />
@@ -489,15 +613,16 @@ export default async function PropertyPage({
       )}
 
       {/* F. Expandable: Score Breakdown */}
-      <div className="mb-4">
+      {!verifiedLandListing && <div className="mb-4">
         <ExpandableSection title="Score breakdown" defaultOpen={false}>
           <ScoreBreakdown breakdown={score.breakdown} />
         </ExpandableSection>
-      </div>
+      </div>}
 
       {/* G. Bento Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         {/* Property Details */}
+        {verifiedLandListing ? <LandListingFactsCard listing={listing} /> : (
         <div className="border border-border rounded-xl p-4 bg-white">
           <div className="text-xs uppercase tracking-widest text-muted mb-3">Property</div>
           <div className="grid grid-cols-2 gap-2 text-sm">
@@ -532,6 +657,7 @@ export default async function PropertyPage({
             </div>
           )}
         </div>
+        )}
 
         {/* Assessment */}
         <div className="border border-border rounded-xl p-4 bg-white">
@@ -568,10 +694,12 @@ export default async function PropertyPage({
                   {!assessment.source && "Government"}
                 </span>
               </div>
-              {offer && (
+              {(landPriceContext?.listToAssessedRatio != null || offer) && (
                 <div className="flex justify-between pt-1 border-t border-border">
                   <span className="text-muted">List/Assessed</span>
-                  <span className="font-mono font-medium">{offer.listToAssessedRatio.toFixed(2)}x</span>
+                  <span className="font-mono font-medium">
+                    {(landPriceContext?.listToAssessedRatio ?? offer?.listToAssessedRatio ?? 0).toFixed(2)}x
+                  </span>
                 </div>
               )}
               {(assessment.source === "tax_reverse" || assessment.source === "area_median") && (
@@ -588,7 +716,7 @@ export default async function PropertyPage({
         </div>
 
         {/* Comparables */}
-        {listing.preComparables && listing.preComparables.confidence !== "none" && (
+        {!verifiedLandListing && listing.preComparables && listing.preComparables.confidence !== "none" && (
           <div className="border border-border rounded-xl p-4 bg-white">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs uppercase tracking-widest text-muted">Comparables</div>
@@ -679,7 +807,7 @@ export default async function PropertyPage({
             <span className="font-mono text-2xl font-bold">{listing.dom}</span>
             <span className="text-sm text-muted">days on market</span>
           </div>
-          {offer && (
+          {offer && !verifiedLandListing && (
             <div className="text-xs text-muted mb-2">{offer.domTag}</div>
           )}
           <div className="flex flex-wrap gap-1.5">
@@ -702,6 +830,7 @@ export default async function PropertyPage({
         </div>
 
         {/* Motivation Signals */}
+        {!verifiedLandListing && (
         <div className="border border-border rounded-xl p-4 bg-white">
           <div className="text-xs uppercase tracking-widest text-muted mb-3">Motivation Signals</div>
           <div className="flex items-center gap-3 mb-3">
@@ -741,24 +870,32 @@ export default async function PropertyPage({
             );
           })()}
         </div>
+        )}
 
         {/* Canada Advantage: Investor Yield + Market Momentum (CMHC rent / StatCan NHPI) */}
-        {caCma && (
+        {!verifiedLandListing && caCma && (
           <CaInvestorYieldCard investorYield={caInvestorYield} cmaName={caCma.cmaName} rentVintage={caRent?.vintage ?? 0} />
         )}
-        {caCma && <CaMarketMomentumCard momentum={caMomentum} cmaName={caCma.cmaName} />}
+        {!verifiedLandListing && caCma && <CaMarketMomentumCard momentum={caMomentum} cmaName={caCma.cmaName} />}
       </div>
 
       {/* H. Description */}
       {listing.description && (
         <div className="mb-6">
-          <div className="text-xs uppercase tracking-widest text-muted mb-2">Listing Description</div>
+          <div className="text-xs uppercase tracking-widest text-muted mb-2">
+            {verifiedLandListing ? "Seller-provided listing description" : "Listing Description"}
+          </div>
+          {verifiedLandListing && (
+            <p className="text-xs text-muted mb-2">
+              Development, zoning, rezoning, and permitted-use claims below come from the listing and are not independently verified here.
+            </p>
+          )}
           <p className="text-sm text-muted leading-relaxed">{listing.description}</p>
         </div>
       )}
 
       {/* I. Next Steps */}
-      <div className="mb-6">
+      {showResidentialPartnerActions && <div className="mb-6">
         <PartnerCta
           country="CA"
           state={listing.province}
@@ -768,7 +905,7 @@ export default async function PropertyPage({
           propertySlug={slugify(listing.address)}
           city={listing.city}
         />
-      </div>
+      </div>}
 
       {/* J. Footer links */}
       {listing.url && (
@@ -1108,6 +1245,11 @@ function UsComparablesCard({ comparables }: { comparables: UsCompSupport }) {
 function renderUSSparseListing(listing: Listing, slug: string) {
   const fullAddress = `${listing.address}, ${listing.city}, ${listing.province}`;
   const assessUrl = `/assess?address=${encodeURIComponent(fullAddress)}`;
+  const goalStatuses = defaultJourneyGoalStatuses(listing.propertyCapabilities, listing.propertyClassification);
+  const showResidentialPartnerActions = residentialPartnerActionsAllowed(
+    listing.propertyCapabilities,
+    listing.propertyClassification
+  );
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
@@ -1137,8 +1279,6 @@ function renderUSSparseListing(listing: Listing, slug: string) {
         </p>
       </div>
 
-      <PropertyJourneyHandoff assessmentInput={fullAddress} />
-
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
         <div className="text-xs uppercase tracking-widest text-muted mb-2">List Price</div>
         <div className="font-mono text-4xl sm:text-5xl font-bold mb-3">{fmt(listing.price)}</div>
@@ -1148,9 +1288,11 @@ function renderUSSparseListing(listing: Listing, slug: string) {
         </div>
       </div>
 
-      <div className="mb-6">
+      <PropertyJourneyHandoff assessmentInput={fullAddress} goalStatuses={goalStatuses} />
+
+      {showResidentialPartnerActions && <div className="mb-6">
         <PartnerCtaRow country="US" state={listing.province} source="property-page" surface="result-buyer" propertySlug={slug} city={listing.city} />
-      </div>
+      </div>}
 
       <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
         <div className="text-xs uppercase tracking-widest text-muted mb-2">Limited Data</div>
@@ -1168,7 +1310,7 @@ function renderUSSparseListing(listing: Listing, slug: string) {
         </Link>
       </div>
 
-      <div className="mb-6">
+      {showResidentialPartnerActions && <div className="mb-6">
         <PartnerCta
           country="US"
           state={listing.province}
@@ -1178,7 +1320,7 @@ function renderUSSparseListing(listing: Listing, slug: string) {
           propertySlug={slug}
           city={listing.city}
         />
-      </div>
+      </div>}
     </main>
   );
 }
@@ -1197,6 +1339,11 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
   const advantage: UsAdvantageBundle | undefined = listing.preUsAdvantage;
   const comparables = listing.preUsComparables;
   const confidence = listing.preNarrativeConfidence;
+  const goalStatuses = defaultJourneyGoalStatuses(listing.propertyCapabilities, listing.propertyClassification);
+  const showResidentialPartnerActions = residentialPartnerActionsAllowed(
+    listing.propertyCapabilities,
+    listing.propertyClassification
+  );
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
@@ -1235,8 +1382,6 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
         </div>
         <TierBadge tier={tier} />
       </div>
-
-      <PropertyJourneyHandoff assessmentInput={`${listing.address}, ${listing.city}, ${listing.province}`} />
 
       {/* Hero — offer or list price */}
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
@@ -1291,9 +1436,14 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
         )}
       </div>
 
-      <div className="mb-6">
+      <PropertyJourneyHandoff
+        assessmentInput={`${listing.address}, ${listing.city}, ${listing.province}`}
+        goalStatuses={goalStatuses}
+      />
+
+      {showResidentialPartnerActions && <div className="mb-6">
         <PartnerCtaRow country="US" state={listing.province} source="property-page" surface="result-buyer" propertySlug={slug} city={listing.city} />
-      </div>
+      </div>}
 
       {/* THE SIGNAL */}
       <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
@@ -1376,7 +1526,7 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
         </div>
       </div>
 
-      <div className="mb-6">
+      {showResidentialPartnerActions && <div className="mb-6">
         <PartnerCta
           country="US"
           state={listing.province}
@@ -1386,7 +1536,7 @@ function renderUSPropertyPage(listing: Listing, slug: string) {
           propertySlug={slug}
           city={listing.city}
         />
-      </div>
+      </div>}
     </main>
   );
 }

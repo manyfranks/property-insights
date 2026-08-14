@@ -94,6 +94,17 @@ function residentialExclusion(
 ): "provider_exclusion" | "unsupported_scope" | "conflicting_evidence" | null {
   const scopedUse = scope === "unit" ? classification.unitUse : classification.parcelUse;
   if (scopedUse.state === "conflicting") return "conflicting_evidence";
+  // Listing evidence must not be rewritten as assessor/provider parcel use,
+  // but a deterministic parcel-scoped listing is still enough to establish
+  // that the resolved subject is land and exclude residential modules.
+  if (
+    scope === "parcel" &&
+    classification.listingScope.value === "parcel" &&
+    classification.listingScope.state === "deterministic" &&
+    classification.listingScope.confidence === "high"
+  ) {
+    return "provider_exclusion";
+  }
   if (scope === "building" && classification.buildingForm.value === "apartment") {
     return "unsupported_scope";
   }

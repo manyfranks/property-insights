@@ -62,6 +62,21 @@ They retain the legacy limited behavior when no capability record exists.
 Extending evidence-envelope computation into Discover is a separate workstream
 and must be fixture-backed before it changes visible output.
 
+Production acceptance on 2026-08-14 found a second boundary: an on-demand
+listing can have deterministic `listingScope: parcel` from high-confidence
+Zoocasa `Land` evidence while `parcelUse` correctly remains unknown because no
+parcel-scoped provider record exists. The current residential exclusion reads
+`parcelUse` and therefore misses this listing-subject exclusion. Until Sprint
+22 closes that gap, listing-only land is not an accepted Canadian journey
+cohort and broad asset-matrix testing is paused.
+
+Sprint 22 implemented the boundary on 2026-08-14. It also reconciles stale
+pre-fix capability envelopes at read time, so already-persisted land records
+cannot leak residential CTAs while waiting for a future enrichment refresh.
+Local browser replay passed for both incident records and a residential
+control; broad testing remains paused only until the deployed records pass the
+same production replay.
+
 ## Release gate
 
 Each release touching journeys must pass:
