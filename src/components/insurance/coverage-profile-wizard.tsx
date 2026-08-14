@@ -99,6 +99,17 @@ const ROOF_AGE_OPTIONS: Array<{ label: string; value: number | null }> = [
 
 type Phase = "wizard" | "submitting" | "handoff";
 
+// Light client-side normalization only — the server validator
+// (validateCoverageAnswers in src/lib/db/coverage-profiles.ts) is the source
+// of truth for what counts as a valid phone number. This just strips
+// characters a phone number can't contain (letters, punctuation besides
+// +/-/()/space) before it's sent.
+const PHONE_DISALLOWED_CHARS = /[^0-9+\-() ]/g;
+
+function normalizePhone(value: string): string {
+  return value.trim().replace(PHONE_DISALLOWED_CHARS, "");
+}
+
 function selectClass(active: boolean): string {
   return `rounded-xl border p-3.5 text-left transition-colors ${
     active ? "border-foreground bg-gray-50" : "border-border bg-white hover:border-foreground/40"
@@ -225,6 +236,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
   // Step 4 — contact + consent
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [coverageExpiryMonth, setCoverageExpiryMonth] = useState("");
   const [consent, setConsent] = useState(false);
 
@@ -285,6 +297,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
     if (!finalStepReady) return;
 
     const roofAgeOption = ROOF_AGE_OPTIONS.find((o) => o.label === roofAgeChoice);
+    const normalizedPhone = normalizePhone(phone) || null;
 
     setPhase("submitting");
 
@@ -323,8 +336,12 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
         contact: {
           name: name.trim(),
           email: email.trim(),
-          phone: null,
-          preference: "email",
+          phone: normalizedPhone,
+          // No separate UI for this — deriving it keeps step 4 to two contact
+          // fields. "either" once a phone is given (the broker can use
+          // whichever reaches the user faster), "email" when it's the only
+          // channel supplied.
+          preference: normalizedPhone ? "either" : "email",
         },
       },
       consent: true,
@@ -610,6 +627,17 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@email.com"
                 autoComplete="email"
+                className="w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-foreground/20"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-medium text-foreground mb-1.5">Phone (optional)</span>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="(555) 123-4567"
+                autoComplete="tel"
                 className="w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-foreground/20"
               />
             </label>

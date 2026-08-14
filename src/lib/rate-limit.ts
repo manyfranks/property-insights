@@ -4,12 +4,13 @@
  * Uses the same Upstash Redis instance as our KV storage.
  * Keys are prefixed with "rl:" to avoid collisions with listing/event data.
  *
- * Five limiters:
+ * Six limiters:
  *   1. apiLimiter               — general per-IP limit for public endpoints (60 req/min)
  *   2. authApiLimiter           — per-user limit for authenticated endpoints (30 req/min)
  *   3. assessLimiter            — per-user daily cap for /api/assess (15/day)
  *   4. insuranceLookupLimiter   — per-IP limit for /api/insurance/address-lookup (30 req/min)
  *   5. insuranceProfileLimiter  — per-IP limit for /api/coverage-profile (5 req/min)
+ *   6. insuranceWaitlistLimiter — per-IP limit for /api/insurance/waitlist (5 req/min)
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -41,6 +42,7 @@ let _authApiLimiter: Ratelimit | null = null;
 let _assessLimiter: Ratelimit | null = null;
 let _insuranceLookupLimiter: Ratelimit | null = null;
 let _insuranceProfileLimiter: Ratelimit | null = null;
+let _insuranceWaitlistLimiter: Ratelimit | null = null;
 
 /** 60 requests per 60 seconds, per IP — for public endpoints */
 export function apiLimiter(): Ratelimit | null {
@@ -114,4 +116,22 @@ export function insuranceProfileLimiter(): Ratelimit | null {
     prefix: "rl:ins-profile",
   });
   return _insuranceProfileLimiter;
+}
+
+/**
+ * 5 requests per 60 seconds, per IP — for /api/insurance/waitlist. Same
+ * one-shot-submission reasoning as insuranceProfileLimiter: a visitor joins
+ * a waitlist once, so a tight cap mainly deters scripted email-collection
+ * spam rather than throttling real usage.
+ */
+export function insuranceWaitlistLimiter(): Ratelimit | null {
+  if (_insuranceWaitlistLimiter) return _insuranceWaitlistLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _insuranceWaitlistLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(5, "60 s"),
+    prefix: "rl:ins-waitlist",
+  });
+  return _insuranceWaitlistLimiter;
 }

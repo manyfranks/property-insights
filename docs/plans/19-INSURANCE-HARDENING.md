@@ -7,8 +7,9 @@ Companion docs: `18-INSURANCE-PATH-BUILD.md` (the Stage 2 build this plan harden
 
 ## Why this doc exists
 
-A security audit of the Stage 2 insurance-referral flow (still flag-gated behind
-`NEXT_PUBLIC_INSURANCE_INTAKE`, off in production) flagged two issues:
+A security audit of the Stage 2 insurance-referral flow (still stage-gated behind
+`NEXT_PUBLIC_INSURANCE_INTAKE`, off in production — as of 2026-08-14 superseded by the single
+`NEXT_PUBLIC_INSURANCE_STAGE` dial, see `src/config/insurance-stage.ts`) flagged two issues:
 
 - `GET /api/insurance/address-lookup` is unauthenticated typeahead over the tracked-listing
   address set. Six results per query, 3-character minimum — a scripted client can brute-force

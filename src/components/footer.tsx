@@ -14,6 +14,9 @@ export default function Footer() {
               <Link href="/dashboard" className="block text-muted hover:text-foreground transition-colors">
                 Discover
               </Link>
+              <Link href="/insurance" className="block text-muted hover:text-foreground transition-colors">
+                Property insurance
+              </Link>
               <Link href="/blog" className="block text-muted hover:text-foreground transition-colors">
                 Blog
               </Link>
@@ -62,6 +65,9 @@ export default function Footer() {
               <Link href="/privacy-choices" className="block text-muted hover:text-foreground transition-colors">
                 Do Not Sell or Share My Personal Information
               </Link>
+              <Link href="/disclosures" className="block text-muted hover:text-foreground transition-colors">
+                Licensing &amp; Disclosures
+              </Link>
             </div>
           </div>
 
@@ -82,8 +88,13 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 pt-6 border-t border-border text-center text-xs text-muted">
-          &copy; {new Date().getFullYear()} Property Insights &middot; propertyinsights.xyz
+        <div className="mt-10 pt-6 border-t border-border text-center text-xs text-muted space-y-2">
+          <p className="max-w-2xl mx-auto leading-relaxed">
+            Property Insights is a property-intelligence platform, not a licensed insurer or
+            broker. Coverage is provided by licensed third-party brokers. We may earn a referral
+            fee from matches; this never affects your price or our analysis.
+          </p>
+          <p>&copy; {new Date().getFullYear()} Property Insights &middot; propertyinsights.xyz</p>
         </div>
       </div>
     </footer>

@@ -203,3 +203,24 @@ CREATE TABLE IF NOT EXISTS coverage_profiles (
 CREATE INDEX IF NOT EXISTS idx_coverage_profiles_created ON coverage_profiles (created_at);
 CREATE INDEX IF NOT EXISTS idx_coverage_profiles_region ON coverage_profiles (region);
 CREATE INDEX IF NOT EXISTS idx_coverage_profiles_line ON coverage_profiles (line);
+
+-- Insurance waitlist: entered from the /insurance landing page whenever the
+-- visitor's region isn't "live" yet (src/config/insurance-rollout.ts) or the
+-- intake flag is off entirely. Deliberately thinner than coverage_profiles —
+-- no property confirmation, no underwriting questions, no broker handoff —
+-- just "notify me when this opens." Run via scripts/migrate-insurance-waitlist.ts
+-- (one-time, delivered not executed) before the landing page's waitlist mode
+-- is deployed.
+CREATE TABLE IF NOT EXISTS insurance_waitlist (
+  id            UUID PRIMARY KEY,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  email         TEXT NOT NULL,
+  country       TEXT NOT NULL CHECK (country IN ('US', 'CA')),
+  region        TEXT NOT NULL,
+  line          TEXT CHECK (line IN ('homeowner', 'landlord', 'tenant', 'strata', 'commercial')),  -- nullable: visitor may join before picking a line
+  address       TEXT  -- nullable: visitor may join before typing/selecting an address
+);
+
+CREATE INDEX IF NOT EXISTS idx_insurance_waitlist_created ON insurance_waitlist (created_at);
+CREATE INDEX IF NOT EXISTS idx_insurance_waitlist_region ON insurance_waitlist (region);
+CREATE INDEX IF NOT EXISTS idx_insurance_waitlist_email ON insurance_waitlist (email);

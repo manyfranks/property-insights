@@ -33,6 +33,7 @@ import {
   INSURANCE_LINE_EXCLUSIONS,
   INSURANCE_STATE_EXCLUSIONS,
 } from "@/config/affiliate-vendors";
+import { stageAtLeast } from "@/config/insurance-stage";
 import { FTC_DISCLOSURE, trackClick, useOptedOut } from "@/lib/partner-cta-shared";
 
 export interface InsuranceModuleProps {
@@ -110,7 +111,7 @@ export default function InsuranceModule({
   const [line, setLine] = useState<InsuranceLine>(initialLine ?? "homeowner");
   const optedOut = useOptedOut();
 
-  if (process.env.NEXT_PUBLIC_INSURANCE_INTAKE !== "1") return null;
+  if (!stageAtLeast("intake")) return null;
 
   const upperRegion = region ? region.toUpperCase() : "";
   if (INSURANCE_STATE_EXCLUSIONS[country]?.includes(upperRegion)) return null;
@@ -278,6 +279,9 @@ export default function InsuranceModule({
 
         {hasSponsoredCard && <p className="text-xs text-muted leading-relaxed mt-3.5">{FTC_DISCLOSURE}</p>}
         <p className="text-[11.5px] text-muted/70 leading-relaxed mt-2">{complianceNote}</p>
+        <Link href="/insurance" className="inline-block text-[11.5px] text-cta-accent font-medium mt-2 hover:underline">
+          How insurance matching works &rarr;
+        </Link>
       </div>
     </div>
   );

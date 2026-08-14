@@ -104,6 +104,12 @@ progresses rather than describe a finished state that doesn't exist yet.
 
 ## Feature flag
 
+> **2026-08-14:** `NEXT_PUBLIC_INSURANCE_INTAKE`, along with the later `NEXT_PUBLIC_INSURANCE_LANDING`
+> and `NEXT_PUBLIC_INSURANCE_SWITCH` flags, have been superseded by a single staged dial,
+> `NEXT_PUBLIC_INSURANCE_STAGE` (`"off" | "landing" | "intake" | "switch"`) — see
+> `src/config/insurance-stage.ts`. References to `NEXT_PUBLIC_INSURANCE_INTAKE` below mean
+> `NEXT_PUBLIC_INSURANCE_STAGE` at or beyond `"intake"`.
+
 `NEXT_PUBLIC_INSURANCE_INTAKE` gates every user-facing surface built on this branch — the result-page
 module, the intake wizard, and the handoff page. Off by default. Turning it on is a distinct
 decision from merging this branch, and depends on both:

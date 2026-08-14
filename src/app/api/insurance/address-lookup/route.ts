@@ -7,16 +7,22 @@
  * prefill (listingId = slug), instead of relying on an exact slugified
  * address match.
  *
- * Flag-gated like every insurance surface (404 while off). Reads the full
- * listing set from KV once and keeps a slim in-memory index for 5 minutes —
- * typeahead fires per keystroke and the underlying data changes at most
- * daily (pipeline refresh cron).
+ * Stage-gated like every insurance surface (404 below the required stage) —
+ * but the gate is stageAtLeast("landing") (src/config/insurance-stage.ts —
+ * NEXT_PUBLIC_INSURANCE_STAGE, which supersedes the old
+ * NEXT_PUBLIC_INSURANCE_LANDING / NEXT_PUBLIC_INSURANCE_INTAKE pair), not
+ * "intake" alone, so the public /insurance landing page's typeahead keeps
+ * working even before the coverage-profile wizard itself is unlocked.
+ * Reads the full listing set from KV once and keeps a slim in-memory index
+ * for 5 minutes — typeahead fires per keystroke and the underlying data
+ * changes at most daily (pipeline refresh cron).
  */
 
 import { NextResponse } from "next/server";
 import { getAllListings } from "@/lib/kv/listings";
 import { slugify } from "@/lib/utils";
 import { insuranceLookupLimiter } from "@/lib/rate-limit";
+import { stageAtLeast } from "@/config/insurance-stage";
 
 interface AddressHit {
   address: string;
@@ -55,9 +61,9 @@ async function getIndex(): Promise<AddressHit[]> {
 }
 
 export async function GET(req: Request) {
-  if (process.env.NEXT_PUBLIC_INSURANCE_INTAKE !== "1") {
+  if (!stageAtLeast("landing")) {
     return NextResponse.json(
-      { error: "Insurance intake is not enabled (NEXT_PUBLIC_INSURANCE_INTAKE)" },
+      { error: "Insurance landing is not enabled (NEXT_PUBLIC_INSURANCE_STAGE has not reached \"landing\")" },
       { status: 404 }
     );
   }

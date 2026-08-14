@@ -11,8 +11,10 @@
  * checkbox (src/lib/db/coverage-profiles.ts — consent must be exactly
  * `true`, enforced at both the API layer and a DB CHECK constraint) and, until
  * the public privacy pages are amended to disclose it, the
- * NEXT_PUBLIC_INSURANCE_INTAKE feature flag (src/app/api/coverage-profile/route.ts
- * 404s while it's off). This route only carries the resulting `profileId`
+ * NEXT_PUBLIC_INSURANCE_STAGE rollout dial reaching "intake"
+ * (src/config/insurance-stage.ts — supersedes the old
+ * NEXT_PUBLIC_INSURANCE_INTAKE flag; src/app/api/coverage-profile/route.ts
+ * 404s below that stage). This route only carries the resulting `profileId`
  * through as an opaque, size-capped reference for click-through analytics —
  * it does not itself read or transmit the profile contents.
  *

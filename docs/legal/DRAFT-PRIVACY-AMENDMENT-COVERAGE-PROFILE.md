@@ -8,7 +8,9 @@ below is a proposed insert/redline against the live text, not a change that has 
 
 Companion docs: `PARTNER-LANDSCAPE-2026-08.md`, `INSURANCE-BROKERAGE-STRUCTURES.md`,
 `../plans/18-INSURANCE-PATH-BUILD.md` (the coverage-profile flow this amendment covers is
-built behind `NEXT_PUBLIC_INSURANCE_INTAKE` and is off in production until this amendment lands).
+built behind `NEXT_PUBLIC_INSURANCE_INTAKE` — as of 2026-08-14 superseded by the single
+`NEXT_PUBLIC_INSURANCE_STAGE` dial reaching `"intake"`, see `src/config/insurance-stage.ts` —
+and is off in production until this amendment lands).
 
 ---
 

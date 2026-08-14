@@ -10,9 +10,10 @@
  * + conversion proof for the eventual Stage 3 internal-brokerage
  * submission), distinct from the affiliate click log in partner-clicks.ts.
  *
- * Ships flag-gated behind NEXT_PUBLIC_INSURANCE_INTAKE — see
- * isInsuranceIntakeEnabled() below and the API route, which 404s while the
- * flag is off. This mirrors the reasoning in the updated partner-connect
+ * Ships stage-gated behind NEXT_PUBLIC_INSURANCE_STAGE reaching "intake" —
+ * see stageAtLeast("intake") in src/config/insurance-stage.ts and the API
+ * route, which 404s below that stage. This mirrors the reasoning in the
+ * updated partner-connect
  * doc comment: the insurance handoff shares consented user data with a
  * partner, which the public privacy pages haven't yet been amended to
  * disclose.
@@ -25,11 +26,6 @@
 import { randomUUID } from "node:crypto";
 import { dbAvailable, sql } from "@/lib/db";
 import type { AffiliateSource, Country, InsuranceLine } from "@/config/affiliate-vendors";
-
-/** True once the insurance intake flow is allowed to accept submissions. */
-export function isInsuranceIntakeEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_INSURANCE_INTAKE === "1";
-}
 
 export type CoverageFieldSource = "known" | "modeled";
 export type CoverageOccupancy =

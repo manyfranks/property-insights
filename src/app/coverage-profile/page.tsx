@@ -13,10 +13,11 @@
  *     (&listingId=..&vendor=<registryId>)
  *
  * Transactional page — never indexed (`robots: { index: false }`), and
- * gated behind NEXT_PUBLIC_INSURANCE_INTAKE the same way
- * POST /api/coverage-profile is (src/app/api/coverage-profile/route.ts) —
- * this page 404s while the flag is off rather than rendering a flow that
- * can't submit.
+ * gated behind stageAtLeast("intake") (src/config/insurance-stage.ts —
+ * NEXT_PUBLIC_INSURANCE_STAGE, which supersedes the old
+ * NEXT_PUBLIC_INSURANCE_INTAKE flag) the same way POST /api/coverage-profile
+ * is (src/app/api/coverage-profile/route.ts) — this page 404s below that
+ * stage rather than rendering a flow that can't submit.
  */
 
 import { notFound } from "next/navigation";
@@ -27,6 +28,7 @@ import {
   type Country,
   type InsuranceLine,
 } from "@/config/affiliate-vendors";
+import { stageAtLeast } from "@/config/insurance-stage";
 import { getListingBySlug } from "@/lib/kv/listings";
 import { slugify } from "@/lib/utils";
 import { buildCoveragePrefill } from "@/components/insurance/coverage-prefill";
@@ -71,7 +73,7 @@ export default async function CoverageProfilePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  if (process.env.NEXT_PUBLIC_INSURANCE_INTAKE !== "1") {
+  if (!stageAtLeast("intake")) {
     notFound();
   }
 

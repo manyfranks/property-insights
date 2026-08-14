@@ -87,6 +87,17 @@ export interface AffiliateVendor {
   stateCoverage: string[] | "all";
   /** alternative to a coverage allowlist (e.g. Kiavi's excluded states) */
   stateExclusions?: string[];
+  /**
+   * Narrower-than-`stateCoverage` allowlist for vendors whose PAID affiliate
+   * program pays out in fewer regions than the vendor is actually licensed
+   * in (e.g. Square One: licensed BC/AB/SK/MB/ON, but the affiliate program
+   * excludes MB — a referral there is unpaid, not a usable revenue channel).
+   * When set, this — not `stateCoverage` — gates CTA eligibility, since a
+   * region where the click can't be attributed/paid shouldn't render a
+   * commissioned CTA. Omit when the affiliate program's scope matches
+   * `stateCoverage` exactly (the common case).
+   */
+  affiliateRegions?: string[];
   /** promo copy shown when rendered as the hero CTA */
   offerText?: string;
   network: AffiliateNetwork;
@@ -189,7 +200,12 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     affiliateReady: true,
     cpaTier: 1,
     audienceMode: ["buyer", "investor"],
-    stateCoverage: "all",
+    // Licensed BC/AB/SK/MB/ON only — not NS/PEI/NL or the territories. See
+    // `affiliateRegions` below: the paid affiliate program is narrower still.
+    stateCoverage: ["BC", "AB", "SK", "MB", "ON"],
+    // MB is licensed (stateCoverage above) but excluded from the paid
+    // affiliate program — an MB referral is unpaid, not a usable channel.
+    affiliateRegions: ["BC", "AB", "SK", "ON"],
     offerText: "$20 credit applied automatically",
     network: "direct",
     ctaLabel: "Get home insurance",
@@ -198,6 +214,8 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     legacyPartnerType: "insurance",
     envKey: "NEXT_PUBLIC_SQUAREONE_URL",
     lines: ["homeowner", "landlord", "tenant"],
+    notes:
+      "2026-08-14: corrected from stateCoverage 'all' (verified Aug 2026 partner research). Licensed BC/AB/SK/MB/ON only (absent NS/PEI/NL + territories). Paid affiliate program covers BC/AB/SK/ON only — MB is licensed but not affiliate-payable, see `affiliateRegions`.",
   },
   {
     id: "apollo",
@@ -237,13 +255,14 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     // Precautionary jurisdiction gate — see docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §3.
     // Same QC exclusion rationale as APOLLO above (civil-law AMF regime, no
     // referral-fee mapping). No personal homeowner/tenant lines to gate NB on.
-    stateExclusions: ["QC"],
+    // YT/NT/NU added 2026-08-14 per Zensurance's own "no territories" statement.
+    stateExclusions: ["QC", "YT", "NT", "NU"],
     network: "direct",
     ctaLabel: "Insure my rental property",
     description: "Rental property coverage from a licensed Canadian brokerage",
     shortCta: "Get quote",
     notes:
-      "$50 CAD CPA per completed online quote via Fintel Connect. Application in review Aug 2026. No personal homeowner/tenant lines — landlord/commercial only. Excludes QC + territories.",
+      "$50 CAD CPA per completed online quote via Fintel Connect. Application in review Aug 2026. No personal homeowner/tenant lines — landlord/commercial only. Excludes QC + territories. 2026-08-14: verified Aug 2026 partner research confirmed Zensurance's own 'no territories' statement — added YT/NT/NU to stateExclusions (was QC only). lines confirmed commercial-only (landlord/commercial); no homeowner/tenant/strata routing.",
     lines: ["landlord", "commercial"],
   },
 
@@ -540,8 +559,8 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
       notes: "Embedded API accepts property data; docs via BD, not public",
     },
     notes:
-      "BD thread live Aug 2026 (partnerships team: Sumaya + Brian Harris). Baldwin Group completed acquisition Jan 2026 — confirm current terms. Embedded stack (Instant Estimate Widget / Embedded Experience / Policy Sync); 'simple referral options' for unlicensed platforms. Licensed all 50 states + DC.",
-    lines: ["landlord", "strata", "commercial"],
+      "BD thread live Aug 2026 (partnerships team: Sumaya + Brian Harris). Baldwin Group completed acquisition Jan 2026 — confirm current terms. Embedded stack (Instant Estimate Widget / Embedded Experience / Policy Sync); 'simple referral options' for unlicensed platforms. Licensed all 50 states + DC. 2026-08-14: corrected lines from [landlord, strata, commercial] — verified Aug 2026 partner research could not substantiate strata or commercial lines. Obie's real product is landlord/multifamily (single-family rentals, 2-4 units, 5+ unit apartment buildings, condo units) — 5+ unit multifamily is its differentiator vs Steadily. Post-Baldwin-Group terms still unconfirmed, re-verify before BD closes.",
+    lines: ["landlord"],
   },
   {
     id: "easystreet",
@@ -790,8 +809,13 @@ function filterEligibleVendors(
     .filter((v) => v.audienceMode.includes(mode))
     .filter((v) => {
       if (upperState && v.stateExclusions?.includes(upperState)) return false;
-      if (v.stateCoverage === "all") return true;
-      return upperState ? v.stateCoverage.includes(upperState) : false;
+      // affiliateRegions (when set) narrows stateCoverage to the paid
+      // affiliate program's actual scope — a region outside it can't be
+      // attributed/paid, so it isn't a usable CTA even though the vendor is
+      // licensed there (e.g. Square One in MB). See its doc comment above.
+      const coverage = v.affiliateRegions ?? v.stateCoverage;
+      if (coverage === "all") return true;
+      return upperState ? coverage.includes(upperState) : false;
     });
 }
 

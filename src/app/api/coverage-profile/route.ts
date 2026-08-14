@@ -9,8 +9,10 @@
  * the profile and returns its id; the handoff redirect/deep-link and the
  * eventual `markProfileHandoff()` call are a separate concern.
  *
- * Flag-gated: returns 404 while NEXT_PUBLIC_INSURANCE_INTAKE is off. This is
- * a visible gate, not a silent no-op — the flag exists because the public
+ * Stage-gated: returns 404 while NEXT_PUBLIC_INSURANCE_STAGE hasn't reached
+ * "intake" (see src/config/insurance-stage.ts — supersedes the old
+ * NEXT_PUBLIC_INSURANCE_INTAKE flag). This is a visible gate, not a silent
+ * no-op — the flag exists because the public
  * privacy pages haven't yet been amended to disclose the partner handoff
  * (see the updated doc comment on src/app/api/partner-connect/route.ts).
  *
@@ -30,14 +32,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { dbAvailable } from "@/lib/db";
-import {
-  createCoverageProfile,
-  isInsuranceIntakeEnabled,
-  type CreateCoverageProfileInput,
-} from "@/lib/db/coverage-profiles";
+import { createCoverageProfile, type CreateCoverageProfileInput } from "@/lib/db/coverage-profiles";
 import type { AffiliateSource, Country, InsuranceLine } from "@/config/affiliate-vendors";
 import { isOptedOutRequest } from "@/lib/privacy";
 import { insuranceProfileLimiter } from "@/lib/rate-limit";
+import { stageAtLeast } from "@/config/insurance-stage";
 
 const VALID_COUNTRIES: Country[] = ["US", "CA"];
 const VALID_LINES: InsuranceLine[] = ["homeowner", "landlord", "tenant", "strata", "commercial"];
@@ -61,9 +60,9 @@ const VALID_SOURCES = [
 const MAX_DATA_SIZE = 8192; // bytes
 
 export async function POST(req: Request) {
-  if (!isInsuranceIntakeEnabled()) {
+  if (!stageAtLeast("intake")) {
     return NextResponse.json(
-      { error: "Insurance intake is not enabled (NEXT_PUBLIC_INSURANCE_INTAKE is off)" },
+      { error: "Insurance intake is not enabled (NEXT_PUBLIC_INSURANCE_STAGE has not reached \"intake\")" },
       { status: 404 }
     );
   }

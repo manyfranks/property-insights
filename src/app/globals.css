@@ -32,6 +32,22 @@ body {
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
 }
 
+/* Small reveal-below transition — transcribed from the insurance landing
+   design's own `drop` keyframe (insurance-landing.dc.html), used there for
+   the region-picker dropdown. Reused for the waitlist email row's
+   progressive disclosure (insurance-landing-form.tsx) since it's the same
+   category of interaction: a small control appearing just below another. */
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Blog prose styling */
 .prose-custom {
   font-size: 0.9375rem;
