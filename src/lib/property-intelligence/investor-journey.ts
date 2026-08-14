@@ -27,6 +27,12 @@ export interface RentalScreenModel {
   yield: RentalYieldEvidence | null;
 }
 
+export interface RentalOperatingScenarioBasis {
+  purchasePrice: number;
+  monthlyRent: number | null;
+  rentBasis: "modeled_address_rent" | "user_required";
+}
+
 export interface AssessmentAudience {
   mode: AudienceMode;
   surface: Extract<SurfaceKey, "result-buyer" | "result-investor">;
@@ -72,6 +78,44 @@ export function monthlyRentForGrossYield(price: number, annualYieldPct: number):
     return null;
   }
   return price * annualYieldPct / 12;
+}
+
+/**
+ * Decides whether a user-entered operating scenario can safely use the
+ * resolved subject's price. A missing rent estimate may become a blank user
+ * assumption; a scope conflict or provider exclusion may not.
+ */
+export function buildRentalOperatingScenarioBasis(args: {
+  goal: AssessmentGoal | null | undefined;
+  subject: AssessmentSubject;
+  capabilities: PropertyCapabilities | null | undefined;
+  purchasePrice: number | null | undefined;
+  modeledMonthlyRent: number | null | undefined;
+}): RentalOperatingScenarioBasis | null {
+  if (args.goal !== "rental_investment") return null;
+  if (!args.capabilities || shouldWithholdPropertyEvidence(args.subject, args.capabilities)) return null;
+  if (!args.capabilities.items.addressSaleValuation.available) return null;
+  if (!Number.isFinite(args.purchasePrice) || (args.purchasePrice ?? 0) <= 0) return null;
+
+  const rentCapability = args.capabilities.items.addressRentEstimate;
+  if (rentCapability.available) {
+    if (!Number.isFinite(args.modeledMonthlyRent) || (args.modeledMonthlyRent ?? 0) <= 0) return null;
+    return {
+      purchasePrice: args.purchasePrice!,
+      monthlyRent: args.modeledMonthlyRent!,
+      rentBasis: "modeled_address_rent",
+    };
+  }
+
+  if (rentCapability.reason === "missing_field" || rentCapability.reason === "regional_proxy_only") {
+    return {
+      purchasePrice: args.purchasePrice!,
+      monthlyRent: null,
+      rentBasis: "user_required",
+    };
+  }
+
+  return null;
 }
 
 export function shouldWithholdPropertyEvidence(

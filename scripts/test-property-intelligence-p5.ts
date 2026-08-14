@@ -3,6 +3,7 @@ import type { PropertyCapabilities } from "../src/lib/property-intelligence/capa
 import { precomputedOfferAnchorType } from "../src/lib/offer-model";
 import {
   assessmentAudience,
+  buildRentalOperatingScenarioBasis,
   buildRentalScreenModel,
   buildUserRentScenario,
   monthlyRentForGrossYield,
@@ -285,6 +286,52 @@ const cases: Array<[string, () => void]> = [
       downPaymentPct: 20,
       annualInterestRatePct: null,
       amortizationYears: 25,
+    }), null);
+  }],
+  ["US operating scenarios use modeled rent only when price and scope are verified", () => {
+    assert.deepEqual(buildRentalOperatingScenarioBasis({
+      goal: "rental_investment",
+      subject: subject(),
+      capabilities: capabilities({ addressSaleValuation: true, addressRentEstimate: true }),
+      purchasePrice: 600_000,
+      modeledMonthlyRent: 3_000,
+    }), {
+      purchasePrice: 600_000,
+      monthlyRent: 3_000,
+      rentBasis: "modeled_address_rent",
+    });
+  }],
+  ["a missing US rent may become a blank user scenario but HUD never becomes its input", () => {
+    const caps = capabilities({ addressSaleValuation: true, regionalRentBenchmark: true });
+    assert.deepEqual(buildRentalOperatingScenarioBasis({
+      goal: "rental_investment",
+      subject: subject(),
+      capabilities: caps,
+      purchasePrice: 600_000,
+      modeledMonthlyRent: null,
+    }), {
+      purchasePrice: 600_000,
+      monthlyRent: null,
+      rentBasis: "user_required",
+    });
+  }],
+  ["fallback values and unit-building scope conflicts cannot seed an operating scenario", () => {
+    assert.equal(buildRentalOperatingScenarioBasis({
+      goal: "rental_investment",
+      subject: subject(),
+      capabilities: capabilities({ regionalRentBenchmark: true }),
+      purchasePrice: 450_000,
+      modeledMonthlyRent: null,
+    }), null);
+
+    const mismatched = capabilities({ addressSaleValuation: true });
+    mismatched.items.addressRentEstimate.reason = "unsupported_scope";
+    assert.equal(buildRentalOperatingScenarioBasis({
+      goal: "rental_investment",
+      subject: subject(),
+      capabilities: mismatched,
+      purchasePrice: 1_200_000,
+      modeledMonthlyRent: 2_000,
     }), null);
   }],
 ];

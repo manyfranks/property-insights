@@ -53,6 +53,7 @@ function ScenarioField({
   value,
   onChange,
   max,
+  helpText,
 }: {
   id: string;
   label: string;
@@ -60,6 +61,7 @@ function ScenarioField({
   value: string;
   onChange: (value: string) => void;
   max?: number;
+  helpText?: string;
 }) {
   return (
     <label htmlFor={id} className="block border border-border rounded-lg p-3 bg-white">
@@ -79,18 +81,26 @@ function ScenarioField({
         />
         <span className="shrink-0 text-xs text-muted">{suffix}</span>
       </span>
+      {helpText && <span className="block text-xs text-muted mt-2 leading-relaxed">{helpText}</span>}
     </label>
   );
+}
+
+export interface EditableRentalScenarioBasis {
+  priceSource: string;
+  rentSource: string;
 }
 
 export default function RentalOperatingScenario({
   purchasePrice,
   monthlyRent,
   currency,
+  editableBasis,
 }: {
   purchasePrice: number;
   monthlyRent: number | null;
   currency: "CAD" | "USD";
+  editableBasis?: EditableRentalScenarioBasis;
 }) {
   const [expenses, setExpenses] = useState<Record<ExpenseKey, string>>({
     vacancy: "",
@@ -102,15 +112,27 @@ export default function RentalOperatingScenario({
     other: "",
   });
   const [includeFinancing, setIncludeFinancing] = useState(false);
+  const [scenarioPriceInput, setScenarioPriceInput] = useState(
+    editableBasis ? String(Math.round(purchasePrice)) : ""
+  );
+  const [scenarioRentInput, setScenarioRentInput] = useState(
+    editableBasis && monthlyRent ? String(Math.round(monthlyRent)) : ""
+  );
   const [financingInputs, setFinancingInputs] = useState<Record<FinancingKey, string>>({
     downPayment: "",
     interest: "",
     amortization: "",
   });
 
+  const scenarioPrice = editableBasis ? parseInput(scenarioPriceInput) : purchasePrice;
+  const scenarioRent = editableBasis ? parseInput(scenarioRentInput) : monthlyRent;
+  const scenarioGrossYield = scenarioPrice && scenarioPrice > 0 && scenarioRent && scenarioRent > 0
+    ? scenarioRent * 12 / scenarioPrice
+    : null;
+
   const operating = useMemo(() => buildOperatingScenario({
-    purchasePrice,
-    monthlyRent: monthlyRent ?? 0,
+    purchasePrice: scenarioPrice ?? 0,
+    monthlyRent: scenarioRent ?? 0,
     vacancyRatePct: parseInput(expenses.vacancy),
     monthlyPropertyTaxes: parseInput(expenses.taxes),
     monthlyInsurance: parseInput(expenses.insurance),
@@ -118,15 +140,15 @@ export default function RentalOperatingScenario({
     monthlyManagement: parseInput(expenses.management),
     monthlyUtilities: parseInput(expenses.utilities),
     monthlyOtherCosts: parseInput(expenses.other),
-  }), [expenses, monthlyRent, purchasePrice]);
+  }), [expenses, scenarioPrice, scenarioRent]);
 
   const financing = useMemo(() => operating && includeFinancing
-    ? buildFinancingScenario(purchasePrice, operating, {
+    ? buildFinancingScenario(scenarioPrice ?? 0, operating, {
         downPaymentPct: parseInput(financingInputs.downPayment),
         annualInterestRatePct: parseInput(financingInputs.interest),
         amortizationYears: parseInput(financingInputs.amortization),
       })
-    : null, [financingInputs, includeFinancing, operating, purchasePrice]);
+    : null, [financingInputs, includeFinancing, operating, scenarioPrice]);
 
   const setExpense = (key: ExpenseKey, value: string) => {
     setExpenses((current) => ({ ...current, [key]: value }));
@@ -136,7 +158,7 @@ export default function RentalOperatingScenario({
   };
 
   return (
-    <details className="group border border-border rounded-lg overflow-hidden mb-5" data-p5-operating-scenario="collapsed">
+    <details className="group border border-border rounded-lg overflow-hidden mb-5" data-p5-operating-scenario="supplemental">
       <summary className="cursor-pointer list-none px-4 py-3.5 bg-gray-50 flex items-center justify-between gap-4 hover:bg-gray-100">
         <span>
           <span className="block text-xs uppercase tracking-widest text-muted">Optional operating scenario</span>
@@ -153,6 +175,37 @@ export default function RentalOperatingScenario({
           Every field below is your assumption. Complete every operating cost—even when the value is zero—before
           we calculate NOI or cap rate. Blank means unknown, not zero.
         </p>
+
+        {editableBasis && (
+          <div className="border border-border rounded-lg bg-gray-50/70 p-3 sm:p-4 mb-4" data-p5-editable-scenario-basis="true">
+            <div className="text-xs uppercase tracking-widest text-muted mb-3">Editable scenario basis</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <ScenarioField
+                id="rental-scenario-price"
+                label="Scenario acquisition price"
+                suffix={currency}
+                value={scenarioPriceInput}
+                onChange={setScenarioPriceInput}
+                helpText={`${editableBasis.priceSource} · editable assumption`}
+              />
+              <ScenarioField
+                id="rental-scenario-rent"
+                label="Scenario monthly rent"
+                suffix="/mo"
+                value={scenarioRentInput}
+                onChange={setScenarioRentInput}
+                helpText={editableBasis.rentSource}
+              />
+              <ResultCard
+                label="Scenario gross yield"
+                value={scenarioGrossYield == null ? "Enter price and rent" : `${(scenarioGrossYield * 100).toFixed(2)}%`}
+              />
+            </div>
+            <p className="text-xs text-muted mt-3">
+              Editing these values changes only this scenario. It does not rewrite the property evidence above.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           {EXPENSE_FIELDS.map((field) => (
@@ -177,9 +230,11 @@ export default function RentalOperatingScenario({
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted mb-5">
-            {monthlyRent
+            {scenarioRent
               ? "Complete all seven operating assumptions to calculate NOI and cap rate. Enter 0 when a cost does not apply."
-              : "Enter your monthly rent scenario above, then complete all seven operating assumptions."}
+              : editableBasis
+                ? "Enter a scenario price and monthly rent, then complete all seven operating assumptions."
+                : "Enter your monthly rent scenario above, then complete all seven operating assumptions."}
           </div>
         )}
 

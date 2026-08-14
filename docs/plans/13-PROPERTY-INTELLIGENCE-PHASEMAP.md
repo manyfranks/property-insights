@@ -550,13 +550,14 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 
 ## Immediate next implementation slice
 
-Sprint 23 is deployed. Sprint 24 Slice A is implemented locally with pure-math
-and desktop-browser evidence; finish its cross-viewport gate, then continue:
+Sprint 23 is deployed. Sprint 24 cross-geo composition is implemented with
+pure-math, render, and Canadian CMHC browser evidence. Finish the live US and
+narrow-viewport gates before persistence:
 
-1. Verify the Canadian operating scenario at a narrow/mobile viewport and on
-   one city with mapped CMHC context.
-2. After US credits reset, spot-check one US listed result and one US
-   off-market/fallback result, then integrate the shared operating scenario.
+1. Verify the Canadian operating scenario at a narrow/mobile viewport.
+2. After US credits reset, spot-check one US listed result, one off-market
+   result, one county fallback, and one unit/building scope mismatch. Confirm
+   scenario edits and view switches do not refetch.
 3. Add owner-scoped assumption persistence only through an explicit additive
    schema/privacy slice; do not hide it inside the calculator UI patch.
 4. Resume the remaining curated asset matrix after the cross-geo checks pass;

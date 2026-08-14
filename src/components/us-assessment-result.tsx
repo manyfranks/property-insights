@@ -7,10 +7,12 @@ import type { PropertyCapabilities } from "@/lib/property-intelligence/capabilit
 import type { AssessmentGoal } from "@/lib/property-intelligence/journey";
 import {
   assessmentAudience,
+  buildRentalOperatingScenarioBasis,
   buildRentalScreenModel,
   shouldWithholdPropertyEvidence,
   type RentalMoneyEvidence,
 } from "@/lib/property-intelligence/investor-journey";
+import RentalOperatingScenario from "@/components/rental-operating-scenario";
 import type {
   EquityTenureSignal,
   ValuationTriangulation,
@@ -450,10 +452,16 @@ function InvestorYieldCard({ investorYield }: { investorYield: InvestorYield | n
   );
 }
 
-function RentalScreen({
+export function RentalScreen({
   model,
+  operatingBasis,
+  priceSource,
+  scenarioKey,
 }: {
   model: NonNullable<ReturnType<typeof buildRentalScreenModel>>;
+  operatingBasis?: NonNullable<ReturnType<typeof buildRentalOperatingScenarioBasis>>;
+  priceSource?: string;
+  scenarioKey?: string;
 }) {
   const badgeClass = model.availability === "supported"
     ? "bg-emerald-100 text-emerald-700"
@@ -493,6 +501,23 @@ function RentalScreen({
         Gross screening only: financing, vacancy, maintenance, management, utilities, insurance, taxes, and other
         operating costs are not deducted. This is not a cash-flow or cap-rate projection.
       </p>
+
+      {operatingBasis && (
+        <div className="mt-5">
+          <RentalOperatingScenario
+            key={scenarioKey ?? `${operatingBasis.purchasePrice}:${operatingBasis.monthlyRent ?? "blank"}`}
+            purchasePrice={operatingBasis.purchasePrice}
+            monthlyRent={operatingBasis.monthlyRent}
+            currency="USD"
+            editableBasis={{
+              priceSource: priceSource ?? "Verified property price",
+              rentSource: operatingBasis.rentBasis === "modeled_address_rent"
+                ? "Prefilled from RentCast rent AVM · modeled, not a signed lease"
+                : "No address-level rent estimate · enter your own supported assumption",
+            }}
+          />
+        </div>
+      )}
     </section>
   );
 }
@@ -527,9 +552,11 @@ function RentalEvidenceCard({
 function UsLimitedListedRentalView({
   data,
   model,
+  operatingBasis,
 }: {
   data: UsListedResult;
   model: NonNullable<ReturnType<typeof buildRentalScreenModel>>;
+  operatingBasis: ReturnType<typeof buildRentalOperatingScenarioBasis>;
 }) {
   const { listing, marketPanel, riskMomentum } = data;
   const audience = assessmentAudience("rental_investment");
@@ -551,7 +578,12 @@ function UsLimitedListedRentalView({
 
       <AssessmentJourneyFocus />
 
-      <RentalScreen model={model} />
+      <RentalScreen
+        model={model}
+        operatingBasis={operatingBasis ?? undefined}
+        priceSource="Active listing asking price"
+        scenarioKey={data.assessmentId ?? data.address}
+      />
 
       <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 mb-6">
         <div className="text-xs uppercase tracking-widest text-amber-700 mb-2">Property yield withheld</div>
@@ -811,13 +843,20 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
     regionalRent: regionalRentEvidence(data),
     yield: investorYield,
   });
+  const operatingBasis = buildRentalOperatingScenarioBasis({
+    goal: activeGoal,
+    subject: data.assessmentSubject,
+    capabilities: data.propertyCapabilities,
+    purchasePrice: listing.price,
+    modeledMonthlyRent: investorYield?.monthlyRent,
+  });
 
   if (
     activeGoal === "rental_investment" &&
     rentalScreen &&
     !data.propertyCapabilities.items.grossYieldScreen.available
   ) {
-    return <UsLimitedListedRentalView data={data} model={rentalScreen} />;
+    return <UsLimitedListedRentalView data={data} model={rentalScreen} operatingBasis={operatingBasis} />;
   }
 
   return (
@@ -875,7 +914,14 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
 
       <AssessmentJourneyFocus />
 
-      {rentalScreen && <RentalScreen model={rentalScreen} />}
+      {rentalScreen && (
+        <RentalScreen
+          model={rentalScreen}
+          operatingBasis={operatingBasis ?? undefined}
+          priceSource="Active listing asking price"
+          scenarioKey={data.assessmentId ?? data.address}
+        />
+      )}
 
       <div className="mb-6">
         <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
@@ -1145,6 +1191,13 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
     regionalRent: regionalRentEvidence(data),
     yield: investorYield,
   });
+  const operatingBasis = buildRentalOperatingScenarioBasis({
+    goal: activeGoal,
+    subject: data.assessmentSubject,
+    capabilities: data.propertyCapabilities,
+    purchasePrice: investorYield?.priceForYield ?? avm?.value,
+    modeledMonthlyRent: rent?.value,
+  });
 
   if (
     activeGoal === "rental_investment" &&
@@ -1164,7 +1217,12 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
           <p className="text-sm text-muted mt-0.5">{data.countyName}, {data.state}</p>
         </div>
         <AssessmentJourneyFocus />
-        <RentalScreen model={rentalScreen} />
+        <RentalScreen
+          model={rentalScreen}
+          operatingBasis={operatingBasis ?? undefined}
+          priceSource="RentCast AVM modeled value"
+          scenarioKey={data.assessmentId ?? data.address}
+        />
         <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 mb-6">
           <div className="text-xs uppercase tracking-widest text-amber-700 mb-2">Property yield withheld</div>
           <h2 className="text-lg font-semibold text-amber-950 mb-2">
@@ -1237,7 +1295,14 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
 
       <AssessmentJourneyFocus />
 
-      {rentalScreen && <RentalScreen model={rentalScreen} />}
+      {rentalScreen && (
+        <RentalScreen
+          model={rentalScreen}
+          operatingBasis={operatingBasis ?? undefined}
+          priceSource="RentCast AVM modeled value"
+          scenarioKey={data.assessmentId ?? data.address}
+        />
+      )}
 
       <div className="mb-6">
         <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />

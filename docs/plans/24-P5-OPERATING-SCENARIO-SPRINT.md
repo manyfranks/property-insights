@@ -40,12 +40,25 @@ persistence call.
 
 ## Slice C — US composition and acceptance
 
+**Implemented 2026-08-14 behind the existing rental-journey route; live
+provider acceptance remains queued for the credit reset.**
+
 - Reuse the same scenario contract beneath supported US rental results after
   credits reset.
 - A RentCast rent AVM may prefill a clearly modeled starting value but remains
   editable; HUD FMR never becomes the property rent input.
 - Test one listed, one off-market, one regional fallback, and one unit/building
   scope mismatch. View changes and scenario edits must not refetch.
+
+Implementation boundaries:
+
+- Listed asking price and off-market AVM value are editable scenario starting
+  points; editing never rewrites the evidence cards.
+- RentCast address rent may prefill the editable rent input and remains labeled
+  modeled. A missing address rent starts blank.
+- HUD FMR stays a regional evidence card and can never seed the scenario input.
+- County fallback, provider exclusions, conflicting evidence, and unit/building
+  scope mismatches cannot render the operating calculator.
 
 ## Exit gate
 
@@ -59,13 +72,19 @@ persistence call.
 
 ### Verification evidence
 
-- P5: 14/14, zero provider calls.
-- Render-shaped suite: 4/4; operating scenario is nested and collapsed.
+- P5: 17/17, zero provider calls.
+- Render-shaped suite: 7/7; operating scenario is nested and collapsed.
 - Local Cosgrove replay: one property identity, current `$815,000` offer /
   `$800,000` assessment / `1.30x` ratio; operating outputs remain withheld
   until rent plus all seven expense inputs are explicit.
 - Completed local example: `$4,500` rent, 5% vacancy, and explicit monthly
   costs produced `$37,500` scenario NOI and 3.61% cap rate. Adding complete
   financing inputs produced separately labeled debt service and cash flow.
-- Remaining Slice A acceptance: narrow/mobile viewport and a city with mapped
-  CMHC context.
+- Remaining Slice A acceptance: narrow/mobile viewport.
+- Mapped-CMHC browser replay passed on `699-w-29th-ave`: the `$3,455/mo`
+  Vancouver CMA benchmark remained regional context while user rent and the
+  operating disclosure changed locally without an assessment refetch.
+- US composition fixtures: supported evidence renders an editable modeled-rent
+  basis; missing rent starts blank; HUD-only fallback and unit/building scope
+  mismatch render no operating calculator. Live provider acceptance remains
+  intentionally pending.

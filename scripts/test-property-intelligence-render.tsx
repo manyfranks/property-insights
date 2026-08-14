@@ -17,6 +17,8 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AssessmentJourneyFocus, AssessmentJourneyPanel } from "../src/components/assessment-journey";
 import CanadaRentalScreen from "../src/components/canada-rental-screen";
+import RentalOperatingScenario from "../src/components/rental-operating-scenario";
+import { RentalScreen as UsRentalScreen } from "../src/components/us-assessment-result";
 import { deriveCaRentalJourneyStatus } from "../src/lib/property-intelligence/journey";
 import { classifyProperty } from "../src/lib/property-intelligence/classification";
 import { evaluatePropertyCapabilities } from "../src/lib/property-intelligence/capabilities";
@@ -131,9 +133,77 @@ test("clean residential without CMHC: CanadaRentalScreen renders with the no-ben
   );
   assert.match(markup, /No CMHC benchmark is mapped for this city yet/);
   assert.match(markup, /id="canada-rent-scenario"/, "the rent-scenario input must still render for a non-excluded class");
-  assert.match(markup, /data-p5-operating-scenario="collapsed"/, "the operating scenario must remain supplemental and collapsed");
+  assert.match(markup, /data-p5-operating-scenario="supplemental"/, "the operating scenario must remain supplemental and collapsed");
   assert.match(markup, /Blank means unknown, not zero/, "missing expenses must never be silently zero-filled");
   assert.doesNotMatch(markup, /<h1/, "the nested rental module must not repeat the result-level property identity");
+});
+
+test("Canadian rental screen preserves mapped CMHC evidence as regional context", () => {
+  const markup = renderToStaticMarkup(
+    <CanadaRentalScreen
+      city="Vancouver"
+      province="BC"
+      propertySlug="123-main-st"
+      listPrice={900_000}
+      beds="2"
+      baths="2"
+      sqft="950"
+      regionalRent={{ monthlyRent: 2_850, cmaName: "Vancouver", bedroomLabel: "2BR", vintage: 2025 }}
+    />
+  );
+  assert.match(markup, /CMHC 2025 turnover rent/);
+  assert.match(markup, /Regional apartment benchmark only—not expected rent/);
+  assert.match(markup, /data-p5-operating-scenario="supplemental"/);
+});
+
+test("US operating scenario exposes editable modeled inputs inside the supplemental disclosure", () => {
+  const markup = renderToStaticMarkup(
+    <RentalOperatingScenario
+      purchasePrice={600_000}
+      monthlyRent={3_000}
+      currency="USD"
+      editableBasis={{
+        priceSource: "Active listing asking price",
+        rentSource: "Prefilled from RentCast rent AVM · modeled, not a signed lease",
+      }}
+    />
+  );
+  assert.match(markup, /data-p5-editable-scenario-basis="true"/);
+  assert.match(markup, /value="600000"/);
+  assert.match(markup, /value="3000"/);
+  assert.match(markup, /modeled, not a signed lease/);
+  assert.match(markup, /grid-cols-1 sm:grid-cols-3/, "scenario basis must collapse to one column at narrow widths");
+});
+
+test("US supported rental evidence composes the scenario while a regional fallback does not", () => {
+  const supported = renderToStaticMarkup(
+    <UsRentalScreen
+      model={{
+        availability: "supported",
+        addressRent: { value: 3_000, label: "Address-level rent estimate", source: "RentCast rent AVM" },
+        regionalRent: { value: 2_200, label: "Regional benchmark · 2BR", source: "HUD Fair Market Rent" },
+        yield: { grossYieldPct: 0.06, rentToPriceRatio: 0.005, onePercentRuleMet: false },
+      }}
+      operatingBasis={{ purchasePrice: 600_000, monthlyRent: 3_000, rentBasis: "modeled_address_rent" }}
+      priceSource="Active listing asking price"
+    />
+  );
+  assert.match(supported, /data-p5-editable-scenario-basis="true"/);
+  assert.match(supported, /Prefilled from RentCast rent AVM/);
+  assert.match(supported, /HUD Fair Market Rent/);
+
+  const fallback = renderToStaticMarkup(
+    <UsRentalScreen
+      model={{
+        availability: "limited",
+        addressRent: null,
+        regionalRent: { value: 2_200, label: "Regional benchmark · 2BR", source: "HUD Fair Market Rent" },
+        yield: null,
+      }}
+    />
+  );
+  assert.doesNotMatch(fallback, /data-p5-editable-scenario-basis/);
+  assert.match(fallback, /HUD Fair Market Rent/);
 });
 
 test("supported result renders address and primary offer before a collapsed focus control", () => {
