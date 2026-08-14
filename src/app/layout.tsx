@@ -11,6 +11,7 @@ import { OrganizationJsonLd, OrganizationEntityJsonLd } from "@/components/json-
 import Footer from "@/components/footer";
 import ConsentBanner from "@/components/consent-banner";
 import GpcHonor from "@/components/gpc-honor";
+import PageViewSignal from "@/components/page-view-signal";
 import PostHogIdentify from "@/components/posthog-identify";
 import { BASE_URL, SITE_NAME, SITE_DESCRIPTION, SITE_LOCALE } from "@/lib/seo";
 import "./globals.css";
@@ -141,6 +142,7 @@ export default function RootLayout({
           <ConsentBanner />
           <GpcHonor />
         </ClerkProvider>
+        <PageViewSignal />
         <Analytics />
         <SpeedInsights />
       </body>
