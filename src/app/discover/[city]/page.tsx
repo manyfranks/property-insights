@@ -7,10 +7,40 @@ import { analyzeListing } from "@/lib/analyze";
 import { isUSState } from "@/lib/assessment/us";
 import { slugify, fmt } from "@/lib/utils";
 import { BASE_URL, SITE_NAME } from "@/lib/seo";
-import { getRelatedPosts } from "@/lib/blog";
+import { getRelatedPosts, BLOG_POSTS } from "@/lib/blog";
+import { computeMarketSnapshot } from "@/lib/discover/market-snapshot";
 import { BreadcrumbJsonLd, ItemListJsonLd } from "@/components/json-ld";
 import TierBadge from "@/components/tier-badge";
 import PartnerCta from "@/components/partner-cta";
+import type { AnalysisResult, Listing } from "@/lib/types";
+
+/** The two guides always cross-linked from the "Guides for this market"
+ * block below — excluded from the generic "Related reading" list further
+ * down the page so the same post never appears twice. */
+const CITY_GUIDE_SLUGS = [
+  "property-assessment-vs-market-value-canada",
+  "how-much-below-asking-price-to-offer-canada",
+];
+
+/**
+ * Analyze a city's listings, applying each listing's precomputed
+ * score/tier override where present. US Discover listings carry a preScore
+ * augmented with county-median-value + price/sqft-outlier structural
+ * signals that scoreV2 alone has no inputs for — prefer that over
+ * analyzeListing()'s plain scoreV2 recompute. No-op for CA listings (their
+ * preScore always matches a fresh scoreV2 call on the same listing).
+ * Shared by generateMetadata and the page body so both surfaces derive the
+ * exact same market snapshot numbers from one code path.
+ */
+function analyzeCityListings(cityListings: Listing[]): AnalysisResult[] {
+  return cityListings.map((l) => {
+    const a = analyzeListing(l);
+    if (l.preScore != null && l.preTier) {
+      return { ...a, score: { ...a.score, total: l.preScore, tier: l.preTier } };
+    }
+    return a;
+  });
+}
 
 export const revalidate = 600; // 10 min ISR
 
@@ -32,8 +62,19 @@ export async function generateMetadata({
 
   if (!meta) return {};
 
-  const title = `${meta.name} Real Estate — Assessed Listings & Offer Intelligence`;
-  const description = `Browse ${meta.listingCount} analyzed properties in ${meta.name}, ${meta.province}. See government assessment values, seller motivation scores, and AI-recommended offer prices.`;
+  const cityListings = listings.filter((l) => l.city === meta.name);
+  const snapshot = computeMarketSnapshot(meta.name, analyzeCityListings(cityListings));
+
+  const title = `${meta.name} Real Estate Deals — ${meta.listingCount} Assessed Listings & Offer Intelligence`;
+
+  let description = `Browse ${meta.listingCount} analyzed properties in ${meta.name}, ${meta.province}. See government assessment values, seller motivation scores, and AI-recommended offer prices.`;
+  if (snapshot.medianDom != null) {
+    const gapPart =
+      snapshot.assessedCount > 0 && snapshot.aboveAssessedCount != null
+        ? ` ${snapshot.aboveAssessedCount} of ${snapshot.assessedCount} tracked listings with an assessment on file are priced above assessed value.`
+        : "";
+    description = `${meta.listingCount} analyzed ${meta.name}, ${meta.province} listings with a median ${snapshot.medianDom}-day time on market.${gapPart} Government assessment values, seller motivation scores, and AI-recommended offer prices.`;
+  }
 
   return {
     title,
@@ -68,42 +109,16 @@ export default async function DiscoverCityPage({
   if (!meta) notFound();
 
   const cityListings = listings.filter((l) => l.city === meta.name);
-  const analyses = cityListings.map((l) => {
-    const a = analyzeListing(l);
-    // US Discover listings (src/lib/pipeline/us-discover.ts) carry a
-    // pre-computed score augmented with county-median-value and
-    // price/sqft-outlier structural signals that scoreV2 alone has no
-    // inputs for — prefer that over analyzeListing()'s plain scoreV2
-    // recompute. No-op for CA listings (their preScore always matches a
-    // fresh scoreV2 call on the same listing).
-    if (l.preScore != null && l.preTier) {
-      return { ...a, score: { ...a.score, total: l.preScore, tier: l.preTier } };
-    }
-    return a;
-  });
+  const analyses = analyzeCityListings(cityListings);
 
-  // City stats
-  const withSavings = analyses.filter((a) => a.offer && (a.offer.savings ?? 0) > 0);
-  const avgSavings = withSavings.length > 0
-    ? Math.round(withSavings.reduce((sum, a) => sum + (a.offer?.savings ?? 0), 0) / withSavings.length)
-    : 0;
-  const inRange = withSavings.length;
-  const avgDom = analyses.length > 0
-    ? Math.round(analyses.reduce((sum, a) => sum + a.listing.dom, 0) / analyses.length)
-    : 0;
-  const aboveAssessed = analyses.filter(
-    (a) => a.assessment?.totalValue && a.listing.price > a.assessment.totalValue
-  ).length;
+  // Market snapshot — computed entirely from this city's live analyses.
+  // See src/lib/discover/market-snapshot.ts for the omission rules (a stat
+  // is dropped, not zeroed/placeholder'd, when its inputs don't exist for
+  // this market).
+  const snapshot = computeMarketSnapshot(meta.name, analyses);
 
   // Sort by score descending
   analyses.sort((a, b) => b.score.total - a.score.total);
-
-  const stats = [
-    { label: "Listings", value: String(analyses.length) },
-    { label: "Avg Savings", value: fmt(avgSavings) },
-    { label: "In Range", value: String(inRange) },
-    { label: "Avg DOM", value: String(avgDom) },
-  ];
 
   return (
     <main className="max-w-5xl mx-auto px-6 py-10">
@@ -129,24 +144,83 @@ export default async function DiscoverCityPage({
       </Link>
 
       <h1 className="text-2xl font-semibold tracking-tight mb-1">
-        {meta.name} Real Estate
+        {meta.name} Real Estate Deals
       </h1>
-      <p className="text-sm text-muted mb-6">
-        {meta.description}. {analyses.length} properties analyzed with offer
-        modeling and motivation scoring.
-        {aboveAssessed > 0 && (
-          <> {aboveAssessed} currently listed above assessed value.</>
-        )}
-      </p>
+      <p className="text-sm text-muted mb-6">{meta.description}.</p>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-8">
-        {stats.map((s) => (
-          <div key={s.label} className="border border-border rounded-xl p-3 sm:p-4">
-            <div className="text-xs text-muted mb-1">{s.label}</div>
-            <div className="font-mono text-lg sm:text-xl font-semibold">{s.value}</div>
-          </div>
-        ))}
+      {/* Market snapshot — every number below is computed server-side from
+          this city's own live listing/assessment/offer data (see
+          src/lib/discover/market-snapshot.ts). No stat is invented; a stat
+          whose inputs don't exist for this market (e.g. no assessment
+          coverage) is omitted rather than shown as 0 or "—". */}
+      <div className="border border-border rounded-xl p-5 bg-white mb-6">
+        <div className="text-xs uppercase tracking-widest text-muted mb-3">
+          {meta.name} Market Snapshot
+        </div>
+        <p className="text-sm text-foreground leading-relaxed mb-4">{snapshot.intro}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          {snapshot.stats.map((s) => (
+            <div key={s.key} className="border border-border rounded-xl p-3 sm:p-4">
+              <div className="text-xs text-muted mb-1">{s.label}</div>
+              <div className="font-mono text-lg sm:text-xl font-semibold">{s.value}</div>
+            </div>
+          ))}
+        </div>
+        {snapshot.assessmentCoverageLimited && (
+          <p className="text-xs text-muted/70 mt-4">
+            Assessment coverage limited in this market — no listings currently
+            have a matched government assessment record, so above/below-
+            assessed comparisons aren&apos;t shown.
+          </p>
+        )}
+      </div>
+
+      {/* Guides for this market — always links the two core methodology
+          guides, tied to this city's own numbers above, so every supported
+          city gets this cross-link with zero per-city content authored. */}
+      <div className="grid sm:grid-cols-2 gap-3 mb-10">
+        {(() => {
+          const assessmentGuide = BLOG_POSTS.find(
+            (p) => p.slug === CITY_GUIDE_SLUGS[0]
+          );
+          const offerGuide = BLOG_POSTS.find((p) => p.slug === CITY_GUIDE_SLUGS[1]);
+          return (
+            <>
+              {assessmentGuide && (
+                <Link
+                  href={`/blog/${assessmentGuide.slug}`}
+                  className="block border border-border rounded-xl p-4 hover:shadow-md hover:-translate-y-0.5 transition-all bg-white"
+                >
+                  <div className="text-sm font-medium text-foreground mb-1">
+                    {snapshot.assessmentCoverageLimited
+                      ? `How assessed value works, for when ${meta.name} coverage fills in`
+                      : `${meta.name}: assessment vs. market value, explained`}
+                  </div>
+                  <p className="text-xs text-muted leading-relaxed">
+                    {snapshot.assessmentCoverageLimited
+                      ? `${meta.name} doesn't have matched assessment records yet on this page — read how the assessment-to-market gap works so you can apply it once it does.`
+                      : `${snapshot.aboveAssessedCount} of the ${snapshot.assessedCount} ${meta.name} listings with an assessment on file are priced above it — here's what that gap means for your offer.`}
+                  </p>
+                </Link>
+              )}
+              {offerGuide && (
+                <Link
+                  href={`/blog/${offerGuide.slug}`}
+                  className="block border border-border rounded-xl p-4 hover:shadow-md hover:-translate-y-0.5 transition-all bg-white"
+                >
+                  <div className="text-sm font-medium text-foreground mb-1">
+                    How much below asking to offer in {meta.name}
+                  </div>
+                  <p className="text-xs text-muted leading-relaxed">
+                    {snapshot.medianDom != null
+                      ? `With a median ${snapshot.medianDom}-day time on market across ${snapshot.listingCount} tracked ${meta.name} listings, see the data-driven framework for setting your offer.`
+                      : `See the data-driven framework for setting your offer, using days-on-market and seller-signal data like the listings tracked here in ${meta.name}.`}
+                  </p>
+                </Link>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Listings */}
@@ -214,7 +288,9 @@ export default async function DiscoverCityPage({
 
       {/* Related reading */}
       {(() => {
-        const posts = getRelatedPosts(meta.province);
+        const posts = getRelatedPosts(meta.province).filter(
+          (p) => !CITY_GUIDE_SLUGS.includes(p.slug)
+        );
         if (posts.length === 0) return null;
         return (
           <div className="mt-10">
