@@ -39,11 +39,12 @@ export const BLOG_POSTS: BlogPost[] = [
   },
   {
     slug: "property-assessment-vs-market-value-canada",
-    title: "Property Assessment vs. Market Value in Canada: What Buyers Should Know",
+    title: "Assessed Value vs. Market Value in Canada: What Buyers Should Know",
     description:
-      "A clear explanation of how government property assessments work in BC, Alberta, and Ontario, why assessed values differ from listing prices, and how buyers can use the gap to their advantage.",
+      "Assessed value and market value answer different questions. This guide explains the distinction in plain language, how assessment cycles differ across BC, Alberta, and Ontario (including MPAC's ongoing reassessment freeze), which value is used for tax, listing, appraisal, and offer decisions, and how Property Insights sources its assessment data.",
     publishedAt: "2026-03-08",
-    readingTime: "10 min read",
+    updatedAt: "2026-08-14",
+    readingTime: "12 min read",
     tags: ["assessments", "market value", "BC", "Alberta", "Ontario"],
     ctaVertical: "mortgage",
     ctaCountry: "CA",
@@ -64,9 +65,10 @@ export const BLOG_POSTS: BlogPost[] = [
     title:
       "How Much Below Asking Price Should You Offer on a House in Canada?",
     description:
-      "A data-driven framework for determining your offer price on a Canadian home. Learn how assessments, days on market, seller signals, and 2026 market conditions tell you how much room you have to negotiate.",
+      "A step-by-step decision guide for pricing your offer on a Canadian home: asking price, assessed value, comparable sales, condition, days on market, financing risk, and your own constraints, with a labeled educational scenario and no promise of a single 'right' number.",
     publishedAt: "2026-03-11",
-    readingTime: "11 min read",
+    updatedAt: "2026-08-14",
+    readingTime: "13 min read",
     tags: ["negotiation", "offers", "buyer's market", "2026"],
     ctaVertical: "mortgage",
     ctaCountry: "CA",
