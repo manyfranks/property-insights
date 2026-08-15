@@ -8,10 +8,21 @@
  * — see src/config/affiliate-vendors.ts), so in BC that tile renders as
  * plain informational text with no link at all, never a CTA that routes
  * into a flow the jurisdiction gate would just reject.
+ *
+ * Chip truth (2026-08-15, Sprint C "say true things"): the status chip is
+ * derived per LINE, not just per region — a region's rollout status alone
+ * used to decide every tile's chip, which overclaimed "Coming to AB" (etc.)
+ * on lines no registry-eligible vendor writes there yet. See tagFor()'s
+ * doc comment for the four cases.
  */
 
 import Link from "next/link";
-import { INSURANCE_LINE_EXCLUSIONS, type Country } from "@/config/affiliate-vendors";
+import {
+  INSURANCE_LINE_EXCLUSIONS,
+  eligibleInsuranceVendors,
+  type Country,
+  type InsuranceLine,
+} from "@/config/affiliate-vendors";
 import { statusFor, shortStatusLabel, isLive } from "@/config/insurance-rollout";
 import { COVERAGE_LINES } from "./data";
 
@@ -41,12 +52,33 @@ function LineIcon({ lineId, color }: { lineId: string; color: string }) {
   );
 }
 
-function tagFor(lineId: string, country: Country, region: string): { label: string; className: string } {
+/**
+ * Per-line truth (called only for non-excluded lines — the caller renders
+ * excluded lines as the "Broker-placed" chip before this runs):
+ *
+ *   (b) live region + line: the region's own live-implies-vendor build
+ *       guarantee (insurance-rollout.ts's assertLiveRegionsHaveVendorCoverage
+ *       / scripts/journey-matrix.ts --check) makes "live and zero eligible
+ *       vendors" impossible for a non-excluded line, so "live" alone is
+ *       trustworthy here without re-checking vendor coverage.
+ *   (c) non-live region + line WITH registry-eligible vendor coverage: keep
+ *       the region's own status chip (Next/Coming/Preview) — something is
+ *       actually coming for this line.
+ *   (d) non-live region + line with ZERO registry-eligible vendors (e.g. any
+ *       line in the territories, or a line no enabled vendor writes yet in
+ *       an otherwise-rolling-out region): neutral "Broker-placed" chip,
+ *       never a status that implies it's on the roadmap.
+ */
+function tagFor(lineId: InsuranceLine, country: Country, region: string): { label: string; className: string } {
   if (lineId === "commercial") {
     return { label: "Beta", className: "bg-gray-100 text-gray-600" };
   }
   const status = statusFor(country, region);
   if (status === "live") return { label: shortStatusLabel(status, region), className: "bg-cta-accent/10 text-cta-accent" };
+
+  const hasVendor = eligibleInsuranceVendors(country, region, lineId).length > 0;
+  if (!hasVendor) return { label: "Broker-placed", className: "bg-amber-50 text-amber-700" };
+
   if (status === "next" || status === "soon")
     return { label: shortStatusLabel(status, region), className: "bg-amber-50 text-amber-700" };
   if (status === "unavailable") return { label: "Unavailable", className: "bg-red-50 text-red-600" };

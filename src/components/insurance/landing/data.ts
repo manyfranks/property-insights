@@ -56,7 +56,7 @@ export const HOW_STEPS: HowStep[] = [
   {
     num: "03",
     title: "Get matched",
-    body: "A licensed broker for your region picks it up with your profile on file. They're the broker of record, start to finish.",
+    body: "Continue to a licensed broker for your region to get your quote — your coverage profile stays saved with Property Insights. They're the broker of record, start to finish.",
   },
 ];
 
@@ -69,17 +69,17 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "Wait — is Property Insights an insurance company?",
     answer:
-      "Property Insights is not an insurance company, an insurer, or a broker — it's a property-intelligence platform that builds your coverage profile and hands it to a licensed broker. That broker provides the advice, the quote, and the actual policy; we never quote, bind, or sell insurance ourselves. Think of us as the paperwork layer that sits in front of the broker relationship, not a replacement for it.",
+      "Property Insights is not an insurance company, an insurer, or a broker — it's a property-intelligence platform that builds your coverage profile and matches you with a licensed broker to continue to. That broker provides the advice, the quote, and the actual policy; we never quote, bind, or sell insurance ourselves. Think of us as the paperwork layer that sits in front of the broker relationship, not a replacement for it.",
   },
   {
     question: "Who will my broker actually be?",
     answer:
-      "Your broker will be a broker licensed in your province or state, acting as your broker of record for the policy. Property Insights routes your coverage profile to a partner brokerage for your region rather than to an individual agent you pick yourself. That broker — not Property Insights — handles the quote, the advice, and the paperwork from there.",
+      "Your broker will be a broker licensed in your province or state, acting as your broker of record for the policy. Property Insights matches you with a partner brokerage for your region rather than an individual agent you pick yourself, and you continue to them directly. That broker — not Property Insights — handles the quote, the advice, and the paperwork from there.",
   },
   {
     question: "Are you going to sell my info to a dozen agents?",
     answer:
-      "No — Property Insights sends your coverage profile to exactly one licensed broker for your region, not a list of agents. That's the difference between a single match and a lead auction: your information is never resold to a room of cold-callers chasing the same address. You'll hear from one broker, once.",
+      "No — Property Insights matches you with exactly one licensed broker for your region, not a list of agents, and your coverage profile stays saved with Property Insights unless and until you continue to that broker yourself. That's the difference between a single match and a lead auction: your information is never resold to a room of cold-callers chasing the same address. You'll only ever be routed to one broker, never a list.",
   },
   {
     question: "How does Property Insights make money, then?",
@@ -104,12 +104,12 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "What do I need to get landlord insurance in Canada?",
     answer:
-      "Getting a landlord insurance quote in Canada typically starts with basic facts about the rental property — its type, age, and size — plus details only you know, like occupancy status and unit count. Property Insights pre-fills the property facts it already tracks so you confirm rather than retype them, then routes your profile to a licensed broker in your province who handles the actual landlord policy. The broker of record provides the coverage advice and the quote; we build the profile and make the match.",
+      "Getting a landlord insurance quote in Canada typically starts with basic facts about the rental property — its type, age, and size — plus details only you know, like occupancy status and unit count. Property Insights pre-fills the property facts it already tracks so you confirm rather than retype them, then matches you with a licensed broker in your province — you continue to them directly for the actual landlord policy. The broker of record provides the coverage advice and the quote; we build the profile and make the match.",
   },
   {
     question: "How fast can I get a home insurance quote in BC?",
     answer:
-      "Because Property Insights already tracks many BC properties, your coverage profile can be ready in under a minute — you confirm what we know and add the handful of details only you can provide. From there, a licensed BC broker picks up your profile and provides the actual quote directly. Response times depend on that broker, not on us.",
+      "Because Property Insights already tracks many BC properties, your coverage profile can be ready in under a minute — you confirm what we know and add the handful of details only you can provide. From there, you continue to a licensed BC broker who provides the actual quote directly. Response times depend on that broker, not on us.",
   },
 ];
 
