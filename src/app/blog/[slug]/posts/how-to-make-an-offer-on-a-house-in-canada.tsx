@@ -13,6 +13,17 @@ export default function HowToMakeAnOffer() {
         covers everything from understanding the local market to using publicly available assessment
         data to writing conditions that protect you without scaring off the seller.
       </p>
+      <p>
+        This is a process guide. If you have already decided to make an offer and need help
+        landing on the actual number, see our companion piece on{" "}
+        <Link
+          href="/blog/how-much-below-asking-price-to-offer-canada"
+          className="text-foreground hover:opacity-70"
+        >
+          how much below asking price to offer
+        </Link>
+        , which is the pricing-decision guide.
+      </p>
 
       <h2>Start With the Data, Not the Listing Price</h2>
       <p>
