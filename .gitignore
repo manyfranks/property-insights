@@ -16,6 +16,14 @@
 # next.js
 /.next/
 /out/
+# e2e/playwright.config.ts webServer dev-instances — see next.config.ts's
+# distDir comment for why these are separate from /.next/
+/.next-e2e-*/
+
+# playwright
+/playwright-report/
+/test-results/
+/blob-report/
 
 # production
 /build
