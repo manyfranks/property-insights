@@ -74,6 +74,11 @@ test.describe("BC + homeowner + address (live, walkable)", () => {
 
     // Step 4 of 4 — consent copy. Resolve the same vendor the wizard itself
     // resolves (see module doc comment for why this isn't a hardcoded name).
+    // 2026-08-15 (Sprint C "say true things"): title updated from "Where
+    // should the broker reach you?" — the broker doesn't receive contact
+    // info automatically today (no Stage 2/3 handoff transmission built
+    // yet), so "we" (Property Insights, who actually stores it) replaced
+    // "the broker" here to match coverage-profile-wizard.tsx's STEP_META fix.
     await expect(page.getByText("Where should the broker reach you?", { exact: true })).toBeVisible();
     const expectedVendor = resolveVendor("CA", "BC", "homeowner", null);
     expect(expectedVendor, "expected an eligible CA/BC/homeowner insurance vendor to resolve").not.toBeNull();

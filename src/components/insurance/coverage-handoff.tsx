@@ -122,14 +122,15 @@ export default function CoverageHandoff({
           You&apos;re matched with a licensed broker
         </h1>
         <p className="text-sm text-muted max-w-md mx-auto leading-relaxed">
-          Your details travel with you — {partnerName} opens with your property already filled in.
-          They&apos;re the broker of record; Property Insights never sells or binds coverage.
+          Matched with {partnerName}, a licensed {region} brokerage — continue to them to get your quote.
+          Your coverage profile is saved with Property Insights; they&apos;re the broker of record, and
+          Property Insights never sells or binds coverage.
         </p>
       </div>
 
       <div className="rounded-xl border border-border bg-white overflow-hidden mb-4">
         <div className="px-4 sm:px-5 py-3.5 border-b border-border flex items-center justify-between">
-          <span className="text-[13px] font-semibold text-foreground">Profile we&apos;re handing off</span>
+          <span className="text-[13px] font-semibold text-foreground">Your coverage profile</span>
           <span className="font-mono text-[9px] uppercase tracking-wide text-muted">{rows.length} fields</span>
         </div>
         <div className="px-4 sm:px-5 divide-y divide-border">
@@ -159,7 +160,8 @@ export default function CoverageHandoff({
               Build your coverage profile → get matched
             </div>
             <p className="text-[13px] text-muted mb-3 leading-relaxed">
-              A licensed broker for {region} picks it up with everything above already filled in.
+              Continue to {partnerName} to get your quote — your coverage profile above stays saved here
+              with Property Insights.
             </p>
             <span className="inline-flex items-center gap-2 rounded-lg bg-cta-accent text-white px-4 py-2 text-[13.5px] font-semibold">
               Continue to {partnerName} →

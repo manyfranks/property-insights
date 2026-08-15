@@ -6,6 +6,16 @@
  * exists for the visitor's country (getVendorsForSurface), since the "one
  * licensed broker" promise is false wherever the actual handoff is a plain
  * mailto/consultation rather than a real vendor match.
+ *
+ * 2026-08-15 (Sprint C "say true things"): copy and the "With Property
+ * Insights" diagram box were both corrected from "Your profile goes to a
+ * single licensed broker" / a "Your profile" chip feeding the broker chip —
+ * both implied automatic data transmission to the broker, which doesn't
+ * happen today (the handoff is a plain tracked link; prefill is Stage 3,
+ * unbuilt — see coverage-handoff.tsx's doc comment). The true claim this
+ * section is entitled to make is narrower but still true and still the
+ * differentiator: you are only ever matched with, and routed to, ONE
+ * broker — never resold to a list.
  */
 
 const SPAM_AGENT_ROTATIONS = ["-4deg", "3deg", "-2deg", "5deg", "-3deg", "2deg"];
@@ -28,7 +38,7 @@ export default function NoLeadAuction({ vendorCount }: { vendorCount: number }) 
           </h2>
           <p className="mt-[22px] text-[18px] max-w-md" style={{ lineHeight: 1.6, color: "#4b5563" }}>
             Type your address into most quote sites and you&apos;ll hear from a dozen agents for a week. Not here.
-            Your profile goes to a single licensed broker for your region —{" "}
+            You&apos;re matched with a single licensed broker for your region —{" "}
             <strong className="font-semibold" style={{ color: "#1a1a2e" }}>
               never resold to a room of cold-callers.
             </strong>
@@ -111,7 +121,7 @@ export default function NoLeadAuction({ vendorCount }: { vendorCount: number }) 
                 className="shrink-0 font-semibold"
                 style={{ fontSize: "13px", background: "rgba(255,255,255,.1)", borderRadius: "12px", padding: "12px 14px", color: "#fff" }}
               >
-                Your profile
+                You
               </span>
               <svg width="30" height="16" viewBox="0 0 30 16" fill="none" className="shrink-0" aria-hidden="true">
                 <path d="M2 8h22M20 3l5 5-5 5" stroke="#7fd8cc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
