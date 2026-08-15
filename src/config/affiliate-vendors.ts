@@ -765,6 +765,56 @@ export const INSURANCE_STATE_EXCLUSIONS: Record<Country, string[]> = {
   CA: ["QC", "NB"],
 };
 
+/** Landlord/commercial/strata lines are rental & building-ownership
+ *  concerns, closer to the app's "investor" audience mode; homeowner/tenant
+ *  map to "buyer". Lives here (rather than resolve-vendor.ts, its original
+ *  home) so both resolve-vendor.ts (client-side vendor resolution) and
+ *  insurance-rollout.ts's boot-time live-implies-vendor assertion can share
+ *  one definition without insurance-rollout.ts (a config module) reaching
+ *  into src/components — see eligibleInsuranceVendors below for the same
+ *  reasoning. */
+export function audienceModeForLine(line: InsuranceLine): AudienceMode {
+  return line === "landlord" || line === "commercial" || line === "strata" ? "investor" : "buyer";
+}
+
+/**
+ * The eligibility half of resolve-vendor.ts's resolveVendor() — every filter
+ * resolveVendor applies BEFORE it sorts/rotates ties, extracted so callers
+ * that only need "is there at least one usable vendor here" (the
+ * live-implies-vendor build guarantee in scripts/journey-matrix.ts --check
+ * and the boot-time assertion in insurance-rollout.ts) get a date-independent
+ * answer without invoking rotateTies()'s day-of-year tie-break. resolveVendor
+ * itself now calls this rather than re-implementing the filter, so the two
+ * can never drift.
+ *
+ * Deliberately does NOT check INSURANCE_STATE_EXCLUSIONS / INSURANCE_LINE_-
+ * EXCLUSIONS (the app-wide overlay exclusions) — those gate whether the
+ * wizard/CTA is reachable at all (coverage-profile/page.tsx,
+ * insurance-module.tsx), not vendor eligibility itself; a vendor can be
+ * "eligible" here while still unreachable because the app-wide gate excludes
+ * the region/line first. Callers that care about the app-wide gate (as the
+ * live-implies-vendor check does) apply it themselves before calling this.
+ */
+export function eligibleInsuranceVendors(country: Country, region: string, line: InsuranceLine): AffiliateVendor[] {
+  const mode = audienceModeForLine(line);
+  return AFFILIATE_VENDORS.filter((v) => {
+    // Paid-program scope beats licensed scope when declared — mirrors
+    // filterEligibleVendors below (kept as a separate small filter here,
+    // rather than merged with it, since insurance eligibility also gates on
+    // vertical/line/lines in ways filterEligibleVendors doesn't need to).
+    const coverage = v.affiliateRegions ?? v.stateCoverage;
+    return (
+      v.enabled &&
+      v.vertical === "insurance" &&
+      v.country === country &&
+      v.audienceMode.includes(mode) &&
+      (!v.lines || v.lines.includes(line)) &&
+      !v.stateExclusions?.includes(region) &&
+      (coverage === "all" || coverage.includes(region))
+    );
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Resolver
 // ---------------------------------------------------------------------------

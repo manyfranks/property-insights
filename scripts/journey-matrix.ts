@@ -26,6 +26,58 @@
  *                                                   file, exit 1 with a per-cell diff on disagreement
  *   npx tsx scripts/journey-matrix.ts --table      print a compact equivalence-class summary
  *
+ * --check runs three independent things, all of which must pass (wired into
+ * `npm run prebuild`, so a failure of any of them fails the build):
+ *   1. Snapshot diff (original behavior) — the regenerated matrix must match
+ *      scripts/journey-matrix.snapshot.json cell-for-cell.
+ *   2. Live-implies-vendor build guarantee — for every region whose rollout
+ *      status (src/config/insurance-rollout.ts) is "live", every insurance
+ *      line NOT excluded for that region (INSURANCE_LINE_EXCLUSIONS /
+ *      INSURANCE_STATE_EXCLUSIONS, src/config/affiliate-vendors.ts) must
+ *      have a non-empty eligible-vendor set — computed via the same
+ *      eligibility filter resolveVendor() uses (eligibleInsuranceVendors,
+ *      date-independent — this is about eligibility, not which tied vendor
+ *      rotation would pick today). A "live" region promises referral CTAs
+ *      actually work; an empty eligible set means the wizard would reach a
+ *      dead end. This is ALSO asserted at boot time in
+ *      src/config/insurance-rollout.ts (assertLiveRegionsHaveVendorCoverage)
+ *      as a second line of defense for `next dev`/every server start, not
+ *      just builds — both call the same eligibleInsuranceVendors so they
+ *      can't drift from each other. The config -> components import
+ *      direction (insurance-rollout.ts -> resolve-vendor.ts) that a naive
+ *      boot-time version of this check would need was avoided by moving
+ *      eligibleInsuranceVendors into src/config/affiliate-vendors.ts, which
+ *      both insurance-rollout.ts and resolve-vendor.ts already depend on —
+ *      see that function's doc comment.
+ *   3. Fallback-floor assertion — every cell whose region is NOT live and
+ *      NOT excluded (state- or line-level) must have formMode="waitlist" and
+ *      handoffMode either "mailto-fallback" or "partner-link" — i.e. no cell
+ *      may resolve to an undefined/unhandled path. (Cell.formMode/
+ *      handoffMode are typed as closed unions so this can't literally be
+ *      `undefined` in this script's own model, but the assertion still
+ *      guards the *semantic* invariant against a future edit to
+ *      computeFormMode/computeHandoffMode that weakens it.)
+ *
+ * Mortgage/lending oracle (separate from the insurance cells above): the
+ * mortgage journey has no stage dial and no wizard — it's PartnerCta/
+ * PartnerCtaRow surfaces (property/result pages) rendering an affiliate
+ * outbound link, gated purely by registry eligibility
+ * (getVendorsForSurface, src/config/affiliate-vendors.ts: enabled + country
+ * + audienceMode + stateCoverage/affiliateRegions/stateExclusions) and
+ * land-containment (residentialPartnerActionsAllowed,
+ * src/lib/property-intelligence/land-listing.ts — same gate the insurance
+ * module uses). Modeled with the mode/surface pair every non-/assess
+ * property-page call site actually uses: mode="buyer", surface="result-
+ * buyer" (src/app/property/[slug]/page.tsx never passes `mode`, so it
+ * defaults to "buyer"; investor mode only appears on the /assess result
+ * page, gated by the user's own explicit goal selection — not a config
+ * dimension this config-derived oracle can enumerate). Output is a SEPARATE
+ * top-level `mortgageCells` array (own key format, own dimensions — no
+ * stage, no line) so the existing insurance `cells` array and its key
+ * format (`${stage}|${country}-${region}|${line}|${listingType}`) stay
+ * byte-identical in shape for e2e/support/oracle.ts, which reads `cells`
+ * unchanged.
+ *
  * Determinism note (read before touching resolveVendor/rotateTies):
  * AFFILIATE_VENDORS' rotateTies() (src/config/affiliate-vendors.ts) breaks
  * ties between same-cpaTier/same-affiliateReady vendors by *day of year*
@@ -50,6 +102,8 @@ import { isLive, statusFor, CA_REGIONS, type RolloutStatus } from "../src/config
 import {
   INSURANCE_STATE_EXCLUSIONS,
   INSURANCE_LINE_EXCLUSIONS,
+  eligibleInsuranceVendors,
+  getVendorsForSurface,
   type Country,
   type InsuranceLine,
 } from "../src/config/affiliate-vendors";
@@ -333,6 +387,107 @@ function computeSwitchSection(): SwitchSectionState {
 }
 
 // ---------------------------------------------------------------------------
+// Mortgage/lending cells — see the module doc comment's "Mortgage/lending
+// oracle" section for the modeling rationale (mode="buyer",
+// surface="result-buyer", no stage, no line).
+// ---------------------------------------------------------------------------
+
+/** src/app/property/[slug]/page.tsx never passes `mode` to PartnerCta/
+ *  PartnerCtaRow, so it defaults to "buyer" (see partner-cta.tsx's default
+ *  param) — that's the mode every non-/assess property/result page actually
+ *  renders with. */
+const MORTGAGE_MODE = "buyer" as const;
+/** Every property-page PartnerCta/PartnerCtaRow call site passes
+ *  surface="result-buyer" (src/app/property/[slug]/page.tsx). */
+const MORTGAGE_SURFACE = "result-buyer" as const;
+
+interface MortgageVendorEntry {
+  id: string;
+  envVarName: string;
+  envVarRegistered: boolean;
+}
+
+type MortgageSurfaceShown = "shown" | "hidden-land";
+
+interface MortgageCell {
+  key: string;
+  country: Country;
+  region: string;
+  regionKind: RegionEntry["kind"];
+  listingType: ListingType;
+  surfaceShown: MortgageSurfaceShown;
+  eligibleVendors: MortgageVendorEntry[];
+}
+
+/**
+ * getVendorsForSurface(country, region, mode, surface) — the real sort
+ * PartnerCta/PartnerCtaRow use (src/components/partner-cta.tsx,
+ * src/components/partner-cta-row.tsx): eligibility filter (enabled +
+ * country + audienceMode + state gate) from filterEligibleVendors, ordered
+ * by the surface's vertical journey priority, then cpaTier desc, then
+ * affiliateReady desc, then rotateTies' day-of-year tie-break — same
+ * date-freeze concern as insurance vendor resolution, so this is also
+ * wrapped in withFrozenDate. The full surface-ordered list mixes verticals
+ * (mortgage, insurance, investor-tools, ...); filtering to vertical ===
+ * "mortgage" AFTER computing the full order (rather than pre-filtering
+ * AFFILIATE_VENDORS to mortgage-only before sorting) preserves the real
+ * relative order — including rotateTies' tie-breaking, which operates on
+ * contiguous same-vertical/same-cpaTier runs in the FULL sorted array, not
+ * on a pre-filtered subset.
+ */
+function computeMortgageVendors(country: Country, region: string): MortgageVendorEntry[] {
+  const ordered = withFrozenDate(() => getVendorsForSurface(country, region, MORTGAGE_MODE, MORTGAGE_SURFACE));
+  return ordered
+    .filter((v) => v.vertical === "mortgage")
+    .map((v) => {
+      const envVarName = expectedEnvVarName(v.id, v.envKey);
+      return {
+        id: v.id,
+        envVarName,
+        envVarRegistered: ENV_URL_MAP_SOURCE[v.id] === envVarName,
+      };
+    });
+}
+
+/**
+ * PartnerCta/PartnerCtaRow on property/result pages are gated entirely by
+ * showResidentialPartnerActions = residentialPartnerActionsAllowed(...) — a
+ * land listing never mounts the CTA cluster at all (checked outside/before
+ * it, same land-containment gate the insurance module uses — see
+ * computePropertyPageModule above). There is no stage or exclusion gate on
+ * top of that for mortgage (unlike insurance's stage dial / line
+ * exclusions) — eligibility alone (computeMortgageVendors) decides what
+ * would render if shown.
+ */
+function computeMortgageSurfaceShown(listingType: ListingType): MortgageSurfaceShown {
+  const allowed = listingType === "land" ? LAND_ALLOWED : RESIDENTIAL_ALLOWED;
+  return allowed ? "shown" : "hidden-land";
+}
+
+function generateMortgageCells(): MortgageCell[] {
+  const cells: MortgageCell[] = [];
+
+  for (const region of REGIONS) {
+    const eligibleVendors = computeMortgageVendors(region.country, region.code);
+
+    for (const listingType of LISTING_TYPES) {
+      cells.push({
+        key: `${region.country}-${region.code}|${listingType}`,
+        country: region.country,
+        region: region.code,
+        regionKind: region.kind,
+        listingType,
+        surfaceShown: computeMortgageSurfaceShown(listingType),
+        eligibleVendors,
+      });
+    }
+  }
+
+  cells.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return cells;
+}
+
+// ---------------------------------------------------------------------------
 // Matrix generation
 // ---------------------------------------------------------------------------
 
@@ -349,11 +504,25 @@ interface MatrixHeader {
     usStatesAndDc: number;
   };
   cellCount: number;
+  /** Mortgage/lending oracle metadata — see the module doc comment's
+   *  "Mortgage/lending oracle" section. `mortgageCells` (a sibling of
+   *  `cells`, not nested under it) carries the actual per-cell data. */
+  mortgage: {
+    mode: typeof MORTGAGE_MODE;
+    surface: typeof MORTGAGE_SURFACE;
+    cellCount: number;
+  };
 }
 
 interface Matrix {
   header: MatrixHeader;
+  /** Insurance cells — key format and shape UNCHANGED, see module doc
+   *  comment: e2e/support/oracle.ts reads this array and must keep working
+   *  without modification. */
   cells: Cell[];
+  /** Mortgage/lending cells — separate top-level array, own key format
+   *  (`${country}-${region}|${listingType}`, no stage/line component). */
+  mortgageCells: MortgageCell[];
 }
 
 function generateMatrix(): Matrix {
@@ -400,6 +569,8 @@ function generateMatrix(): Matrix {
 
   cells.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
+  const mortgageCells = generateMortgageCells();
+
   const header: MatrixHeader = {
     generatedFrom: [
       "src/config/insurance-stage.ts",
@@ -419,9 +590,14 @@ function generateMatrix(): Matrix {
       usStatesAndDc: US_STATES.length,
     },
     cellCount: cells.length,
+    mortgage: {
+      mode: MORTGAGE_MODE,
+      surface: MORTGAGE_SURFACE,
+      cellCount: mortgageCells.length,
+    },
   };
 
-  return { header, cells };
+  return { header, cells, mortgageCells };
 }
 
 // ---------------------------------------------------------------------------
@@ -432,7 +608,10 @@ const SNAPSHOT_PATH = path.join(process.cwd(), "scripts/journey-matrix.snapshot.
 
 function writeSnapshot(matrix: Matrix): void {
   writeFileSync(SNAPSHOT_PATH, JSON.stringify(matrix, null, 2) + "\n", "utf8");
-  console.log(`[journey-matrix] wrote ${matrix.cells.length} cells to ${SNAPSHOT_PATH}`);
+  console.log(
+    `[journey-matrix] wrote ${matrix.cells.length} insurance cells + ${matrix.mortgageCells.length} mortgage ` +
+      `cells to ${SNAPSHOT_PATH}`
+  );
 }
 
 const CELL_FIELDS: (keyof Cell)[] = [
@@ -445,6 +624,73 @@ const CELL_FIELDS: (keyof Cell)[] = [
   "propertyPageModule",
   "switchSection",
 ];
+
+/**
+ * Live-implies-vendor build guarantee — see module doc comment item 2. Pure
+ * enumeration + eligibleInsuranceVendors (date-independent), not derived
+ * from `cells` (whose resolvedVendor already picked a single winner via
+ * rotateTies — this check needs the full eligible SET, not the pick).
+ */
+function checkLiveImpliesVendor(): string[] {
+  const diffs: string[] = [];
+
+  for (const region of REGIONS) {
+    if (statusFor(region.country, region.code) !== "live") continue;
+    if (INSURANCE_STATE_EXCLUSIONS[region.country].includes(region.code)) continue; // whole-vertical excluded — never expected to have vendor coverage
+
+    const lineExclusions = INSURANCE_LINE_EXCLUSIONS[region.country][region.code] ?? [];
+
+    for (const line of LINES) {
+      if (lineExclusions.includes(line)) continue;
+
+      const eligible = eligibleInsuranceVendors(region.country, region.code, line);
+      if (eligible.length === 0) {
+        diffs.push(
+          `[live-implies-vendor] ${region.country}-${region.code}/${line}: rollout status is "live" and this ` +
+            `line is not excluded (INSURANCE_LINE_EXCLUSIONS/INSURANCE_STATE_EXCLUSIONS), but zero enabled, ` +
+            `eligible vendors cover it. Remedy: exclude "${line}" for ${region.country}-${region.code} in ` +
+            `INSURANCE_LINE_EXCLUSIONS, or enable a vendor whose \`lines\`/coverage includes ` +
+            `${region.country}-${region.code}/${line}.`
+        );
+      }
+    }
+  }
+
+  return diffs;
+}
+
+/**
+ * Fallback-floor assertion — see module doc comment item 3. Operates on
+ * already-generated cells (formMode/handoffMode are cheap to read off them;
+ * no need to recompute).
+ */
+function checkFallbackFloor(cells: Cell[]): string[] {
+  const diffs: string[] = [];
+  const VALID_HANDOFF = new Set<HandoffMode>(["mailto-fallback", "partner-link"]);
+
+  for (const cell of cells) {
+    if (cell.rolloutStatus === "live") continue; // live cells legitimately reach formMode="wizard-entry"
+
+    const stateExcluded = INSURANCE_STATE_EXCLUSIONS[cell.country].includes(cell.region);
+    const lineExcluded = (INSURANCE_LINE_EXCLUSIONS[cell.country][cell.region] ?? []).includes(cell.line);
+    if (stateExcluded || lineExcluded) continue; // excluded cells route to CoverageExcludedNotice, not the waitlist floor
+
+    if (cell.formMode !== "waitlist") {
+      diffs.push(
+        `[fallback-floor] ${cell.key}: rolloutStatus="${cell.rolloutStatus}" (non-live, non-excluded) but ` +
+          `formMode="${cell.formMode}" (expected "waitlist")`
+      );
+    }
+    if (!VALID_HANDOFF.has(cell.handoffMode)) {
+      diffs.push(
+        `[fallback-floor] ${cell.key}: handoffMode="${cell.handoffMode}" is not a recognized fallback path ` +
+          `(expected "mailto-fallback" or "partner-link") — no cell may have an undefined/none handoff path`
+      );
+    }
+  }
+
+  return diffs;
+}
 
 function runCheck(): void {
   if (!existsSync(SNAPSHOT_PATH)) {
@@ -463,6 +709,11 @@ function runCheck(): void {
     );
   }
 
+  // --- Build guarantees (independent of the snapshot diff below) ---
+  diffs.push(...checkLiveImpliesVendor());
+  diffs.push(...checkFallbackFloor(actual.cells));
+
+  // --- Insurance cells diff (original behavior, key format unchanged) ---
   const expectedByKey = new Map(expected.cells.map((c) => [c.key, c]));
   const actualByKey = new Map(actual.cells.map((c) => [c.key, c]));
 
@@ -483,22 +734,55 @@ function runCheck(): void {
     }
   }
 
+  // --- Mortgage cells diff (separate array, own key format) ---
+  const expectedMortgage: MortgageCell[] = expected.mortgageCells ?? [];
+  const expectedMortgageByKey = new Map(expectedMortgage.map((c) => [c.key, c]));
+  const actualMortgageByKey = new Map(actual.mortgageCells.map((c) => [c.key, c]));
+
+  for (const key of expectedMortgageByKey.keys()) {
+    if (!actualMortgageByKey.has(key)) {
+      diffs.push(`[mortgage missing] ${key} present in snapshot, absent from regenerated matrix`);
+    }
+  }
+  for (const key of actualMortgageByKey.keys()) {
+    if (!expectedMortgageByKey.has(key)) {
+      diffs.push(`[mortgage extra] ${key} present in regenerated matrix, absent from snapshot`);
+    }
+  }
+  for (const [key, expCell] of expectedMortgageByKey) {
+    const actCell = actualMortgageByKey.get(key);
+    if (!actCell) continue;
+    if (expCell.surfaceShown !== actCell.surfaceShown) {
+      diffs.push(`[mortgage ${key}] surfaceShown: snapshot=${expCell.surfaceShown} actual=${actCell.surfaceShown}`);
+    }
+    const expVendors = JSON.stringify(expCell.eligibleVendors);
+    const actVendors = JSON.stringify(actCell.eligibleVendors);
+    if (expVendors !== actVendors) {
+      diffs.push(`[mortgage ${key}] eligibleVendors: snapshot=${expVendors} actual=${actVendors}`);
+    }
+  }
+
   if (diffs.length > 0) {
     console.error(`\n[journey-matrix] --check FAILED: ${diffs.length} diff(s) against ${SNAPSHOT_PATH}\n`);
     for (const d of diffs) console.error(`  - ${d}`);
     console.error(
       "\nEither the snapshot is stale (rerun `npx tsx scripts/journey-matrix.ts` and review the diff before " +
-        "committing) or one of the imported config/logic modules changed behavior — investigate before assuming " +
-        "either direction.\n"
+        "committing), one of the imported config/logic modules changed behavior, or (for [live-implies-vendor] / " +
+        "[fallback-floor] diffs) a real build guarantee was violated — investigate before assuming any direction.\n"
     );
     process.exit(1);
   }
 
-  console.log(`[journey-matrix] --check passed: ${actual.cells.length} cells match ${SNAPSHOT_PATH}.`);
+  console.log(
+    `[journey-matrix] --check passed: ${actual.cells.length} insurance cells + ${actual.mortgageCells.length} ` +
+      `mortgage cells match ${SNAPSHOT_PATH}; live-implies-vendor and fallback-floor guarantees hold.`
+  );
 }
 
 function runTable(): void {
-  const { cells } = generateMatrix();
+  const { cells, mortgageCells } = generateMatrix();
+
+  console.log("=== Insurance ===\n");
 
   const classes = new Map<string, { count: number; exemplar: Cell; fields: Partial<Cell> }>();
   for (const cell of cells) {
@@ -526,6 +810,58 @@ function runTable(): void {
     );
     console.log(`    exemplar: ${cls.exemplar.key}`);
   });
+
+  console.log("\n=== Mortgage/Lending ===\n");
+  runMortgageTable(mortgageCells);
+}
+
+/**
+ * Mortgage equivalence classes — same collapse-by-identical-outcome idea as
+ * the insurance table above, keyed on surfaceShown + the ordered vendor id
+ * list (env-registration state included, since a vendor with a missing env
+ * var is a materially different outcome even at the same eligibility). A
+ * "dead zone" — surfaceShown="shown" but zero eligible vendors — is called
+ * out with its own loud marker, since that's the severity-1 finding this
+ * enumeration exists to catch (see the task report).
+ */
+function runMortgageTable(mortgageCells: MortgageCell[]): void {
+  const classes = new Map<
+    string,
+    { count: number; exemplar: MortgageCell; surfaceShown: MortgageSurfaceShown; vendorIds: string[] }
+  >();
+
+  for (const cell of mortgageCells) {
+    const vendorIds = cell.eligibleVendors.map((v) => (v.envVarRegistered ? v.id : `${v.id}(env:MISSING)`));
+    const classKey = JSON.stringify({ surfaceShown: cell.surfaceShown, vendorIds });
+    const existing = classes.get(classKey);
+    if (existing) {
+      existing.count++;
+    } else {
+      classes.set(classKey, { count: 1, exemplar: cell, surfaceShown: cell.surfaceShown, vendorIds });
+    }
+  }
+
+  const sorted = [...classes.values()].sort((a, b) => b.count - a.count);
+
+  console.log(`[journey-matrix] ${mortgageCells.length} mortgage cells collapse into ${sorted.length} equivalence classes:\n`);
+  sorted.forEach((cls, i) => {
+    const deadZone = cls.surfaceShown === "shown" && cls.vendorIds.length === 0;
+    console.log(
+      `${String(i + 1).padStart(2, " ")}. (${cls.count} cells) surfaceShown=${cls.surfaceShown} ` +
+        `vendors=[${cls.vendorIds.join(", ") || "NONE"}]${deadZone ? "  <<< DEAD ZONE — surface shown, zero eligible mortgage vendors" : ""}`
+    );
+    console.log(`    exemplar: ${cls.exemplar.key}`);
+  });
+
+  const deadZoneCount = sorted
+    .filter((c) => c.surfaceShown === "shown" && c.vendorIds.length === 0)
+    .reduce((sum, c) => sum + c.count, 0);
+  if (deadZoneCount > 0) {
+    console.log(
+      `\n[journey-matrix] ${deadZoneCount}/${mortgageCells.length} mortgage cells are DEAD ZONES ` +
+        "(surface would render but zero eligible vendors) — see the journey-matrix report for the region list."
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

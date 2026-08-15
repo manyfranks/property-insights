@@ -14,20 +14,19 @@
  */
 
 import {
-  AFFILIATE_VENDORS,
+  eligibleInsuranceVendors,
   rotateTies,
+  audienceModeForLine,
   type AffiliateVendor,
   type Country,
   type InsuranceLine,
 } from "@/config/affiliate-vendors";
 
-/** Landlord/commercial/strata lines are rental & building-ownership
- *  concerns, closer to the app's "investor" audience mode; homeowner/tenant
- *  map to "buyer". Local to this module rather than goal-line-map.ts,
- *  which is owned by a different in-flight change on this branch. */
-export function audienceModeForLine(line: InsuranceLine): "buyer" | "investor" {
-  return line === "landlord" || line === "commercial" || line === "strata" ? "investor" : "buyer";
-}
+// Re-exported for backward compatibility — this function used to live here;
+// it now lives in src/config/affiliate-vendors.ts so insurance-rollout.ts's
+// boot-time live-implies-vendor assertion (a config module) can share it
+// without reaching into src/components. See that module's doc comment.
+export { audienceModeForLine };
 
 /**
  * Resolves the vendor to hand a coverage profile off to: the `vendorParam`
@@ -43,23 +42,7 @@ export function resolveVendor(
   line: InsuranceLine,
   vendorParam: string | null
 ): AffiliateVendor | null {
-  const mode = audienceModeForLine(line);
-  const eligible = AFFILIATE_VENDORS.filter((v) => {
-    // Paid-program scope beats licensed scope when declared — a vendor must
-    // never receive a referral from a region its affiliate program won't pay
-    // (e.g. Square One is licensed in MB but its paid program excludes it).
-    // Mirrors filterEligibleVendors in affiliate-vendors.ts.
-    const coverage = v.affiliateRegions ?? v.stateCoverage;
-    return (
-      v.enabled &&
-      v.vertical === "insurance" &&
-      v.country === country &&
-      v.audienceMode.includes(mode) &&
-      (!v.lines || v.lines.includes(line)) &&
-      !v.stateExclusions?.includes(region) &&
-      (coverage === "all" || coverage.includes(region))
-    );
-  });
+  const eligible = eligibleInsuranceVendors(country, region, line);
 
   if (vendorParam) {
     const requested = eligible.find((v) => v.id === vendorParam);

@@ -46,7 +46,12 @@
       ],
       "usStatesAndDc": 51
     },
-    "cellCount": 2560
+    "cellCount": 2560,
+    "mortgage": {
+      "mode": "buyer",
+      "surface": "result-buyer",
+      "cellCount": 128
+    }
   },
   "cells": [
     {
@@ -46128,6 +46133,1446 @@
       "handoffMode": "mailto-fallback",
       "propertyPageModule": "hidden-not-live",
       "switchSection": "shown"
+    }
+  ],
+  "mortgageCells": [
+    {
+      "key": "CA-AB|land",
+      "country": "CA",
+      "region": "AB",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-AB|residential",
+      "country": "CA",
+      "region": "AB",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-BC|land",
+      "country": "CA",
+      "region": "BC",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-BC|residential",
+      "country": "CA",
+      "region": "BC",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-MB|land",
+      "country": "CA",
+      "region": "MB",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-MB|residential",
+      "country": "CA",
+      "region": "MB",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NB|land",
+      "country": "CA",
+      "region": "NB",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NB|residential",
+      "country": "CA",
+      "region": "NB",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NL|land",
+      "country": "CA",
+      "region": "NL",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NL|residential",
+      "country": "CA",
+      "region": "NL",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NS|land",
+      "country": "CA",
+      "region": "NS",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NS|residential",
+      "country": "CA",
+      "region": "NS",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NT|land",
+      "country": "CA",
+      "region": "NT",
+      "regionKind": "territory",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NT|residential",
+      "country": "CA",
+      "region": "NT",
+      "regionKind": "territory",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NU|land",
+      "country": "CA",
+      "region": "NU",
+      "regionKind": "territory",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-NU|residential",
+      "country": "CA",
+      "region": "NU",
+      "regionKind": "territory",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-ON|land",
+      "country": "CA",
+      "region": "ON",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-ON|residential",
+      "country": "CA",
+      "region": "ON",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-PE|land",
+      "country": "CA",
+      "region": "PE",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-PE|residential",
+      "country": "CA",
+      "region": "PE",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-QC|land",
+      "country": "CA",
+      "region": "QC",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-QC|residential",
+      "country": "CA",
+      "region": "QC",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-SK|land",
+      "country": "CA",
+      "region": "SK",
+      "regionKind": "province",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-SK|residential",
+      "country": "CA",
+      "region": "SK",
+      "regionKind": "province",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-YT|land",
+      "country": "CA",
+      "region": "YT",
+      "regionKind": "territory",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "CA-YT|residential",
+      "country": "CA",
+      "region": "YT",
+      "regionKind": "territory",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": [
+        {
+          "id": "ratehub",
+          "envVarName": "NEXT_PUBLIC_RATEHUB_URL",
+          "envVarRegistered": true
+        },
+        {
+          "id": "nesto",
+          "envVarName": "NEXT_PUBLIC_NESTO_URL",
+          "envVarRegistered": true
+        }
+      ]
+    },
+    {
+      "key": "US-AK|land",
+      "country": "US",
+      "region": "AK",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-AK|residential",
+      "country": "US",
+      "region": "AK",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-AL|land",
+      "country": "US",
+      "region": "AL",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-AL|residential",
+      "country": "US",
+      "region": "AL",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-AR|land",
+      "country": "US",
+      "region": "AR",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-AR|residential",
+      "country": "US",
+      "region": "AR",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-AZ|land",
+      "country": "US",
+      "region": "AZ",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-AZ|residential",
+      "country": "US",
+      "region": "AZ",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-CA|land",
+      "country": "US",
+      "region": "CA",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-CA|residential",
+      "country": "US",
+      "region": "CA",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-CO|land",
+      "country": "US",
+      "region": "CO",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-CO|residential",
+      "country": "US",
+      "region": "CO",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-CT|land",
+      "country": "US",
+      "region": "CT",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-CT|residential",
+      "country": "US",
+      "region": "CT",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-DC|land",
+      "country": "US",
+      "region": "DC",
+      "regionKind": "district",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-DC|residential",
+      "country": "US",
+      "region": "DC",
+      "regionKind": "district",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-DE|land",
+      "country": "US",
+      "region": "DE",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-DE|residential",
+      "country": "US",
+      "region": "DE",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-FL|land",
+      "country": "US",
+      "region": "FL",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-FL|residential",
+      "country": "US",
+      "region": "FL",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-GA|land",
+      "country": "US",
+      "region": "GA",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-GA|residential",
+      "country": "US",
+      "region": "GA",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-HI|land",
+      "country": "US",
+      "region": "HI",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-HI|residential",
+      "country": "US",
+      "region": "HI",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-IA|land",
+      "country": "US",
+      "region": "IA",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-IA|residential",
+      "country": "US",
+      "region": "IA",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-ID|land",
+      "country": "US",
+      "region": "ID",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-ID|residential",
+      "country": "US",
+      "region": "ID",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-IL|land",
+      "country": "US",
+      "region": "IL",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-IL|residential",
+      "country": "US",
+      "region": "IL",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-IN|land",
+      "country": "US",
+      "region": "IN",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-IN|residential",
+      "country": "US",
+      "region": "IN",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-KS|land",
+      "country": "US",
+      "region": "KS",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-KS|residential",
+      "country": "US",
+      "region": "KS",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-KY|land",
+      "country": "US",
+      "region": "KY",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-KY|residential",
+      "country": "US",
+      "region": "KY",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-LA|land",
+      "country": "US",
+      "region": "LA",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-LA|residential",
+      "country": "US",
+      "region": "LA",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MA|land",
+      "country": "US",
+      "region": "MA",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MA|residential",
+      "country": "US",
+      "region": "MA",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MD|land",
+      "country": "US",
+      "region": "MD",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MD|residential",
+      "country": "US",
+      "region": "MD",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-ME|land",
+      "country": "US",
+      "region": "ME",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-ME|residential",
+      "country": "US",
+      "region": "ME",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MI|land",
+      "country": "US",
+      "region": "MI",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MI|residential",
+      "country": "US",
+      "region": "MI",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MN|land",
+      "country": "US",
+      "region": "MN",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MN|residential",
+      "country": "US",
+      "region": "MN",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MO|land",
+      "country": "US",
+      "region": "MO",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MO|residential",
+      "country": "US",
+      "region": "MO",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MS|land",
+      "country": "US",
+      "region": "MS",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MS|residential",
+      "country": "US",
+      "region": "MS",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MT|land",
+      "country": "US",
+      "region": "MT",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-MT|residential",
+      "country": "US",
+      "region": "MT",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NC|land",
+      "country": "US",
+      "region": "NC",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NC|residential",
+      "country": "US",
+      "region": "NC",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-ND|land",
+      "country": "US",
+      "region": "ND",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-ND|residential",
+      "country": "US",
+      "region": "ND",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NE|land",
+      "country": "US",
+      "region": "NE",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NE|residential",
+      "country": "US",
+      "region": "NE",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NH|land",
+      "country": "US",
+      "region": "NH",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NH|residential",
+      "country": "US",
+      "region": "NH",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NJ|land",
+      "country": "US",
+      "region": "NJ",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NJ|residential",
+      "country": "US",
+      "region": "NJ",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NM|land",
+      "country": "US",
+      "region": "NM",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NM|residential",
+      "country": "US",
+      "region": "NM",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NV|land",
+      "country": "US",
+      "region": "NV",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NV|residential",
+      "country": "US",
+      "region": "NV",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NY|land",
+      "country": "US",
+      "region": "NY",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-NY|residential",
+      "country": "US",
+      "region": "NY",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-OH|land",
+      "country": "US",
+      "region": "OH",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-OH|residential",
+      "country": "US",
+      "region": "OH",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-OK|land",
+      "country": "US",
+      "region": "OK",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-OK|residential",
+      "country": "US",
+      "region": "OK",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-OR|land",
+      "country": "US",
+      "region": "OR",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-OR|residential",
+      "country": "US",
+      "region": "OR",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-PA|land",
+      "country": "US",
+      "region": "PA",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-PA|residential",
+      "country": "US",
+      "region": "PA",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-RI|land",
+      "country": "US",
+      "region": "RI",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-RI|residential",
+      "country": "US",
+      "region": "RI",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-SC|land",
+      "country": "US",
+      "region": "SC",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-SC|residential",
+      "country": "US",
+      "region": "SC",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-SD|land",
+      "country": "US",
+      "region": "SD",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-SD|residential",
+      "country": "US",
+      "region": "SD",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-TN|land",
+      "country": "US",
+      "region": "TN",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-TN|residential",
+      "country": "US",
+      "region": "TN",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-TX|land",
+      "country": "US",
+      "region": "TX",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-TX|residential",
+      "country": "US",
+      "region": "TX",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-UT|land",
+      "country": "US",
+      "region": "UT",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-UT|residential",
+      "country": "US",
+      "region": "UT",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-VA|land",
+      "country": "US",
+      "region": "VA",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-VA|residential",
+      "country": "US",
+      "region": "VA",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-VT|land",
+      "country": "US",
+      "region": "VT",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-VT|residential",
+      "country": "US",
+      "region": "VT",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-WA|land",
+      "country": "US",
+      "region": "WA",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-WA|residential",
+      "country": "US",
+      "region": "WA",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-WI|land",
+      "country": "US",
+      "region": "WI",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-WI|residential",
+      "country": "US",
+      "region": "WI",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-WV|land",
+      "country": "US",
+      "region": "WV",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-WV|residential",
+      "country": "US",
+      "region": "WV",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-WY|land",
+      "country": "US",
+      "region": "WY",
+      "regionKind": "state",
+      "listingType": "land",
+      "surfaceShown": "hidden-land",
+      "eligibleVendors": []
+    },
+    {
+      "key": "US-WY|residential",
+      "country": "US",
+      "region": "WY",
+      "regionKind": "state",
+      "listingType": "residential",
+      "surfaceShown": "shown",
+      "eligibleVendors": []
     }
   ]
 }
