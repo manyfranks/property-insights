@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, SignInButton } from "@clerk/nextjs";
 import posthog from "posthog-js";
+import { usePostHogCaptureAllowed } from "@/lib/use-posthog-consent";
 import UsAssessmentResult, { UsAssessResult } from "@/components/us-assessment-result";
 import {
   AssessmentGoalPreflight,
@@ -79,6 +80,12 @@ export default function AssessmentProgress({
 }) {
   const router = useRouter();
   const { isSignedIn, isLoaded } = useUser();
+  // Consent gate for the posthog.capture() calls below — see
+  // src/lib/use-posthog-consent.ts for the three-state policy. This
+  // component only fetches /api/assess once isSignedIn is true, so by the
+  // time either capture() call below runs, Clerk's user data (and thus the
+  // consent verdict) is already settled.
+  const captureAllowed = usePostHogCaptureAllowed();
   const [stepStatuses, setStepStatuses] = useState<StepStatus[]>(
     STEPS.map((_, i) => (i === 0 ? "active" : "pending"))
   );
@@ -148,7 +155,9 @@ export default function AssessmentProgress({
           return;
         }
         if (data.country === "US") {
-          posthog.capture("assessment_completed", { country: "US", offer_available: !!data.offerAvailable });
+          if (captureAllowed) {
+            posthog.capture("assessment_completed", { country: "US", offer_available: !!data.offerAvailable });
+          }
           setAssessmentId(typeof data.assessmentId === "string" ? data.assessmentId : restoredAssessment?.id ?? null);
           if (
             restoredAssessment?.subjectSelectedBy === "user_confirmation" &&
@@ -172,7 +181,9 @@ export default function AssessmentProgress({
           setStepStatuses(STEPS.map(() => "complete"));
           setUsResult(data as UsAssessResult);
         } else if (data.slug) {
-          posthog.capture("assessment_completed", { country: "CA" });
+          if (captureAllowed) {
+            posthog.capture("assessment_completed", { country: "CA" });
+          }
           const canadaResult = data as CanadaAssessmentResult;
           const effectiveAssessmentId = canadaResult.assessmentId ?? restoredAssessment?.id ?? null;
           setAssessmentId(effectiveAssessmentId);
@@ -199,7 +210,7 @@ export default function AssessmentProgress({
       });
 
     return () => controller.abort();
-  }, [address, assessmentStarted, isLoaded, isSignedIn, journeyEnabled, placeId, propertyResultPath, restoredAssessment, retryCount]);
+  }, [address, assessmentStarted, captureAllowed, isLoaded, isSignedIn, journeyEnabled, placeId, propertyResultPath, restoredAssessment, retryCount]);
 
   // Step timers (simulated progress)
   useEffect(() => {

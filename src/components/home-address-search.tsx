@@ -6,6 +6,7 @@ import { useUser, SignInButton } from "@clerk/nextjs";
 import { slugify } from "@/lib/utils";
 import { signal } from "@/lib/signal";
 import posthog from "posthog-js";
+import { usePostHogCaptureAllowed } from "@/lib/use-posthog-consent";
 
 interface SearchResult {
   address: string;
@@ -62,6 +63,12 @@ export default function HomeAddressSearch() {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const router = useRouter();
   const { isSignedIn } = useUser();
+  // Consent gate for the posthog.capture() calls below — see
+  // src/lib/use-posthog-consent.ts for the three-state policy (anonymous
+  // allowed, signed-in requires analytics consent). The `signal()` calls
+  // in this file are the separate anonymous-capable spine and are not
+  // gated by this hook — see signal.ts's own doc comment.
+  const captureAllowed = usePostHogCaptureAllowed();
 
   const detectedUrl = isZoocasaUrl(query) ? query.trim() : null;
   const otherUrl = isOtherListingUrl(query);
@@ -124,7 +131,9 @@ export default function HomeAddressSearch() {
     setQuery("");
     setOpen(false);
     setSearched(false);
-    posthog.capture("address_searched", { result_type: "existing_listing" });
+    if (captureAllowed) {
+      posthog.capture("address_searched", { result_type: "existing_listing" });
+    }
     router.push(`/property/${slugify(address)}`);
   }
 
@@ -138,7 +147,9 @@ export default function HomeAddressSearch() {
     if (!address) return;
     setQuery("");
     setOpen(false);
-    posthog.capture("address_searched", { result_type: "assessment_request" });
+    if (captureAllowed) {
+      posthog.capture("address_searched", { result_type: "assessment_request" });
+    }
     // Anonymous-capable spine signal, top of the assessment funnel this
     // pairs against assess_completed/assess_failed (both emitted server-side
     // in /api/assess). Fired here — the single choke point every "request an

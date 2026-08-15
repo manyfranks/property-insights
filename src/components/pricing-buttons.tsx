@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { useUser, SignInButton } from "@clerk/nextjs";
 import posthog from "posthog-js";
+import { usePostHogCaptureAllowed } from "@/lib/use-posthog-consent";
 
 interface PricingButtonsProps {
   configured: boolean;
@@ -25,16 +26,24 @@ export default function PricingButtons({ configured, initialPro }: PricingButton
   const { isLoaded, isSignedIn } = useUser();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Consent gate for the posthog.capture() calls in goTo() below — see
+  // src/lib/use-posthog-consent.ts for the three-state policy. goTo() is
+  // only reachable once isSignedIn is true (the buttons that call it only
+  // render in that branch below), so the consent verdict is always settled
+  // by the time these captures would fire.
+  const captureAllowed = usePostHogCaptureAllowed();
 
   async function goTo(endpoint: "/api/stripe/checkout" | "/api/stripe/portal") {
     setPending(true);
     setError(null);
 
     // Capture the intent before the redirect so the event isn't lost
-    if (endpoint === "/api/stripe/checkout") {
-      posthog.capture("checkout_started", { plan: "pro" });
-    } else {
-      posthog.capture("billing_portal_opened");
+    if (captureAllowed) {
+      if (endpoint === "/api/stripe/checkout") {
+        posthog.capture("checkout_started", { plan: "pro" });
+      } else {
+        posthog.capture("billing_portal_opened");
+      }
     }
 
     try {
