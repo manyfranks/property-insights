@@ -11,7 +11,7 @@ export default function DataUsagePage() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-8 sm:py-16">
       <h1 className="text-2xl font-semibold tracking-tight mb-2">Data Usage Policy</h1>
-      <p className="text-sm text-muted mb-10">Last updated: August 7, 2026</p>
+      <p className="text-sm text-muted mb-10">Last updated: August 15, 2026</p>
 
       <div className="space-y-8 text-sm text-muted leading-relaxed">
         <section>
@@ -100,6 +100,22 @@ export default function DataUsagePage() {
         </section>
 
         <section>
+          <h2 className="text-base font-medium text-foreground mb-2">Insurance Coverage Profiles</h2>
+          <p>
+            If you use the coverage-profile tool, we collect property details (occupancy, unit
+            count, claims history, coverage expiry, roof age) and a contact preference, combined
+            with property data we already hold. This is stored separately from general behavioral
+            analytics and is used for a single purpose: matching you with one licensed insurance
+            partner, with your explicit consent given at the point of match.
+          </p>
+          <p className="mt-3">
+            We do not use coverage-profile data to personalize your experience elsewhere on the
+            site, to train or improve our scoring or offer models, or to build an advertising
+            profile. It is not merged with your general behavioral event history.
+          </p>
+        </section>
+
+        <section>
           <h2 className="text-base font-medium text-foreground mb-2">What We Do Not Sell</h2>
           <p className="mb-3">
             We want to be explicit about what we do and do not do with your data:
@@ -134,6 +150,15 @@ export default function DataUsagePage() {
               Privacy Policy
             </a>{" "}
             for the full explanation.
+          </p>
+          <p className="mt-3">
+            The insurance coverage-profile tool is a narrow, explicit exception to this — see{" "}
+            <span className="text-foreground font-medium">Insurance Coverage Profiles</span> above
+            and the &quot;Insurance Coverage-Profile Matching&quot; section of our{" "}
+            <a href="/privacy" className="text-foreground hover:underline">
+              Privacy Policy
+            </a>{" "}
+            for what is shared, with whom, and how consent works.
           </p>
         </section>
 

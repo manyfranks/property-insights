@@ -44,15 +44,22 @@ export function resolveVendor(
   vendorParam: string | null
 ): AffiliateVendor | null {
   const mode = audienceModeForLine(line);
-  const eligible = AFFILIATE_VENDORS.filter(
-    (v) =>
+  const eligible = AFFILIATE_VENDORS.filter((v) => {
+    // Paid-program scope beats licensed scope when declared — a vendor must
+    // never receive a referral from a region its affiliate program won't pay
+    // (e.g. Square One is licensed in MB but its paid program excludes it).
+    // Mirrors filterEligibleVendors in affiliate-vendors.ts.
+    const coverage = v.affiliateRegions ?? v.stateCoverage;
+    return (
       v.enabled &&
       v.vertical === "insurance" &&
       v.country === country &&
       v.audienceMode.includes(mode) &&
       (!v.lines || v.lines.includes(line)) &&
-      !v.stateExclusions?.includes(region)
-  );
+      !v.stateExclusions?.includes(region) &&
+      (coverage === "all" || coverage.includes(region))
+    );
+  });
 
   if (vendorParam) {
     const requested = eligible.find((v) => v.id === vendorParam);

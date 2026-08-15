@@ -4,10 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "tsx scripts/check-insurance-copy.ts && tsx scripts/generate-sitemap.ts",
+    "prebuild": "tsx scripts/check-insurance-copy.ts && tsx scripts/journey-matrix.ts --check && tsx scripts/generate-sitemap.ts",
+    "journey:generate": "tsx scripts/journey-matrix.ts",
+    "journey:check": "tsx scripts/journey-matrix.ts --check",
+    "journey:table": "tsx scripts/journey-matrix.ts --table",
+    "smoke:prod": "tsx scripts/prod-smoke.ts",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.1",
@@ -27,6 +34,7 @@
     "stripe": "^22.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

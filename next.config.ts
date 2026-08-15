@@ -1,6 +1,17 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Lets e2e/playwright.config.ts run its "stage-landing"/"stage-intake" dev
+  // servers against their own .next output — Next's dev server takes an
+  // flock-style lock at `<distDir>/dev/lock` (node_modules/next/dist/server/
+  // lib/router-utils/setup-dev-bundler.js), scoped to distDir, not the repo
+  // directory. Without this override every `next dev` invocation over this
+  // project (this file's own `npm run dev`, on port 3117, included) fights
+  // over the same `.next/dev/lock` and the second process exits immediately
+  // ("Unable to acquire lock... is another instance of next dev running?").
+  // Unset (the default everywhere else — Vercel build/deploy, `npm run dev`,
+  // `npm run build`) this is a no-op: falls back to the normal ".next".
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   trailingSlash: false,
   async rewrites() {
     return [

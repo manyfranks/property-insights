@@ -11,7 +11,7 @@ export default function PrivacyPage() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-8 sm:py-16">
       <h1 className="text-2xl font-semibold tracking-tight mb-2">Privacy Policy</h1>
-      <p className="text-sm text-muted mb-10">Last updated: August 7, 2026</p>
+      <p className="text-sm text-muted mb-10">Last updated: August 15, 2026</p>
 
       <div className="space-y-8 text-sm text-muted leading-relaxed">
         <section>
@@ -70,6 +70,29 @@ export default function PrivacyPage() {
             </li>
           </ul>
           <p className="mt-3">
+            If you use the insurance coverage-profile tool, we also collect, only after you
+            explicitly opt in to that specific flow:
+          </p>
+          <ul className="list-disc list-inside space-y-1.5 mt-3">
+            <li>
+              <span className="text-foreground font-medium">Property and coverage details</span>{" "}
+              you provide or confirm — occupancy status, unit count, claims history, current
+              coverage expiry date, and roof age.
+            </li>
+            <li>
+              <span className="text-foreground font-medium">Contact preference</span> for how a
+              matched insurance partner should reach you.
+            </li>
+            <li>
+              <span className="text-foreground font-medium">A record of your consent</span> — when
+              you agreed, what you agreed to, and which partner you were matched with.
+            </li>
+          </ul>
+          <p className="mt-3">
+            This information is collected specifically to match you with a licensed insurance
+            partner and is never used for any other purpose without asking you again.
+          </p>
+          <p className="mt-3">
             This behavioral data is stored per-user in encrypted cloud databases and is used to
             improve our recommendations and, with your express consent, to connect you with
             relevant professionals (see Partner Connections below).
@@ -87,6 +110,11 @@ export default function PrivacyPage() {
             <li>
               With your consent, to generate aggregated insights that help us improve recommendations
               and understand market activity in the cities we cover.
+            </li>
+            <li>
+              With your explicit, flow-specific consent, to build a coverage profile and match you
+              with a single licensed insurance partner appropriate to your property&apos;s location
+              and the coverage type you select.
             </li>
           </ul>
           <p className="mt-3">
@@ -139,6 +167,68 @@ export default function PrivacyPage() {
             </a>{" "}
             to opt out.
           </p>
+          <p className="mt-3">
+            The insurance coverage-profile tool is a narrow, explicit exception to this — see{" "}
+            <span className="text-foreground font-medium">Insurance Coverage-Profile Matching</span>{" "}
+            below.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-medium text-foreground mb-2">Insurance Coverage-Profile Matching</h2>
+          <p>
+            If you choose to build a coverage profile, we ask a small set of property and coverage
+            questions and, <span className="text-foreground font-medium">only with your explicit
+            consent given at that step</span>, share your coverage profile with{" "}
+            <span className="text-foreground font-medium">the single licensed insurance partner you
+            are matched with</span> — never with our full partner list, and never as a batch or
+            resold lead. Consent is specific to that transaction: using the coverage-profile tool
+            once does not carry forward to future uses, and you are shown which partner will
+            receive your information before you confirm.
+          </p>
+          <p className="mt-3">
+            We do not generate or communicate a specific coverage recommendation. The profile is a
+            set of property facts and your own stated preferences; the matched partner determines
+            coverage options.
+          </p>
+          <p className="mt-3">
+            If you decline to share, your coverage profile is not sent anywhere. If you have Global
+            Privacy Control enabled, or have opted out via{" "}
+            <a href="/privacy-choices" className="text-foreground hover:underline">
+              Your Privacy Choices
+            </a>
+            , we do not send your coverage profile to a partner even if you separately click
+            through the flow — see &quot;How GPC and Opt-Out Interact With Coverage Profiles&quot;
+            below.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-medium text-foreground mb-2">
+            How GPC and Opt-Out Interact With Coverage Profiles
+          </h2>
+          <p>
+            The coverage-profile tool is consent-based, not opt-out-based — we only share your
+            profile with a partner if you affirmatively agree at that step, regardless of your
+            Do-Not-Sell/Share or GPC status. However, GPC and Do-Not-Sell status still change how
+            we store the profile itself:
+          </p>
+          <ul className="list-disc list-inside space-y-1.5 mt-3">
+            <li>
+              If you have <span className="text-foreground font-medium">not</span> opted out (no
+              GPC signal, no Do-Not-Sell preference set), your coverage profile is linked to your
+              account so you can return to it, edit it, or reuse it for a later match.
+            </li>
+            <li>
+              If you <span className="text-foreground font-medium">have</span> opted out via GPC or
+              Do-Not-Sell, we still let you use the coverage-profile tool and still honor your
+              explicit consent to share with a matched partner if you give it — opting out of
+              sale/sharing does not block you from using the feature — but the profile itself is
+              stored without a link to your account or identity, tied only to a one-time session
+              token, and is not retained for reuse after the match (or after you leave without
+              matching, on a short expiry).
+            </li>
+          </ul>
         </section>
 
         <section>
@@ -197,6 +287,13 @@ export default function PrivacyPage() {
             active. Assessment requests and property analysis results are stored indefinitely to
             improve our service. You can request deletion of your data at any time by contacting us.
           </p>
+          <p className="mt-3">
+            Coverage profiles are retained only as long as needed to complete a partner match and
+            for a limited period afterward to handle disputes or duplicate submissions — 24 months
+            from last activity. You can delete your coverage profile at any time; see{" "}
+            <span className="text-foreground font-medium">Your Rights Under Canadian Law</span>{" "}
+            below.
+          </p>
         </section>
 
         <section>
@@ -213,6 +310,20 @@ export default function PrivacyPage() {
             30 days. (If you are a US resident, see{" "}
             <span className="text-foreground font-medium">United States State Privacy Rights</span>{" "}
             below for the response timeline that applies to your requests instead.)
+          </p>
+          <p className="mt-3">
+            If you have built an insurance coverage profile, you can request its deletion at any
+            time by emailing{" "}
+            <a
+              href="mailto:privacy@propertyinsights.xyz"
+              className="text-foreground hover:underline"
+            >
+              privacy@propertyinsights.xyz
+            </a>{" "}
+            and requesting deletion of your coverage profile specifically. Deleting your coverage
+            profile does not withdraw consent already given for a match that has already been
+            shared with a partner — contact the partner directly for that partner&apos;s own data
+            handling.
           </p>
         </section>
 
@@ -361,6 +472,20 @@ export default function PrivacyPage() {
             response period by another 45 days (90 days total) and will notify you of the
             extension and the reason for it within the initial 45-day period. An authorized agent
             may submit a request on your behalf.
+          </p>
+          <p className="mt-3">
+            If you have built an insurance coverage profile, you can request its deletion at any
+            time by emailing{" "}
+            <a
+              href="mailto:privacy@propertyinsights.xyz"
+              className="text-foreground hover:underline"
+            >
+              privacy@propertyinsights.xyz
+            </a>{" "}
+            and requesting deletion of your coverage profile specifically. Deleting your coverage
+            profile does not withdraw consent already given for a match that has already been
+            shared with a partner — contact the partner directly for that partner&apos;s own data
+            handling.
           </p>
         </section>
 
