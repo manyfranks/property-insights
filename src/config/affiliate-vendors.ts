@@ -215,7 +215,12 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     url: "https://www.squareone.ca",
     enabled: true,
     affiliateReady: true,
-    cpaTier: 1,
+    // Tier 2 per the payout banding (tier 1 = <$50): Square One's public
+    // program pays $50/$100/$175 per policy sold. This also encodes the
+    // 2026-08-15 owner ruling that Square One wins the BC personal-lines
+    // tie over APOLLO ($25/policy, advisor-assisted personal flow) —
+    // deterministic via cpaTier sort, retiring rotateTies() for this pair.
+    cpaTier: 2,
     audienceMode: ["buyer", "investor"],
     // Licensed BC/AB/SK/MB/ON only — not NS/PEI/NL or the territories. See
     // `affiliateRegions` below: the paid affiliate program is narrower still.
@@ -250,6 +255,15 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     // does not map onto referral compensation. NB: 2023 regime licenses intermediary
     // activity "regardless of whether conducted... online". Both pending legal review.
     stateExclusions: ["QC", "NB"],
+    // Sprint B (2026-08-15): stateCoverage "all" above is APOLLO's *licensed-claim*
+    // tier (unverified, inherited from the original registry entry) — this
+    // narrower allowlist is the *verified-or-corroborated* tier and is what
+    // actually gates eligibility (eligibleInsuranceVendors/filterEligibleVendors
+    // read `affiliateRegions ?? stateCoverage`). Only the 9 provinces below
+    // could be confirmed; the 3 territories (YT/NT/NU) — previously covered
+    // only because "all" swept them in — are deliberately absent. See the
+    // dated verification summary in `notes` below for per-region sourcing.
+    affiliateRegions: ["BC", "AB", "SK", "MB", "ON", "NB", "NS", "PE", "NL"],
     network: "direct",
     ctaLabel: "Get landlord or tenant coverage",
     description: "Online quote and policy in minutes, no phone call needed",
@@ -258,7 +272,12 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
       "APPROVED (auto) Aug 2026. Prod URL confirmed by owner 2026-08-14: apollocover.com/lp/propertyinsights (set as NEXT_PUBLIC_AFFILIATE_URL_APOLLO in Vercel). NOTE: a second issued URL, covertrack.ca/propertyinsights, remains unreconciled — verify in the partner portal that the lp URL carries attribution (if covertrack is the tracker, clicks on the lp URL may not credit). " +
       "Payout confirmed 2026-08-14 via APOLLO's published 'Rewards Program — Calculation Methodology': $25 one-time 'Marketing Reward' per qualifying tenant, paid once the policy has been active 90+ days (unpaid/'Pending' before that); accrual must reach a $100 minimum before any payout, capped at $5,000/qualifying instance and $10,000/calendar year without APOLLO's written approval. cpaTier 1 (<$50) still correct at $25. " +
       "SCOPE CAVEAT: this methodology explicitly covers 'APOLLO-Insured Tenants' only — it says nothing about homeowner/landlord/commercial payout, which remain unconfirmed despite this vendor's `lines` including all four. Don't assume $25 applies outside the tenant line. " +
-      "COMPLIANCE CAVEAT: APOLLO's own terms state this reward 'is not a commission, referral fee, or compensation for the sale, solicitation, or placement of insurance' and does not authorize acting as an agent/broker — framed as pay for tenant education/engagement, not the sale. That's in tension with how docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §1 already models this same $25 figure as a 'flat referral fee' for economics purposes — and it's volume-linked to qualifying purchases, which that doc's own §1 table (row 4) flags as the 'SaaS fee in costume' pattern. Site disclosure copy (e.g. FAQ_ITEMS in components/insurance/landing/data.ts) currently calls this a 'referral fee' — worth a legal read on whether that label is accurate for APOLLO specifically before relying on it.",
+      "COMPLIANCE CAVEAT: APOLLO's own terms state this reward 'is not a commission, referral fee, or compensation for the sale, solicitation, or placement of insurance' and does not authorize acting as an agent/broker — framed as pay for tenant education/engagement, not the sale. That's in tension with how docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §1 already models this same $25 figure as a 'flat referral fee' for economics purposes — and it's volume-linked to qualifying purchases, which that doc's own §1 table (row 4) flags as the 'SaaS fee in costume' pattern. Site disclosure copy (e.g. FAQ_ITEMS in components/insurance/landing/data.ts) currently calls this a 'referral fee' — worth a legal read on whether that label is accurate for APOLLO specifically before relying on it. " +
+      "SPRINT B VENDOR-TRUTH VERIFICATION (2026-08-15, per-region, primary sources first): entity is APOLLO Insurance Solutions Ltd. (Vancouver BC, founded 2017; acquired by Arthur J. Gallagher & Co., announced 2026-08-05) plus its licensed retail-brokerage subsidiary APOLLO Insurance Agency Ltd. (o/a 'Apollo'). " +
+      "VERIFIED via primary regulator registry: BC — Insurance Council of BC licensee directory (login.insurancecouncilofbc.com/licensee-directory), both entities Class 'General' Status 'Active'. SK — Insurance Councils of Saskatchewan (licenseesearch.skcouncil.sk.ca), Apollo Insurance Agency Ltd. Lic#08880 P&C Active; Apollo Insurance Solutions Ltd. Lic#09820 P&C-Managing General Agent Active. MB — Insurance Council of Manitoba agency search (lms.icm.mb.ca), both entities present with active license counts (6 and 1). ON — RIBO brokerage search (ribo.com), Apollo Insurance Agency Ltd. Status 'Active', Lic#4314. NB — FCNB agency/MGA listing (portal.fcnb.ca), both entities licensed (Lic#230016919 agency, #230021822 MGA) — NB stays in stateExclusions above regardless, per the separate 2023-regime compliance rationale (§3), unrelated to this licensing fact. " +
+      "UNVERIFIED (absence of evidence, not evidence of absence — registries were form-gated/non-functional at check time, distinct from a real no-match): AB — Alberta Insurance Council's public agency lookup (lookups.abcouncil.ab.ca) returned 'An error has occurred while fetching results' on every query tried, including control terms, i.e. broken generally, not Apollo-specific. NS — Nova Scotia's online agent/agency lookup (acp.novascotia.ca) WAF-blocked the request ('Request Rejected') on repeated attempts. PE — princeedwardisland.ca's licensed-agent search returned zero results even for the generic control term 'Insurance', suggesting it's an individual-name/exact-match tool that may not index corporate agencies at all, not a real negative for Apollo specifically. NL — the only public online tool (cfs-portal.gov.nl.ca) is explicitly scoped to 'Licensed Insurance Individuals' (first/last name only, no agency field); the separate gov.nl.ca nonprofit broker-agent page is a voluntary self-submitted survey list, not a registry. " +
+      "For all 4 of AB/NS/PE/NL, included in affiliateRegions anyway on STRONG CORROBORATION from apollocover.com's own licensing disclosure (secondary but company-sourced, per Sprint B brief): the site footer lists exactly 9 served provinces (Alberta, British Columbia, Manitoba, New Brunswick, Newfoundland, Nova Scotia, Ontario, Prince Edward Island, Saskatchewan), each backed by a live /tenant-insurance/{province}-tenant-insurance landing page (200 OK, checked 2026-08-15); the homepage's 'recently purchased policies' feed also shows a real Nova Scotia transaction (Clementsvale). " +
+      "NOT verified and NOT corroborated — EXCLUDED: YT, NT, NU (absent from the footer's province list, /yukon /northwest-territories /nunavut all 404, never appear in purchased-policy examples sampled across two pages) — consistent with our own prior partner research concluding the territories 'none viable'. QC unchanged/out of scope (stateExclusions, AMF civil-law regime, §3; also absent from APOLLO's own footer).",
     lines: ["homeowner", "landlord", "tenant", "commercial"],
   },
   {
@@ -960,6 +979,19 @@ function dayOfYearUTC(d: Date = new Date()): number {
  * earn the click data needed to rank it properly. Rotating only the ties keeps
  * vertical priority and tier ordering intact while giving every approved partner
  * exposure. Replace with EPC-driven ordering once partner_clicks has volume.
+ *
+ * DECISION MARKER (Sprint B, 2026-08-15, superseding the same-day
+ * rotation ruling): the former BC personal-lines SQ1/APOLLO tie is now
+ * broken deterministically by cpaTier — owner confirmed APOLLO pays
+ * ~$25/signed policy (their published tenant "Marketing Reward"; owner
+ * also reports a ~$1,000 minimum policy value [UNCONFIRMED in writing]
+ * and a 10% user discount via our partner URL [UNCONFIRMED wording — do
+ * not surface in CTA copy until APOLLO confirms]), vs Square One's
+ * public $50/$100/$175 per policy — so Square One is cpaTier 2 and wins
+ * personal lines outright; APOLLO keeps commercial (sole eligible) and
+ * all regions outside Square One's paid program. rotateTies() remains
+ * for future genuine ties and currently rotates nothing on the
+ * insurance vertical.
  */
 export function rotateTies(sorted: AffiliateVendor[]): AffiliateVendor[] {
   const out: AffiliateVendor[] = [];
