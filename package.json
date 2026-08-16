@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "tsx scripts/check-insurance-copy.ts && tsx scripts/journey-matrix.ts --check && tsx scripts/generate-sitemap.ts",
+    "prebuild": "tsx scripts/check-insurance-copy.ts && tsx scripts/journey-matrix.ts --check && tsx scripts/validate-insurance-kernel-execution.ts && tsx scripts/generate-sitemap.ts",
     "journey:generate": "tsx scripts/journey-matrix.ts",
     "journey:check": "tsx scripts/journey-matrix.ts --check",
     "journey:table": "tsx scripts/journey-matrix.ts --table",
+    "insurance-kernel:check": "tsx scripts/validate-insurance-kernel-execution.ts",
     "smoke:prod": "tsx scripts/prod-smoke.ts",
     "build": "next build",
     "start": "next start",

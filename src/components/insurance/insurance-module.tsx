@@ -5,13 +5,13 @@
  * (docs/proposals/insurance-distribution-proposal.html, Stage 2).
  *
  * "Pick a coverage type → build a coverage profile → get matched with a
- * licensed broker." The platform is an UNLICENSED referrer here: every card
+ * licensed insurance partner." The platform is an UNLICENSED referrer here: every card
  * links to the (separately-built) /coverage-profile intake route instead of
  * an outbound affiliate URL — no quote or price is ever shown.
  * scripts/check-insurance-copy.ts build-fails on solicitation-flavored
  * language anywhere under src/components/insurance/**, so keep copy edits
- * to "get quotes / build a coverage profile / get matched with a licensed
- * broker" framing.
+ * to "build a coverage profile / continue to a licensed insurance partner"
+ * framing.
  *
  * Visual language borrows partner-cta.tsx's hero-plus-pills card layout
  * (left cta-accent bar, Sponsored tag, FTC disclosure, click tracking via
@@ -138,7 +138,7 @@ export default function InsuranceModule({
 
   // Impression payloads mirror trackClick()'s field names (see handleClick
   // below and usePartnerCtaImpression's doc comment). The hero slot is
-  // shared by the hero card and the "match me with a licensed broker"
+  // shared by the hero card and the "match me with an insurance partner"
   // no-match card — they're mutually exclusive (noMatch is only true when
   // there's no hero), so one hook call safely covers both.
   const heroSlotPayload: PartnerCtaImpressionPayload | null = hero
@@ -174,11 +174,11 @@ export default function InsuranceModule({
     country === "CA" && upperRegion === "BC" && line === "strata"
       ? {
           label: "Licensed broker required in British Columbia",
-          body: "BC doesn't allow referral fees on strata insurance, so this isn't a sponsored placement — we simply point you to a licensed BC strata broker.",
+          body: "BC doesn't allow referral fees on strata insurance, so this isn't a sponsored placement — seek help directly from a licensed BC strata broker.",
         }
       : {
           label: `Licensed broker required in ${regionName}`,
-          body: `This coverage line isn't available as a sponsored placement in ${regionName} — we simply point you to a licensed broker who can place it.`,
+          body: `This coverage line isn't available as a sponsored placement in ${regionName} — seek help directly from a licensed broker who can place it.`,
         };
 
   function buildProfileUrl(vendorId?: string): string {
@@ -202,8 +202,8 @@ export default function InsuranceModule({
 
   const complianceNote =
     country === "US"
-      ? "Availability varies by state. You'll only ever be matched with a licensed broker — Property Insights does not sell, quote, or bind insurance."
-      : "Availability varies by province. You'll only ever be matched with a licensed broker — Property Insights does not sell, quote, or bind insurance.";
+      ? "Availability varies by state. You'll only ever continue to a licensed insurance partner — Property Insights does not sell, quote, or bind insurance."
+      : "Availability varies by province. You'll only ever continue to a licensed insurance partner — Property Insights does not sell, quote, or bind insurance.";
 
   return (
     <div className="border border-border rounded-xl overflow-hidden bg-white" data-insurance-module="protect-this-property">
@@ -213,8 +213,8 @@ export default function InsuranceModule({
           <span className="text-[10px] font-mono uppercase tracking-wide text-muted/60">Insurance</span>
         </div>
         <p className="text-sm text-muted mt-1.5 max-w-[60ch]">
-          Pick a coverage type. We already hold most of the property details a broker needs — build a coverage
-          profile and get matched with a licensed broker for your region.
+          Pick a coverage type. We already hold many of the property details an insurance partner may need — build a coverage
+          profile and continue to a licensed insurance partner for your region.
         </p>
       </div>
 
@@ -310,10 +310,10 @@ export default function InsuranceModule({
               >
                 <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-cta-accent" aria-hidden="true" />
                 <div className="text-base font-semibold text-foreground group-hover:underline mb-1">
-                  Match me with a licensed broker
+                  Match me with an insurance partner
                 </div>
                 <p className="text-sm text-muted leading-relaxed">
-                  We&apos;ll route your request to a licensed broker who can place this line in {regionName}.
+                  We&apos;ll route your request to a licensed insurance professional who can place this line in {regionName}.
                 </p>
               </Link>
             )}

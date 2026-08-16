@@ -17,7 +17,7 @@ import { stageAtLeast } from "@/config/insurance-stage";
 const SWITCH_POINTS = [
   "Tell us when your current policy renews",
   "We time your match so your coverage never lapses",
-  "Your new licensed broker handles the cancellation",
+  "Your new licensed insurance partner handles the cancellation",
 ];
 
 export function isSwitchSectionEnabled(): boolean {
@@ -36,7 +36,7 @@ export default function SwitchSection() {
             Already insured? We&apos;ll help you switch.
           </h2>
           <p className="mt-5 text-[17px] text-gray-600 leading-relaxed max-w-md">
-            Tell us when your current policy renews. We&apos;ll time your match so a licensed broker can line up
+            Tell us when your current policy renews. We&apos;ll time your match so a licensed insurance partner can line up
             better coverage before it lapses — and handle the cancellation with your old insurer.
           </p>
           <div className="flex items-center gap-4 flex-wrap mt-8">

@@ -3,8 +3,8 @@
  * specific insurer commit licensable solicitation (WA TAA 2021-01 — see
  * docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §3). Solicitation is defined
  * by *behavior*, not payment, so insurance-facing copy must never compare,
- * rank, or superlative-ize insurers — framing is always "get quotes / build
- * a coverage profile / get matched with a licensed broker."
+ * rank, or superlative-ize insurers — framing is always "build a coverage
+ * profile / continue to an insurance partner."
  *
  * This script is the build-failing guard the proposal calls for
  * (docs/proposals/insurance-distribution-proposal.html, "compliance
@@ -18,7 +18,7 @@
  *
  * Run: tsx scripts/check-insurance-copy.ts
  */
-import { readdirSync, statSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, extname } from "node:path";
 import { AFFILIATE_VENDORS, type AffiliateVendor } from "../src/config/affiliate-vendors";
 
@@ -84,6 +84,20 @@ function checkVendorCopy(vendors: AffiliateVendor[]): Violation[] {
   return violations;
 }
 
+/** Every insurance counterparty must declare its role. This prevents UI copy
+ * from falling back to a generic "broker" claim when a new agency, MGA, or
+ * insurer is added to the registry. */
+function checkInsuranceCounterpartyRoles(vendors: AffiliateVendor[]): Violation[] {
+  return vendors
+    .filter((vendor) => vendor.vertical === "insurance" && !vendor.counterpartyRole)
+    .map((vendor) => ({
+      location: `vendor "${vendor.id}" (${vendor.name})`,
+      field: "counterpartyRole",
+      term: "missing role",
+      matchedText: "Insurance vendors must declare their counterparty role",
+    }));
+}
+
 /** Recursively lists .ts/.tsx files under `dir`. Returns [] if `dir` doesn't exist — that's not an error, the directory is just not built yet. */
 function listSourceFiles(dir: string): string[] {
   let entries: import("node:fs").Dirent[];
@@ -132,6 +146,7 @@ function checkComponentFiles(dir: string): Violation[] {
 function main() {
   const violations: Violation[] = [
     ...checkVendorCopy(AFFILIATE_VENDORS),
+    ...checkInsuranceCounterpartyRoles(AFFILIATE_VENDORS),
     ...checkComponentFiles(join(process.cwd(), "src/components/insurance")),
   ];
 
@@ -144,7 +159,7 @@ function main() {
     }
     console.error(
       "\nInsurance copy must never solicit or compare (WA TAA 2021-01 — see docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §3)." +
-        ' Use "get quotes / build a coverage profile / get matched with a licensed broker" framing instead.\n'
+        ' Use "build a coverage profile / continue to an insurance partner" framing instead.\n'
     );
     process.exit(1);
   }

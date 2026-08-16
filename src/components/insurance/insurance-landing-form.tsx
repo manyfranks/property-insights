@@ -124,7 +124,7 @@ export default function InsuranceLandingForm({
   variant?: "teal" | "navy";
   /** DOM id so other sections can anchor-link here (e.g. "How it works"'s CTA). */
   anchorId?: string;
-  /** Suppresses the "availability varies / licensed broker only" line below the pill — set by the hero, which renders that disclosure once, pinned near the partner strip, instead of once per form instance. */
+  /** Suppresses the "availability varies / licensed insurance partner only" line below the pill — set by the hero, which renders that disclosure once, pinned near the partner strip, instead of once per form instance. */
   hideLegalese?: boolean;
 }) {
   const router = useRouter();
@@ -452,7 +452,7 @@ export default function InsuranceLandingForm({
           {heroStatusText(status, displayName)}
         </span>
         <span className={dividerClass}>&middot;</span>
-        <span>Matched only with licensed brokers</span>
+        <span>Matched only with licensed insurance partners</span>
         <span className={dividerClass}>&middot;</span>
         <div className="relative" ref={pickerRef}>
           <button
@@ -607,7 +607,7 @@ export default function InsuranceLandingForm({
       {!hideLegalese && (
         <p className={`text-xs leading-relaxed mt-4 text-center max-w-md mx-auto ${mutedTextClass}`}>
           Availability varies by {country === "CA" ? "province" : "state"}. You&apos;ll only ever be matched with a
-          licensed broker — Property Insights does not sell, quote, or bind insurance.
+          licensed insurance partner — Property Insights does not sell, quote, or bind insurance.
         </p>
       )}
     </div>

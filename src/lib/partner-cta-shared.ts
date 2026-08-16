@@ -15,7 +15,7 @@ import { isOptedOutClient } from "@/lib/privacy";
 import { signal } from "@/lib/signal";
 
 export const FTC_DISCLOSURE =
-  "We may earn a commission if you sign up or get a quote through these links. This doesn't affect our analysis.";
+  "We may receive compensation if you sign up, request a quote, or purchase through these links. This doesn't affect our analysis.";
 
 /**
  * Mount-time opt-out check. Deferred via setTimeout (not called synchronously
@@ -35,7 +35,7 @@ export function useOptedOut(): boolean {
  * Resolves a vendor's outbound URL, honoring the visitor's Do Not Sell/Share
  * opt-out: when opted out, always use the vendor's plain (non-affiliate,
  * non-sub_id-tagged) URL so no click attribution occurs. isAffiliate is
- * forced false, which also suppresses the "Sponsored" tag and FTC
+ * forced false, which also suppresses the "Sponsored" tag and partner
  * disclosure naturally, since they're derived from isAffiliate.
  */
 export function resolveUrl(vendorId: string, source: AffiliateSource, optedOut: boolean): ResolvedAffiliateUrl {

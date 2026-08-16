@@ -10,12 +10,9 @@
  *
  * The consent-copy test resolves the expected vendor via the SAME pure
  * function the wizard itself calls (resolveVendor(), src/components/
- * insurance/resolve-vendor.ts) rather than hardcoding a vendor name:
- * Square One and APOLLO Insurance are tied (both cpaTier 1, both eligible
- * for CA/BC/homeowner — see src/config/affiliate-vendors.ts) and
- * `rotateTies()` in that file swaps which one sorts first by day-of-year,
- * by design (see that function's doc comment). Hardcoding "Square One"
- * would make this test flip flaky depending on what day it runs.
+ * insurance/resolve-vendor.ts) rather than hardcoding a vendor name, so a
+ * future priority, eligibility, or genuine tie change cannot make the
+ * consent assertion drift from the application.
  */
 
 import { test, expect } from "@playwright/test";
@@ -79,7 +76,7 @@ test.describe("BC + homeowner + address (live, walkable)", () => {
     // info automatically today (no Stage 2/3 handoff transmission built
     // yet), so "we" (Property Insights, who actually stores it) replaced
     // "the broker" here to match coverage-profile-wizard.tsx's STEP_META fix.
-    await expect(page.getByText("Where should the broker reach you?", { exact: true })).toBeVisible();
+    await expect(page.getByText("Where should the insurance partner reach you?", { exact: true })).toBeVisible();
     const expectedVendor = resolveVendor("CA", "BC", "homeowner", null);
     expect(expectedVendor, "expected an eligible CA/BC/homeowner insurance vendor to resolve").not.toBeNull();
     const vendorName = expectedVendor!.name;
@@ -91,8 +88,8 @@ test.describe("BC + homeowner + address (live, walkable)", () => {
     // resolvedVendor is informational-only (soft) — the oracle pins it to a
     // fixed reference date (2026-01-02) while this assertion uses the SAME
     // resolveVendor() call live, today, on purpose (see this file's and
-    // e2e/support/oracle.ts's doc comments); the two are expected to
-    // disagree on days the tie-rotation lands differently.
+    // e2e/support/oracle.ts's doc comments). It remains soft so a future
+    // genuine tie rotation cannot make this rendered-journey test flaky.
     expectVendorInformational(bcCell, expectedVendor!.id, "intake/CA-BC/homeowner");
 
     const consentLabel = page.getByText(/I understand Property Insights may earn a referral fee/, {

@@ -65,7 +65,7 @@ test.describe("BC visitor (live region, landing-only stage)", () => {
     // CA insurance vendors (src/config/affiliate-vendors.ts) — the strip
     // hides itself below 2 names (partner-strip.tsx), so seeing it at all
     // already implies >=2; assert both names explicitly.
-    await expect(page.getByText("We place coverage with licensed brokers, including")).toBeVisible();
+    await expect(page.getByText("Insurance partners currently shown include")).toBeVisible();
     await expect(page.getByText("Square One", { exact: true })).toBeVisible();
     await expect(page.getByText("APOLLO Insurance", { exact: true })).toBeVisible();
 
@@ -112,7 +112,7 @@ test.describe("US (TX) visitor (preview, zero enabled US insurance vendors)", ()
     // Zebra/Allstate/SmartFinancial/Insurify/Steadily/Obie are all
     // enabled:false in src/config/affiliate-vendors.ts) -> PartnerStrip
     // returns null below 2 names, NoLeadAuction returns null at 0 vendors.
-    await expect(page.getByText("We place coverage with licensed brokers, including")).toHaveCount(0);
+    await expect(page.getByText("Insurance partners currently shown include")).toHaveCount(0);
     await expect(page.getByText("No lead auction", { exact: true })).toHaveCount(0);
     await expect(page.getByText("One match. Not a phone that won", { exact: false })).toHaveCount(0);
 

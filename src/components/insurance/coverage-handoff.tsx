@@ -23,7 +23,7 @@
  */
 
 import { useState } from "react";
-import { getAffiliateUrl, type AffiliateSource, type Country, type InsuranceLine } from "@/config/affiliate-vendors";
+import { counterpartyRoleDescription, getAffiliateUrl, type AffiliateSource, type Country, type InsuranceLine } from "@/config/affiliate-vendors";
 import { resolveVendor } from "@/components/insurance/resolve-vendor";
 import { ProvenanceChip, type ProvenanceSource } from "@/components/insurance/coverage-provenance-chip";
 
@@ -36,7 +36,7 @@ export interface HandoffRow {
 const CONTACT_EMAIL = "insights@mail.propertyinsights.xyz";
 
 const COMPLIANCE_NOTE =
-  "Availability varies by state/province. You'll only ever be matched with a licensed broker — Property Insights does not sell, quote, or bind insurance.";
+  "Availability varies by state/province. Property Insights does not sell, quote, or bind insurance; any insurance quote, advice, or coverage comes from the insurance provider you continue to.";
 
 // This screen is only ever reached via the /coverage-profile wizard (Stage 2
 // intake), not directly from an assessment result page — "assess-result"
@@ -83,7 +83,8 @@ export default function CoverageHandoff({
   // coverage_profiles.vendor_id (the authoritative reconciliation record).
   // See getAffiliateUrl's doc comment for the per-partner sub_id caveat.
   const resolved = vendor ? getAffiliateUrl(vendor.id, HANDOFF_SOURCE, profileId) : null;
-  const partnerName = vendor?.name ?? "a licensed broker";
+  const partnerName = vendor?.name ?? "an insurance partner";
+  const partnerRole = counterpartyRoleDescription(vendor?.counterpartyRole);
 
   function handleClick() {
     setClicked(true);
@@ -98,7 +99,7 @@ export default function CoverageHandoff({
   }
 
   const mailHref = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-    `Match me with a licensed broker — coverage profile ${profileId}`
+    `Match me with an insurance professional — coverage profile ${profileId}`
   )}`;
 
   return (
@@ -119,13 +120,20 @@ export default function CoverageHandoff({
           Coverage profile ready
         </div>
         <h1 className="text-2xl sm:text-[26px] font-semibold tracking-tight text-foreground mb-1.5 text-wrap-balance">
-          You&apos;re matched with a licensed broker
+          {vendor ? "Your insurance match is ready" : "Your coverage profile is ready"}
         </h1>
-        <p className="text-sm text-muted max-w-md mx-auto leading-relaxed">
-          Matched with {partnerName}, a licensed {region} brokerage — continue to them to get your quote.
-          Your coverage profile is saved with Property Insights; they&apos;re the broker of record, and
-          Property Insights never sells or binds coverage.
-        </p>
+        {vendor ? (
+          <p className="text-sm text-muted max-w-md mx-auto leading-relaxed">
+            Matched with {partnerName}, {partnerRole}. Continue to their site to explore coverage options.
+            Your coverage profile is saved with Property Insights; {partnerName} is responsible for any quote,
+            advice, or coverage it provides.
+          </p>
+        ) : (
+          <p className="text-sm text-muted max-w-md mx-auto leading-relaxed">
+            No insurance partner is configured for this line in {region}. Your profile is saved with Property
+            Insights, and you can contact our team to request an unsponsored match.
+          </p>
+        )}
       </div>
 
       <div className="rounded-xl border border-border bg-white overflow-hidden mb-4">
@@ -160,7 +168,7 @@ export default function CoverageHandoff({
               Build your coverage profile → get matched
             </div>
             <p className="text-[13px] text-muted mb-3 leading-relaxed">
-              Continue to {partnerName} to get your quote — your coverage profile above stays saved here
+              Continue to {partnerName} to explore coverage options — your coverage profile above stays saved here
               with Property Insights.
             </p>
             <span className="inline-flex items-center gap-2 rounded-lg bg-cta-accent text-white px-4 py-2 text-[13.5px] font-semibold">
@@ -180,23 +188,27 @@ export default function CoverageHandoff({
               Build your coverage profile → get matched
             </div>
             <p className="text-[13px] text-muted mb-3 leading-relaxed">
-              No partner is licensed to refer this line in {region} yet — reach our team directly and
-              we&apos;ll route you to a licensed broker.
+              No insurance partner is configured for this line in {region} yet — reach our team directly and
+              we&apos;ll route your request appropriately.
             </p>
             <span className="inline-flex items-center gap-2 rounded-lg border border-foreground text-foreground px-4 py-2 text-[13.5px] font-semibold">
-              Match me with a licensed broker →
+              Request an insurance match →
             </span>
             <span className="block mt-2 text-[10px] uppercase tracking-wide text-muted/70">Unsponsored</span>
           </a>
         )}
 
         <p className="text-xs text-muted leading-relaxed mt-3.5">
-          We may earn a commission if you get a quote through this match. This doesn&apos;t affect our
-          analysis. {COMPLIANCE_NOTE}
+          {resolved?.isAffiliate
+            ? "We may receive compensation under a disclosed partner arrangement if you continue and later obtain a policy. This does not affect our analysis. "
+            : "This is an unsponsored path. "}
+          {COMPLIANCE_NOTE}
         </p>
       </div>
 
-      {clicked && <p className="text-xs text-muted text-center mt-3">Opening {partnerName} in a new tab…</p>}
+      {clicked && vendor && (
+        <p className="text-xs text-muted text-center mt-3">Opening {partnerName} in a new tab…</p>
+      )}
     </div>
   );
 }

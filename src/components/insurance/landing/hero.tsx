@@ -15,7 +15,7 @@
  * flex child, which pins it to the bottom of the viewport without needing
  * to know the centered content's height.
  *
- * The pill's own "availability varies / licensed broker only" disclaimer
+ * The pill's own "availability varies / licensed insurance partner only" disclaimer
  * (src/components/insurance/insurance-landing-form.tsx) is suppressed here
  * via `hideLegalese` — that compliance line renders once, in its own strip
  * right after this section (see insurance-landing.tsx), not inside the
@@ -67,7 +67,7 @@ export default function Hero({
           </h1>
 
           <p className="mt-5 text-lg sm:text-xl text-muted font-medium">
-            Instant profile. Licensed brokers. Zero cold-calls.
+            Instant profile. Licensed partners. Zero cold-calls.
           </p>
 
           <div className="mt-8 max-w-xl mx-auto">

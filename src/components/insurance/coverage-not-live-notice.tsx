@@ -63,7 +63,7 @@ export function CoverageNotLiveNotice({ country, region }: { country: Country; r
         We&apos;re rolling out region by region, live today in British Columbia. {rolloutSentence(country)}
       </p>
       <p className="text-sm text-muted max-w-md mx-auto mb-8 leading-relaxed">
-        Nothing on this page has been shared with a broker. Join the waitlist on the insurance page and
+        Nothing on this page has been shared with an insurance partner. Join the waitlist on the insurance page and
         we&apos;ll let you know the moment {displayName} is live.
       </p>
       <Link

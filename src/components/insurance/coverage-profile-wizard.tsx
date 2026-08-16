@@ -12,7 +12,7 @@
  *
  * Compliance: this whole directory is scanned by scripts/check-insurance-copy.ts
  * for solicitation-adjacent terms — keep any new copy here framed as "get
- * matched with a licensed broker," never a quote or a ranking of insurers.
+ * continued to a licensed insurance partner," never a quote or a ranking of insurers.
  *
  * Consent copy is vendor-aware, not static: step 4 resolves the same vendor
  * coverage-handoff.tsx will hand this profile off to (resolve-vendor.ts,
@@ -99,7 +99,7 @@ const STEP_META = [
   {
     kicker: "Step 2 of 4",
     title: "What are you insuring?",
-    sub: "This picks the right coverage line and set of licensed brokers.",
+    sub: "This picks the right coverage line and set of licensed insurance partners.",
   },
   {
     kicker: "Step 3 of 4",
@@ -108,10 +108,10 @@ const STEP_META = [
   },
   {
     kicker: "Step 4 of 4",
-    // Matches the consent's authorization premise (broker contact is what
+    // Matches the consent's authorization premise (partner contact is what
     // the user is consenting to) — restored alongside the consent revert.
-    title: "Where should the broker reach you?",
-    sub: "A licensed broker for your region follows up — Property Insights never sells or binds coverage.",
+    title: "Where should the insurance partner reach you?",
+    sub: "A licensed insurance partner for your region follows up — Property Insights never sells or binds coverage.",
   },
 ] as const;
 
@@ -604,7 +604,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
         </h1>
         <p className="text-sm text-muted mb-5 max-w-md">
           {step === 0 && missingAny
-            ? "We filled in what we know and left the rest blank — add what you can, it all helps the broker."
+            ? "We filled in what we know and left the rest blank — add what you can, it all helps the insurance partner."
             : STEP_META[step].sub}
         </p>
 
@@ -703,7 +703,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
               <div className="mt-4 rounded-xl border border-border bg-white px-4 sm:px-5 py-3">
                 <div className="text-xs font-medium text-foreground mb-0.5">Add what&apos;s not on file</div>
                 <p className="text-xs text-muted mb-1.5">
-                  Optional — anything you add here travels with your profile and saves the broker a question.
+                  Optional — anything you add here travels with your profile and saves the insurance partner a question.
                 </p>
                 {missing.type && (
                   <EditField label="Property type" value={typeDraft} onChange={setTypeDraft} placeholder="House" />

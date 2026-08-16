@@ -4,7 +4,7 @@
  * Full-bleed teal final CTA. Same form component as the hero (variant
  * "navy" swaps the pill's button color for contrast against the teal
  * background, matching the design). The form itself already renders the
- * dynamic "availability varies / licensed broker only" disclaimer at its
+ * dynamic "availability varies / licensed insurance partner only" disclaimer at its
  * bottom (src/components/insurance/insurance-landing-form.tsx) — not
  * repeated here.
  */
@@ -30,7 +30,7 @@ export default function FinalCta({
           Ready to skip the forms?
         </h2>
         <p className="mt-4 mb-9 text-lg text-white/85 max-w-md mx-auto">
-          Enter an address. If we know it, it&apos;s already filled in — and a licensed broker takes it from there.
+          Enter an address. If we know it, it&apos;s already filled in — and a licensed insurance partner takes it from there.
         </p>
 
         <div className="max-w-xl mx-auto [&_input]:text-foreground">

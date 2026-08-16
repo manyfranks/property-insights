@@ -51,6 +51,50 @@ export type AffiliateNetwork =
   | "unconfirmed";
 
 /**
+ * The role the named counterparty performs in an insurance journey. This is
+ * deliberately distinct from `vertical` and from the commercial affiliate
+ * relationship: a referral URL does not turn the named provider into a
+ * brokerage, insurer, or rater. Unspecified legacy/non-insurance vendors
+ * default to AFFILIATE so the registry remains backwards compatible.
+ */
+export type CounterpartyRole =
+  | "AFFILIATE"
+  | "REFERRER"
+  | "BROKERAGE"
+  | "AGENCY"
+  | "MGA"
+  | "INSURER"
+  | "RATER"
+  | "BMS"
+  | "TPA"
+  | "ADJUSTER"
+  | "DATA_PROVIDER"
+  | "PAYMENT_PROVIDER";
+
+export function counterpartyRoleLabel(role: CounterpartyRole | undefined): string {
+  switch (role) {
+    case "BROKERAGE": return "insurance brokerage";
+    case "AGENCY": return "insurance agency";
+    case "MGA": return "managing general agency";
+    case "INSURER": return "insurer";
+    case "RATER": return "insurance rater";
+    case "BMS": return "broker management system";
+    case "TPA": return "third-party administrator";
+    case "ADJUSTER": return "claims adjuster";
+    case "DATA_PROVIDER": return "data provider";
+    case "PAYMENT_PROVIDER": return "payment provider";
+    case "REFERRER": return "referral partner";
+    case "AFFILIATE":
+    default: return "insurance partner";
+  }
+}
+
+export function counterpartyRoleDescription(role: CounterpartyRole | undefined): string {
+  const label = counterpartyRoleLabel(role);
+  return /^(insurer|insurance)/.test(label) ? `an ${label}` : `a ${label}`;
+}
+
+/**
  * Where a CTA is being rendered — passed through to /api/partner-connect
  * for per-vertical EPC measurement and appended as `sub_id` on affiliate
  * URLs (when the resolved URL is the tracked affiliate URL, not a plain
@@ -90,6 +134,8 @@ export interface AffiliateVendor {
   id: string;
   name: string;
   vertical: Vertical;
+  /** Operational role of the named counterparty; defaults to AFFILIATE for legacy entries. */
+  counterpartyRole?: CounterpartyRole;
   country: Country;
   /** plain fallback URL when no affiliate URL is configured in env */
   url: string;
@@ -211,6 +257,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     id: "squareone",
     name: "Square One",
     vertical: "insurance",
+    counterpartyRole: "AGENCY",
     country: "CA",
     url: "https://www.squareone.ca",
     enabled: true,
@@ -238,12 +285,13 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     lines: ["homeowner", "landlord", "tenant"],
     notes:
       "2026-08-14: corrected from stateCoverage 'all' (verified Aug 2026 partner research). Licensed BC/AB/SK/MB/ON only (absent NS/PEI/NL + territories). Paid affiliate program covers BC/AB/SK/ON only — MB is licensed but not affiliate-payable, see `affiliateRegions`. Prod tracking URL confirmed by owner 2026-08-14: https://www.squareone.ca/propertyinsights (vanity path — attribution is site-level per their program docs; appended sub_id honoring unconfirmed). " +
-      "WORDMARK VERDICT (2026-08-15, Sprint C Task 3): PERMITTED. Source: squareone.ca/affiliate-program-agreement, fetched 2026-08-15. §20 affirmatively allows Square One to \"identify you or Your Site as an Affiliate of the Program\" — i.e. public naming of affiliates is contemplated by the agreement, not just tolerated. The agreement's actual restrictions are narrow and don't reach a plain-text partner-strip mention: §15 bars bidding on Square One's trademarks/brand terms in paid search and using them in Display URLs; §7 bars altering the tracking links themselves; §16 bars anything that could mislead a visitor into thinking the affiliate's site IS Square One's site. Our partner-strip.tsx renders \"Square One\" as plain text (no logo, no stylized wordmark asset) in a sentence that plainly attributes it as a third-party broker (\"We place coverage with licensed brokers, including...\") — squarely inside what §20 authorizes and outside all three restricted categories. No code change.",
+      "WORDMARK VERDICT (2026-08-15, Sprint C Task 3): PERMITTED. Source: squareone.ca/affiliate-program-agreement, fetched 2026-08-15. §20 affirmatively allows Square One to \"identify you or Your Site as an Affiliate of the Program\" — i.e. public naming of affiliates is contemplated by the agreement, not just tolerated. The agreement's actual restrictions are narrow and don't reach a plain-text partner-strip mention: §15 bars bidding on Square One's trademarks/brand terms in paid search and using them in Display URLs; §7 bars altering the tracking links themselves; §16 bars anything that could mislead a visitor into thinking the affiliate's site IS Square One's site. Our partner strip renders \"Square One\" as plain text (no logo, no stylized wordmark asset) and attributes it as a third-party insurance partner. No code change.",
   },
   {
     id: "apollo",
     name: "APOLLO Insurance",
     vertical: "insurance",
+    counterpartyRole: "AGENCY",
     country: "CA",
     url: "https://apollocover.com",
     enabled: true,
@@ -266,14 +314,14 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     // dated verification summary in `notes` below for per-region sourcing.
     affiliateRegions: ["BC", "AB", "SK", "MB", "ON", "NB", "NS", "PE", "NL"],
     network: "direct",
-    ctaLabel: "Get landlord or tenant coverage",
-    description: "Online quote and policy in minutes, no phone call needed",
+    ctaLabel: "Explore property insurance",
+    description: "Explore property coverage with an insurance agency",
     shortCta: "Get quote",
     notes:
       "APPROVED (auto) Aug 2026. Prod URL confirmed by owner 2026-08-14: apollocover.com/lp/propertyinsights (set as NEXT_PUBLIC_AFFILIATE_URL_APOLLO in Vercel). NOTE: a second issued URL, covertrack.ca/propertyinsights, remains unreconciled — verify in the partner portal that the lp URL carries attribution (if covertrack is the tracker, clicks on the lp URL may not credit). " +
       "Payout confirmed 2026-08-14 via APOLLO's published 'Rewards Program — Calculation Methodology': $25 one-time 'Marketing Reward' per qualifying tenant, paid once the policy has been active 90+ days (unpaid/'Pending' before that); accrual must reach a $100 minimum before any payout, capped at $5,000/qualifying instance and $10,000/calendar year without APOLLO's written approval. cpaTier 1 (<$50) still correct at $25. " +
       "SCOPE CAVEAT: this methodology explicitly covers 'APOLLO-Insured Tenants' only — it says nothing about homeowner/landlord/commercial payout, which remain unconfirmed despite this vendor's `lines` including all four. Don't assume $25 applies outside the tenant line. " +
-      "COMPLIANCE CAVEAT: APOLLO's own terms state this reward 'is not a commission, referral fee, or compensation for the sale, solicitation, or placement of insurance' and does not authorize acting as an agent/broker — framed as pay for tenant education/engagement, not the sale. That's in tension with how docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §1 already models this same $25 figure as a 'flat referral fee' for economics purposes — and it's volume-linked to qualifying purchases, which that doc's own §1 table (row 4) flags as the 'SaaS fee in costume' pattern. Site disclosure copy (e.g. FAQ_ITEMS in components/insurance/landing/data.ts) currently calls this a 'referral fee' — worth a legal read on whether that label is accurate for APOLLO specifically before relying on it. " +
+      "COMPLIANCE CAVEAT: APOLLO's own terms state this reward 'is not a commission, referral fee, or compensation for the sale, solicitation, or placement of insurance' and does not authorize acting as an agent/broker — framed as pay for tenant education/engagement, not the sale. That's in tension with how docs/legal/INSURANCE-BROKERAGE-STRUCTURES.md §1 already models this same $25 figure as a 'flat referral fee' for economics purposes — and it's volume-linked to qualifying purchases, which that doc's own §1 table (row 4) flags as the 'SaaS fee in costume' pattern. General site disclosure copy now uses neutral 'partner compensation' language; the owner-and-counsel-controlled coverage-wizard consent still says 'referral fee' and requires a separate approved amendment before APOLLO reliance. " +
       "SPRINT B VENDOR-TRUTH VERIFICATION (2026-08-15, per-region, primary sources first): entity is APOLLO Insurance Solutions Ltd. (Vancouver BC, founded 2017; acquired by Arthur J. Gallagher & Co., announced 2026-08-05) plus its licensed retail-brokerage subsidiary APOLLO Insurance Agency Ltd. (o/a 'Apollo'). " +
       "VERIFIED via primary regulator registry: BC — Insurance Council of BC licensee directory (login.insurancecouncilofbc.com/licensee-directory), both entities Class 'General' Status 'Active'. SK — Insurance Councils of Saskatchewan (licenseesearch.skcouncil.sk.ca), Apollo Insurance Agency Ltd. Lic#08880 P&C Active; Apollo Insurance Solutions Ltd. Lic#09820 P&C-Managing General Agent Active. MB — Insurance Council of Manitoba agency search (lms.icm.mb.ca), both entities present with active license counts (6 and 1). ON — RIBO brokerage search (ribo.com), Apollo Insurance Agency Ltd. Status 'Active', Lic#4314. NB — FCNB agency/MGA listing (portal.fcnb.ca), both entities licensed (Lic#230016919 agency, #230021822 MGA) — NB stays in stateExclusions above regardless, per the separate 2023-regime compliance rationale (§3), unrelated to this licensing fact. " +
       "UNVERIFIED (absence of evidence, not evidence of absence — registries were form-gated/non-functional at check time, distinct from a real no-match): AB — Alberta Insurance Council's public agency lookup (lookups.abcouncil.ab.ca) returned 'An error has occurred while fetching results' on every query tried, including control terms, i.e. broken generally, not Apollo-specific. NS — Nova Scotia's online agent/agency lookup (acp.novascotia.ca) WAF-blocked the request ('Request Rejected') on repeated attempts. PE — princeedwardisland.ca's licensed-agent search returned zero results even for the generic control term 'Insurance', suggesting it's an individual-name/exact-match tool that may not index corporate agencies at all, not a real negative for Apollo specifically. NL — the only public online tool (cfs-portal.gov.nl.ca) is explicitly scoped to 'Licensed Insurance Individuals' (first/last name only, no agency field); the separate gov.nl.ca nonprofit broker-agent page is a voluntary self-submitted survey list, not a registry. " +
@@ -286,6 +334,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     id: "zensurance",
     name: "Zensurance",
     vertical: "insurance",
+    counterpartyRole: "BROKERAGE",
     country: "CA",
     url: "https://www.zensurance.com",
     enabled: false,
@@ -436,6 +485,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     id: "zebra",
     name: "The Zebra",
     vertical: "insurance",
+    counterpartyRole: "AFFILIATE",
     country: "US",
     url: "https://www.thezebra.com",
     enabled: false,
@@ -495,6 +545,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     id: "allstate",
     name: "Allstate",
     vertical: "insurance",
+    counterpartyRole: "AFFILIATE",
     country: "US",
     url: "https://www.allstate.com",
     enabled: false,
@@ -514,6 +565,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     id: "smartfinancial",
     name: "SmartFinancial",
     vertical: "insurance",
+    counterpartyRole: "AFFILIATE",
     country: "US",
     url: "https://smartfinancial.com",
     enabled: false,
@@ -533,6 +585,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     id: "insurify",
     name: "Insurify",
     vertical: "insurance",
+    counterpartyRole: "AFFILIATE",
     country: "US",
     url: "https://insurify.com",
     enabled: false,
@@ -560,6 +613,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     id: "steadily",
     name: "Steadily",
     vertical: "insurance",
+    counterpartyRole: "AFFILIATE",
     country: "US",
     url: "https://www.steadily.com",
     enabled: false,
@@ -584,6 +638,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     id: "obie",
     name: "Obie",
     vertical: "insurance",
+    counterpartyRole: "AFFILIATE",
     country: "US",
     url: "https://www.obieinsurance.com",
     enabled: false,
@@ -703,6 +758,7 @@ export const AFFILIATE_VENDORS: AffiliateVendor[] = [
     id: "simplybusiness",
     name: "Simply Business",
     vertical: "insurance",
+    counterpartyRole: "AFFILIATE",
     country: "US",
     url: "https://www.simplybusiness.com",
     enabled: false,
@@ -1177,12 +1233,12 @@ export function assertAffiliateHealth(): void {
     }
 
     // A placeholder URL is worse than a missing one: the CTA still renders a
-    // "Sponsored" tag and the commission disclosure, but the link can never
+    // "Sponsored" tag and the partner-compensation disclosure, but the link can never
     // attribute. Ratehub shipped with `?ref=YOUR_ID` for months undetected.
     if (PLACEHOLDER_URL_PATTERN.test(configured)) {
       console.error(
         `[affiliate-health] Revenue-critical vendor "${id}" has a PLACEHOLDER affiliate URL in ${envName} ` +
-          `(${configured}) — clicks are disclosed as commissioned but cannot be attributed. Replace with the real tracking link.`
+          `(${configured}) — clicks are disclosed as compensated but cannot be attributed. Replace with the real tracking link.`
       );
     }
   }

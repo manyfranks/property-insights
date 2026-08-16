@@ -372,7 +372,7 @@ export default async function DataMoat({ country, region }: { country: Country; 
                     <path d="M5 12.5l4.5 4.5L19 7.5" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </span>
-                <span style={{ fontSize: "14px", fontWeight: 600 }}>Matched with a licensed {region} broker</span>
+                <span style={{ fontSize: "14px", fontWeight: 600 }}>Matched with a licensed {region} insurance partner</span>
               </div>
             </>
           )}

@@ -20,7 +20,7 @@ export function CoverageExcludedNotice({ region }: { region: string }) {
         Insurance matching isn&apos;t available in {region} yet.
       </h1>
       <p className="text-sm text-muted max-w-md mx-auto mb-8 leading-relaxed">
-        We only ever hand a property off to a licensed broker, and we don&apos;t have a compliant referral path in
+        We only ever direct a property owner to a licensed insurance partner, and we don&apos;t have a compliant referral path in
         this jurisdiction yet. Nothing on this page has been shared with a partner.
       </p>
       <Link

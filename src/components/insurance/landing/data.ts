@@ -8,8 +8,8 @@
  *
  * Scanned by scripts/check-insurance-copy.ts along with every other file
  * under src/components/insurance/ (including this file's own comments, not
- * just string literals) — keep any edits framed as "get matched with a
- * licensed broker," never a ranked or superlative claim about insurers.
+ * just string literals) — keep any edits framed as "continue to a licensed
+ * insurance partner," never a ranked or superlative claim about insurers.
  */
 
 import type { InsuranceLine } from "@/config/affiliate-vendors";
@@ -56,7 +56,7 @@ export const HOW_STEPS: HowStep[] = [
   {
     num: "03",
     title: "Get matched",
-    body: "Continue to a licensed broker for your region to get your quote — your coverage profile stays saved with Property Insights. They're the broker of record, start to finish.",
+    body: "Continue to one licensed insurance partner for your region to explore coverage options — your coverage profile stays saved with Property Insights.",
   },
 ];
 
@@ -69,27 +69,27 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "Wait — is Property Insights an insurance company?",
     answer:
-      "Property Insights is not an insurance company, an insurer, or a broker — it's a property-intelligence platform that builds your coverage profile and matches you with a licensed broker to continue to. That broker provides the advice, the quote, and the actual policy; we never quote, bind, or sell insurance ourselves. Think of us as the paperwork layer that sits in front of the broker relationship, not a replacement for it.",
+      "Property Insights is not an insurance company, an insurer, an agency, or a brokerage — it's a property-intelligence platform that builds your coverage profile and matches you with a licensed insurance partner to continue to. That partner provides any advice, quote, or policy; we never quote, bind, or sell insurance ourselves. Think of us as the paperwork layer in front of that relationship, not a replacement for it.",
   },
   {
-    question: "Who will my broker actually be?",
+    question: "Who will my insurance partner actually be?",
     answer:
-      "Your broker will be a broker licensed in your province or state, acting as your broker of record for the policy. Property Insights matches you with a partner brokerage for your region rather than an individual agent you pick yourself, and you continue to them directly. That broker — not Property Insights — handles the quote, the advice, and the paperwork from there.",
+      "Property Insights matches you with a licensed insurance agency or brokerage configured for your region, rather than presenting a list of agents. You continue to that partner directly, and that partner — not Property Insights — is responsible for any quote, advice, policy, or service it provides.",
   },
   {
     question: "Are you going to sell my info to a dozen agents?",
     answer:
-      "No — Property Insights matches you with exactly one licensed broker for your region, not a list of agents, and your coverage profile stays saved with Property Insights unless and until you continue to that broker yourself. That's the difference between a single match and a lead auction: your information is never resold to a room of cold-callers chasing the same address. You'll only ever be routed to one broker, never a list.",
+      "No — Property Insights matches you with exactly one licensed insurance partner for your region, not a list of agents, and your coverage profile stays saved with Property Insights unless and until you continue to that partner yourself. That's the difference between a single match and a lead auction: your information is never resold to a room of cold-callers chasing the same address. You'll only ever be routed to one partner, never a list.",
   },
   {
     question: "How does Property Insights make money, then?",
     answer:
-      "Property Insights earns money through disclosed referral arrangements with the licensed brokers we match you with — not from you directly. That referral fee never changes the price you pay for coverage, and it never influences the property analysis we show you. We disclose the arrangement here rather than burying it in fine print.",
+      "Property Insights may earn money through a disclosed partner arrangement when a match leads to a policy — not from you directly. That compensation does not change the price you're quoted or influence the property analysis we show you. We disclose the arrangement here rather than burying it in fine print.",
   },
   {
     question: "Where can I actually use this?",
     answer:
-      "Property Insights is live today in British Columbia, with Alberta and Ontario opening next, followed by the rest of Canada and a state-by-state U.S. rollout. Availability depends on both your region and which licensed brokers operate there. We detect your location automatically and show you exactly what's available where you are.",
+      "Property Insights is live today in British Columbia, with Alberta and Ontario opening next, followed by the rest of Canada and a state-by-state U.S. rollout. Availability depends on both your region and which licensed insurance partners operate there. We detect your location automatically and show you exactly what's available where you are.",
   },
   {
     question: 'What do you mean you "already know" my property?',
@@ -99,17 +99,17 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "How does home insurance work in British Columbia?",
     answer:
-      "In British Columbia, home insurance is arranged through a licensed broker or insurer, not a government program — coverage, terms, and pricing come directly from that broker. Property Insights builds your coverage profile from what we already track about the property, then matches you with a single licensed BC broker who handles the quote and the policy. We never quote, bind, or advise on coverage ourselves.",
+      "In British Columbia, home insurance is arranged through a licensed insurance agency, brokerage, or insurer, not a government program — coverage, terms, and pricing come from that licensed provider. Property Insights builds your coverage profile from what we already track about the property, then matches you with one licensed BC insurance partner. We never quote, bind, or advise on coverage ourselves.",
   },
   {
     question: "What do I need to get landlord insurance in Canada?",
     answer:
-      "Getting a landlord insurance quote in Canada typically starts with basic facts about the rental property — its type, age, and size — plus details only you know, like occupancy status and unit count. Property Insights pre-fills the property facts it already tracks so you confirm rather than retype them, then matches you with a licensed broker in your province — you continue to them directly for the actual landlord policy. The broker of record provides the coverage advice and the quote; we build the profile and make the match.",
+      "Getting a landlord insurance quote in Canada typically starts with basic facts about the rental property — its type, age, and size — plus details only you know, like occupancy status and unit count. Property Insights pre-fills the property facts it already tracks so you confirm rather than retype them, then matches you with a licensed insurance partner in your province. You continue to that partner directly for any coverage advice, quote, or policy; we build the profile and make the match.",
   },
   {
     question: "How fast can I get a home insurance quote in BC?",
     answer:
-      "Because Property Insights already tracks many BC properties, your coverage profile can be ready in under a minute — you confirm what we know and add the handful of details only you can provide. From there, you continue to a licensed BC broker who provides the actual quote directly. Response times depend on that broker, not on us.",
+      "Because Property Insights already tracks many BC properties, your coverage profile can be ready in under a minute — you confirm what we know and add the handful of details only you can provide. From there, you continue to a licensed BC insurance partner for the actual quote. Response times depend on that partner and the risk, not on us.",
   },
 ];
 

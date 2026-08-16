@@ -157,7 +157,7 @@ export default function CoverageTiles({ country, region }: { country: Country; r
                   key={line.id}
                   className="flex flex-col h-full text-left rounded-[22px] p-5"
                   style={{ background: cardBg, border: `1.5px solid ${cardBorder}` }}
-                  title={`${line.label} insurance is placed directly by a licensed broker in ${upperRegion} — Property Insights doesn't earn a referral fee on this line here.`}
+                  title={`${line.label} insurance is placed directly by a licensed insurance professional in ${upperRegion} — Property Insights doesn't receive partner compensation on this line here.`}
                 >
                   {inner}
                 </div>

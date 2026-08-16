@@ -44,7 +44,7 @@ const VALID_LINES: InsuranceLine[] = ["homeowner", "landlord", "tenant", "strata
 export const metadata: Metadata = {
   title: "Home & Landlord Insurance, Pre-Filled From Your Address",
   description:
-    "Enter your address for a pre-filled coverage profile — homeowner, landlord, tenant, strata, or commercial insurance — then get matched with one licensed broker.",
+    "Enter your address for a pre-filled coverage profile — homeowner, landlord, tenant, strata, or commercial insurance — then continue to one licensed insurance partner.",
   alternates: {
     canonical: `${BASE_URL}/insurance`,
   },

@@ -36,10 +36,8 @@ export { audienceModeForLine };
  * otherwise null (the caller falls back to a plain, visibly-unsponsored
  * "match me" path). Pure function of its arguments — no I/O.
  *
- * On BC personal lines, Square One and APOLLO currently tie on cpaTier, so
- * the `rotateTies` call below alternates the pick daily — see that
- * function's doc comment in affiliate-vendors.ts (DECISION MARKER,
- * 2026-08-15) for why that's intentional-for-now rather than a bug.
+ * Square One currently outranks APOLLO on supported BC personal lines by
+ * configured cpaTier. `rotateTies` remains for future genuine ties.
  */
 export function resolveVendor(
   country: Country,

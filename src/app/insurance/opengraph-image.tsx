@@ -77,7 +77,7 @@ export default function OgImage() {
 
         {/* Subline */}
         <div style={{ display: "flex", fontSize: "24px", color: "rgba(255,255,255,0.7)" }}>
-          Instant profile. Licensed brokers. Zero cold-calls.
+          Instant profile. Licensed partners. Zero cold-calls.
         </div>
       </div>
     ),
