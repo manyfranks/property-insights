@@ -44,10 +44,11 @@
  * (src/lib/insurance/domain/consent-v1.ts) and rejected on mismatch — never
  * trusted as-is under the frozen "coverage-profile-consent-v1" label.
  * Errors are classified: expected validation failures (ineligible intended
- * recipient, malformed capability fields, consent-text mismatch) are a 400
- * with a safe message; anything else (missing tables, DB outage, unexpected
- * exceptions) is a 500 with a generic message and the raw error
- * console.error'd server-side. An idempotent replay of the dual-write
+ * recipient, malformed capability fields, consent-text mismatch) are a 400;
+ * canonical idempotency conflicts are a non-specific 409; and anything else
+ * (missing tables, DB outage, unexpected exceptions) is a 500 with a generic
+ * message and the raw error console.error'd server-side. An idempotent replay
+ * of the dual-write
  * (same idempotencyKey) is reported back distinctly from a fresh create so
  * the operator-notification email below fires at most once per case.
  */
@@ -68,7 +69,10 @@ import { insuranceProfileLimiter } from "@/lib/rate-limit";
 import { stageAtLeast } from "@/config/insurance-stage";
 import { sendCoverageProfileNotification } from "@/lib/email";
 import { insuranceKernelExecution } from "@/config/insurance-kernel/execution-mode";
-import { createFinalizedCoverageCase } from "@/lib/insurance/application/cases";
+import {
+  createFinalizedCoverageCase,
+  InsuranceCaseConflictError,
+} from "@/lib/insurance/application/cases";
 import { resolveVendor, regionFullName } from "@/components/insurance/resolve-vendor";
 import { assertIdempotencyKey } from "@/lib/insurance/domain/submission";
 import { coverageProfileConsentTextV1 } from "@/lib/insurance/domain/consent-v1";
@@ -298,6 +302,12 @@ export async function POST(req: Request) {
       newlyCreated = created.newlyCreated;
       if (kernel.features.casePortal) caseAccessPath = `/insurance/case/${accessTokenCandidate}`;
     } catch (err) {
+      // A server-authoritative idempotency mismatch is a safe, deliberately
+      // non-specific 409. It must not be collapsed into a 500 or reveal
+      // whether the key, case, or capability already exists.
+      if (err instanceof InsuranceCaseConflictError) {
+        return NextResponse.json({ error: err.message, code: err.code }, { status: 409 });
+      }
       // F6: split expected validation failures (400, safe specific message)
       // from everything else — missing tables, DB outage, unexpected
       // exceptions (500, generic message; raw error logged server-side

@@ -7,7 +7,10 @@ export type A1SubmissionState = (typeof A1_SUBMISSION_STATES)[number];
 const CASE_TRANSITIONS: Readonly<Record<A1CaseState, readonly A1CaseState[]>> = {
   DRAFT: ["COLLECTING_FACTS", "READY_FOR_SUBMISSION", "WITHDRAWN"],
   COLLECTING_FACTS: ["READY_FOR_SUBMISSION", "WITHDRAWN"],
-  READY_FOR_SUBMISSION: ["WITHDRAWN"],
+  // A finalized case can re-enter fact collection only by creating a new
+  // immutable submission version. This is an A1-local edit state, never a
+  // provider delivery/review/quote claim.
+  READY_FOR_SUBMISSION: ["COLLECTING_FACTS", "WITHDRAWN"],
   WITHDRAWN: [],
 };
 

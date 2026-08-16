@@ -5,7 +5,7 @@ import { insuranceKernelExecution } from "@/config/insurance-kernel/execution-mo
 import { insuranceCaseAccessLimiter, insuranceCasePortalIpLimiter } from "@/lib/rate-limit";
 import { dbAvailable } from "@/lib/db";
 import { readCaseStatusByAccessToken } from "@/lib/insurance/application/cases";
-import { sha256 } from "@/lib/insurance/domain/submission";
+import { casePortalRateLimitAllowsAccess, readCaseStatusForPortal } from "@/lib/insurance/application/case-portal";
 
 export const dynamic = "force-dynamic";
 
@@ -43,34 +43,21 @@ export default async function InsuranceCaseStatusPage({
   const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const ipLimiter = insuranceCasePortalIpLimiter();
   const tokenLimiter = insuranceCaseAccessLimiter();
-  if ((!ipLimiter || !tokenLimiter) && process.env.NODE_ENV === "production") {
-    console.error("insurance-portal: rate limiter unavailable — failing closed");
-    notFound();
-  }
-  // Per-IP limiter first and keyed on IP alone (no token material), so an
-  // attacker guessing many distinct tokens from one IP still shares a single
-  // budget instead of getting a fresh bucket per guess.
-  if (ipLimiter) {
-    const result = await ipLimiter.limit(ip);
-    if (!result.success) notFound();
-  }
-  if (tokenLimiter) {
-    const result = await tokenLimiter.limit(`${ip}:${sha256(accessToken).slice(0, 16)}`);
-    if (!result.success) notFound();
-  }
+  if (
+    !await casePortalRateLimitAllowsAccess({
+      ip,
+      accessToken,
+      ipLimiter,
+      tokenLimiter,
+      isProduction: process.env.NODE_ENV === "production",
+    })
+  ) notFound();
 
-  if (!dbAvailable()) {
-    console.error("insurance-portal: database unavailable — failing closed");
-    notFound();
-  }
-
-  let caseStatus;
-  try {
-    caseStatus = await readCaseStatusByAccessToken(accessToken);
-  } catch (error) {
-    console.error("insurance-portal: case lookup failed — failing closed", error);
-    notFound();
-  }
+  const caseStatus = await readCaseStatusForPortal({
+    accessToken,
+    isDatabaseAvailable: dbAvailable(),
+    readCaseStatus: readCaseStatusByAccessToken,
+  });
   // A genuine no-match (revoked/unknown token) falls through here silently —
   // that is correct: it must be indistinguishable from an absent case and
   // must never be logged.

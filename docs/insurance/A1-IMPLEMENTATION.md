@@ -33,11 +33,15 @@ Anonymous access uses a browser-generated 256-bit capability. Only its SHA-256
 hash is stored. Lookups are rate-limited by hashed capability plus IP. The URL
 has `no-referrer`, `no-store`, and `noindex`; PostHog, Vercel Analytics, Speed
 Insights, first-party signals, and analytics-cookie minting are all suppressed
-on the capability route. Withdrawal and amendment commands (consent
-withdrawal, draft answer updates/versioning, submission finalization) are
-deferred to A2 — the WITHDRAWN states remain defined in the schema and domain
-state machines but are unreachable in A1, since no command can drive a case
-or submission into them. No public withdrawal UI or endpoint ships in A1.
+on the capability route. A1 also provides internal-only, capability-authorized
+idempotent update and finalize commands: an update creates a new immutable
+`DRAFT` submission version with its own reaffirmed consent artifact, and a
+finalize command moves only that newest version to `READY`. These commands are
+not wired to a public endpoint in A1 and cannot create delivery, quote, bind,
+or provider-review evidence. Consent withdrawal remains unreachable in A1;
+the `WITHDRAWN` states are defined in the schema and domain state machines,
+but no withdrawal command, public withdrawal UI, or endpoint ships pending
+counsel and privacy-copy approval.
 
 ## Database operations
 
@@ -55,9 +59,10 @@ Historical-PII mode always fails pending counsel approval.
 ## Verification and release gates
 
 Automated coverage includes domain transition negatives, execution-mode
-narrowing, analytics leakage, migration idempotency/checksum drift, immutable
-consent/submissions/execution mode, TypeScript, lint, build, and the existing
-journey E2E suite.
+narrowing, analytics leakage, portal dependency failures, server-authoritative
+replay conflicts, command-level create/update/finalize execution against
+scratch Postgres, migration idempotency/checksum drift, immutable consent and
+submissions, TypeScript, lint, build, and the existing journey E2E suite.
 
 HITL required before any production change:
 

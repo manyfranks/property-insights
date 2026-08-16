@@ -4,19 +4,16 @@
  * Persistence for Stage 2 of the insurance path (see
  * docs/proposals/insurance-distribution-proposal.html, "Stages" + "seam"
  * sections): the user confirms pre-filled property data, answers ~6
- * questions only they can answer, consents, and is handed off to a
- * licensed partner with the profile. The partner is broker of record at
- * this stage; the stored profile row is the strategic asset (warm pipeline
- * + conversion proof for the eventual Stage 3 internal-brokerage
- * submission), distinct from the affiliate click log in partner-clicks.ts.
+ * questions only they can answer, and consents. The stored profile row is
+ * distinct from the affiliate click log in partner-clicks.ts. Its optional
+ * vendor_id is legacy affiliate click attribution only: it does not record
+ * profile delivery, broker-of-record appointment, or provider activity.
  *
  * Ships stage-gated behind NEXT_PUBLIC_INSURANCE_STAGE reaching "intake" —
  * see stageAtLeast("intake") in src/config/insurance-stage.ts and the API
- * route, which 404s below that stage. This mirrors the reasoning in the
- * updated partner-connect
- * doc comment: the insurance handoff shares consented user data with a
- * partner, which the public privacy pages haven't yet been amended to
- * disclose.
+ * route, which 404s below that stage. Affiliate navigation remains separate
+ * from this persistence path. This module does not transmit a profile or
+ * consented data to a partner.
  *
  * Validation throws with clear messages (fail loud — a malformed or
  * unconsented profile must never be silently dropped or half-written). The
@@ -399,11 +396,10 @@ export async function createCoverageProfile(
 }
 
 /**
- * Records that a profile was handed off to a licensed partner (registry id
- * from src/config/affiliate-vendors.ts) — the authoritative reconciliation
- * record for a coverage-profile handoff (see getAffiliateUrl's doc comment
- * in src/config/affiliate-vendors.ts for why the click URL's sub_id isn't
- * itself authoritative).
+ * Records legacy affiliate click attribution (the registry id from
+ * src/config/affiliate-vendors.ts) on a coverage profile. This is not a
+ * delivery acknowledgement, licensed-partner handoff, broker-of-record
+ * appointment, or reconciliation record for provider activity.
  *
  * First-write-wins: the UPDATE only matches a profile whose vendor_id is
  * still NULL, so a duplicate or replayed partner-connect click (the POST is
@@ -411,8 +407,8 @@ export async function createCoverageProfile(
  * overwrite an earlier, possibly-different stamp. Returns `false` — not an
  * error — when the profile doesn't exist, the id is malformed in a way that
  * still passed isCoverageProfileId (shouldn't happen), or it was already
- * stamped; callers that only want best-effort click attribution, not to
- * enforce uniqueness, should treat `false` as a silent no-op.
+ * stamped; callers that only want best-effort click attribution should treat
+ * `false` as a silent no-op.
  */
 export async function markProfileHandoff(id: string, vendorId: string): Promise<boolean> {
   if (!dbAvailable()) throw new Error("DATABASE_URL not set — cannot update coverage profile");

@@ -31,10 +31,12 @@ const applySql = `
   WITH inserted AS (
     INSERT INTO insurance_cases (
       id, execution_mode, status, legacy_coverage_profile_id, idempotency_key,
-      country, region, insurance_line, historical_shell
+      request_hash, country, region, insurance_line, historical_shell
     )
     SELECT gen_random_uuid(), 'PRODUCTION', 'DRAFT', p.id,
-      'historical-structural:' || p.id::text, p.country, p.region, p.line, TRUE
+      'historical-structural:' || p.id::text,
+      md5('insurance-backfill-request-hash:v1:a:' || p.id::text) || md5('insurance-backfill-request-hash:v1:b:' || p.id::text),
+      p.country, p.region, p.line, TRUE
     FROM coverage_profiles p
     LEFT JOIN insurance_cases c ON c.legacy_coverage_profile_id = p.id
     WHERE c.id IS NULL

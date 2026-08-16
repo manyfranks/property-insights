@@ -5,7 +5,13 @@ import {
   assertCaseTransition,
   assertSubmissionTransition,
 } from "../src/lib/insurance/domain/states";
-import { assertAnswerProvenance, hashAccessToken } from "../src/lib/insurance/domain/submission";
+import {
+  assertAnswerProvenance,
+  canonicalJson,
+  canonicalSha256,
+  hashAccessToken,
+} from "../src/lib/insurance/domain/submission";
+import { InsuranceCaseConflictError } from "../src/lib/insurance/application/cases";
 import {
   consentTextWithVendor,
   CONSENT_TEXT_WITHOUT_VENDOR,
@@ -24,6 +30,7 @@ function mustReject(action: () => void, message: string): void {
 
 assertCaseTransition("DRAFT", "READY_FOR_SUBMISSION");
 assertSubmissionTransition("DRAFT", "READY");
+assertCaseTransition("READY_FOR_SUBMISSION", "COLLECTING_FACTS");
 mustReject(() => assertCaseTransition("READY_FOR_SUBMISSION", "DRAFT"), "finalized cases cannot move backward");
 mustReject(() => assertSubmissionTransition("READY", "DRAFT"), "finalized submissions cannot be edited in place");
 for (const state of ["SUBMITTED", "AWAITING_PROVIDER", "QUOTED", "BOUND"]) {
@@ -52,6 +59,16 @@ mustReject(
 const rawToken = Buffer.alloc(32, 7).toString("base64url");
 expect(hashAccessToken(rawToken).length === 64, "access tokens must be stored only as SHA-256 hashes");
 mustReject(() => hashAccessToken("visible-token"), "short access tokens must fail closed");
+
+const canonicalA = canonicalSha256({ answers: { claims: 1, roof: 12 }, recipients: [{ id: "a" }] });
+const canonicalSameRequestDifferentKeyOrder = canonicalSha256({ recipients: [{ id: "a" }], answers: { roof: 12, claims: 1 } });
+const canonicalChangedRequest = canonicalSha256({ answers: { claims: 2, roof: 12 }, recipients: [{ id: "a" }] });
+expect(canonicalA === canonicalSameRequestDifferentKeyOrder, "request fingerprint must not depend on object key order");
+expect(canonicalA !== canonicalChangedRequest, "changed semantic request must not replay as identical");
+mustReject(() => canonicalJson({ impossible: undefined }), "unsupported canonical request values must fail closed");
+const conflict = new InsuranceCaseConflictError();
+expect(conflict.code === "INSURANCE_CASE_CONFLICT", "idempotency conflicts need a typed safe code");
+expect(!conflict.message.includes("token"), "idempotency conflict must not disclose capability data");
 
 expect(
   postHogEventContainsInsuranceCapability({ properties: { $current_url: `https://propertyinsights.xyz/insurance/case/${rawToken}` } }),
