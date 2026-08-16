@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+// F10: shared psql environment construction — this script's own inline copy
+// had drifted from scripts/insurance-migrate.ts's (missing the postgres://
+// protocol check). psqlEnvironment() is now the single source of truth;
+// insurance-migrate.ts guards its own `main()` call so importing it here
+// doesn't run the migration tool as a side effect.
+import { psqlEnvironment } from "./insurance-migrate";
 
 const applyStructural = process.argv.includes("--apply-structural");
 const includeHistoricalPii = process.argv.includes("--include-historical-pii");
@@ -12,16 +18,7 @@ if (includeHistoricalPii) {
 
 const databaseUrl = process.env.INSURANCE_MIGRATION_DATABASE_URL;
 if (!databaseUrl) fail("INSURANCE_MIGRATION_DATABASE_URL is required; runtime credentials are not accepted");
-const url = new URL(databaseUrl);
-const env = {
-  ...process.env,
-  PGHOST: url.hostname,
-  PGPORT: url.port || "5432",
-  PGUSER: decodeURIComponent(url.username),
-  PGPASSWORD: decodeURIComponent(url.password),
-  PGDATABASE: decodeURIComponent(url.pathname.slice(1)),
-  PGSSLMODE: url.searchParams.get("sslmode") || (url.hostname === "localhost" || url.hostname === "127.0.0.1" ? "disable" : "require"),
-};
+const env = psqlEnvironment(databaseUrl);
 
 const dryRunSql = `
   SELECT count(*) AS structurally_eligible

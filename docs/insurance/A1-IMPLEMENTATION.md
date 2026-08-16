@@ -33,8 +33,11 @@ Anonymous access uses a browser-generated 256-bit capability. Only its SHA-256
 hash is stored. Lookups are rate-limited by hashed capability plus IP. The URL
 has `no-referrer`, `no-store`, and `noindex`; PostHog, Vercel Analytics, Speed
 Insights, first-party signals, and analytics-cookie minting are all suppressed
-on the capability route. Withdrawal revokes the capability in the domain, but
-no public withdrawal UI or endpoint ships in A1.
+on the capability route. Withdrawal and amendment commands (consent
+withdrawal, draft answer updates/versioning, submission finalization) are
+deferred to A2 — the WITHDRAWN states remain defined in the schema and domain
+state machines but are unreachable in A1, since no command can drive a case
+or submission into them. No public withdrawal UI or endpoint ships in A1.
 
 ## Database operations
 

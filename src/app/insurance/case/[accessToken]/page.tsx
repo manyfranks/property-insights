@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { insuranceKernelExecution } from "@/config/insurance-kernel/execution-mode";
-import { insuranceCaseAccessLimiter } from "@/lib/rate-limit";
+import { insuranceCaseAccessLimiter, insuranceCasePortalIpLimiter } from "@/lib/rate-limit";
+import { dbAvailable } from "@/lib/db";
 import { readCaseStatusByAccessToken } from "@/lib/insurance/application/cases";
 import { sha256 } from "@/lib/insurance/domain/submission";
 
@@ -40,19 +41,39 @@ export default async function InsuranceCaseStatusPage({
   const { accessToken } = await params;
   const requestHeaders = await headers();
   const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const limiter = insuranceCaseAccessLimiter();
-  if (!limiter && process.env.NODE_ENV === "production") notFound();
-  if (limiter) {
-    const result = await limiter.limit(`${ip}:${sha256(accessToken).slice(0, 16)}`);
+  const ipLimiter = insuranceCasePortalIpLimiter();
+  const tokenLimiter = insuranceCaseAccessLimiter();
+  if ((!ipLimiter || !tokenLimiter) && process.env.NODE_ENV === "production") {
+    console.error("insurance-portal: rate limiter unavailable — failing closed");
+    notFound();
+  }
+  // Per-IP limiter first and keyed on IP alone (no token material), so an
+  // attacker guessing many distinct tokens from one IP still shares a single
+  // budget instead of getting a fresh bucket per guess.
+  if (ipLimiter) {
+    const result = await ipLimiter.limit(ip);
     if (!result.success) notFound();
+  }
+  if (tokenLimiter) {
+    const result = await tokenLimiter.limit(`${ip}:${sha256(accessToken).slice(0, 16)}`);
+    if (!result.success) notFound();
+  }
+
+  if (!dbAvailable()) {
+    console.error("insurance-portal: database unavailable — failing closed");
+    notFound();
   }
 
   let caseStatus;
   try {
     caseStatus = await readCaseStatusByAccessToken(accessToken);
-  } catch {
+  } catch (error) {
+    console.error("insurance-portal: case lookup failed — failing closed", error);
     notFound();
   }
+  // A genuine no-match (revoked/unknown token) falls through here silently —
+  // that is correct: it must be indistinguishable from an absent case and
+  // must never be logged.
   if (!caseStatus) notFound();
 
   const copy = STATUS_COPY[caseStatus.status];

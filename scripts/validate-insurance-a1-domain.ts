@@ -6,6 +6,11 @@ import {
   assertSubmissionTransition,
 } from "../src/lib/insurance/domain/states";
 import { assertAnswerProvenance, hashAccessToken } from "../src/lib/insurance/domain/submission";
+import {
+  consentTextWithVendor,
+  CONSENT_TEXT_WITHOUT_VENDOR,
+  coverageProfileConsentTextV1,
+} from "../src/lib/insurance/domain/consent-v1";
 
 function expect(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[insurance-a1-validation] ${message}`);
@@ -71,5 +76,44 @@ const narrowed = resolveKernelExecution({
   INSURANCE_KERNEL_ENABLE_CASE_PORTAL: "1",
 });
 expect(!narrowed.features.casePortal, "misconfigured portal flag must narrow to disabled");
+
+// F4 regression: lock the byte-exact "coverage-profile-consent-v1" wording
+// (owner+counsel approved, legally frozen — see the do-not-edit guard on
+// consentTextWithVendor in src/lib/insurance/domain/consent-v1.ts). The
+// function's only free variables are vendorName and regionName — country
+// and insurance line only influence which vendor/region flow in upstream
+// (resolveVendor / regionFullName in src/components/insurance/resolve-vendor.ts,
+// not re-tested here) — so representative vendor/region substitutions are
+// sufficient to catch any accidental wording change before it reaches the
+// build, rather than trusting a client-supplied consentText as-is.
+expect(
+  consentTextWithVendor("Test Insurer Co.", "Test Region") ===
+    "Yes — share my property details with Test Insurer Co. (licensed in Test Region) so they can contact me " +
+      "about insurance. I understand Property Insights may earn a referral fee if I do business with them, " +
+      "and that Test Insurer Co. alone provides any insurance quotes, advice, or coverage.",
+  "consent-v1 vendor-variant wording changed"
+);
+expect(
+  consentTextWithVendor("Another Brokerage", "British Columbia") ===
+    "Yes — share my property details with Another Brokerage (licensed in British Columbia) so they can contact me " +
+      "about insurance. I understand Property Insights may earn a referral fee if I do business with them, " +
+      "and that Another Brokerage alone provides any insurance quotes, advice, or coverage.",
+  "consent-v1 vendor-variant wording changed for a second (vendor, region) combination"
+);
+expect(
+  CONSENT_TEXT_WITHOUT_VENDOR ===
+    "Yes — share my property details with a licensed insurance brokerage for my region so they can contact " +
+      "me about insurance. Any insurance quotes, advice, or coverage come from that licensed brokerage — " +
+      "Property Insights does not sell, quote, or bind insurance.",
+  "consent-v1 no-vendor wording changed"
+);
+expect(
+  coverageProfileConsentTextV1(null, "Texas") === CONSENT_TEXT_WITHOUT_VENDOR,
+  "coverageProfileConsentTextV1 must fall back to the no-vendor text when no vendor resolves"
+);
+expect(
+  coverageProfileConsentTextV1("Test Insurer Co.", "Texas") === consentTextWithVendor("Test Insurer Co.", "Texas"),
+  "coverageProfileConsentTextV1 must match consentTextWithVendor when a vendor resolves"
+);
 
 console.log("insurance A1 domain and privacy validation passed");

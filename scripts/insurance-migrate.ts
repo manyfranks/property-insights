@@ -35,7 +35,14 @@ function loadMigrations(): Migration[] {
   return migrations;
 }
 
-function psqlEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
+/**
+ * Shared with scripts/backfill-insurance-cases.ts (F10) — both scripts shell
+ * out to `psql` against INSURANCE_MIGRATION_DATABASE_URL and had drifted
+ * into two separate env constructions; this is the single source of truth
+ * now, including the postgres:// protocol check the backfill script's
+ * inline copy was missing.
+ */
+export function psqlEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
   const url = new URL(databaseUrl);
   if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") fail("database URL must use postgres protocol");
   return {
@@ -156,4 +163,8 @@ COMMIT;
   console.log(`[insurance-migrate] applied ${pending.length} migration(s); ledger now at ${migrations.length}`);
 }
 
-main();
+// F10: this module is also imported by scripts/backfill-insurance-cases.ts
+// for its shared psqlEnvironment() helper — only run main() when this file
+// is the process entry point (`tsx scripts/insurance-migrate.ts ...`), not
+// as a side effect of that import.
+if (require.main === module) main();
