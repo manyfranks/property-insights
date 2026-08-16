@@ -1,18 +1,23 @@
 import posthog from "posthog-js";
 import { isOptedOutClient } from "@/lib/privacy";
+import {
+  isSensitiveInsuranceCapabilityPath,
+  postHogEventContainsInsuranceCapability,
+} from "@/lib/insurance/privacy/sensitive-routes";
 
 const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
-const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
-
 // Do Not Sell/Share: never initialize PostHog for a visitor who is opted out
 // (explicit pi_dns cookie choice, or a live Global Privacy Control signal —
 // see src/lib/privacy.ts). Checked before the token check below so an
 // opted-out visitor is skipped even when the token *is* configured.
 const optedOut = isOptedOutClient();
+const sensitiveCapabilityRoute =
+  typeof window !== "undefined" &&
+  isSensitiveInsuranceCapabilityPath(window.location.pathname);
 
-if (optedOut) {
+if (optedOut || sensitiveCapabilityRoute) {
   if (process.env.NODE_ENV === "development") {
-    console.warn("[posthog] disabled: visitor opted out (GPC/pi_dns)");
+    console.warn("[posthog] disabled: privacy boundary active");
   }
 } else if (!token) {
   if (process.env.NODE_ENV !== "production") {
@@ -35,6 +40,9 @@ if (optedOut) {
     defaults: "2026-01-30",
     // Capture unhandled exceptions via Error Tracking
     capture_exceptions: true,
+    before_send(event) {
+      return postHogEventContainsInsuranceCapability(event) ? null : event;
+    },
     // Debug output in development
     debug: process.env.NODE_ENV === "development",
   });

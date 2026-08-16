@@ -45,50 +45,15 @@ import {
 import { ProvenanceChip, type ProvenanceSource } from "@/components/insurance/coverage-provenance-chip";
 import CoverageHandoff, { type HandoffRow } from "@/components/insurance/coverage-handoff";
 import { resolveVendor, regionFullName } from "@/components/insurance/resolve-vendor";
+import { consentTextWithVendor, CONSENT_TEXT_WITHOUT_VENDOR } from "@/lib/insurance/domain/consent-v1";
 
-/**
- * Copy with [Brokerage Name]/[Region] filled at render time. The
- * fee-disclosure sentence only appears here — the vendor actually resolved
- * to a paid affiliate/referral relationship — never in the no-vendor
- * variant below, where no fee arrangement exists.
- *
- * 2026-08-15 (Sprint C "say true things"): rewritten from "share my
- * property details with {vendor} ... so they can contact me" — that
- * described an automatic data handoff to the vendor that doesn't exist
- * today (the handoff is a plain tracked link; prefill is Stage 3,
- * unbuilt — see coverage-handoff.tsx's doc comment). The true mechanism:
- * consent saves the profile with Property Insights and clears the way to
- * continue to the vendor, who receives nothing until the user follows that
- * link and engages with the vendor's own site directly.
- */
-// CONSENT TEXT IS OWNER+COUNSEL APPROVED — DO NOT EDIT without explicit
-// owner sign-off. This is authorization language, not a description of
-// current mechanics: the user grants permission for the sharing the
-// privacy policy's coverage-profile amendment describes ("shared only
-// with your explicit consent"), which covers the operator-notification
-// email, manual routing on the fallback path, and future prefill — even
-// though today's handoff link itself transmits no data. Descriptive UI
-// copy elsewhere must stay truthful about mechanics (Sprint C), but
-// narrowing THIS text would undercut the consent basis the amendment
-// relies on. (A 2026-08-15 truth-sweep rewrite was reverted for exactly
-// that reason.)
-function consentTextWithVendor(vendorName: string, regionName: string): string {
-  return (
-    `Yes — share my property details with ${vendorName} (licensed in ${regionName}) so they can contact me ` +
-    `about insurance. I understand Property Insights may earn a referral fee if I do business with them, ` +
-    `and that ${vendorName} alone provides any insurance quotes, advice, or coverage.`
-  );
-}
-
-/**
- * Copy for the mailto fallback path (no resolved vendor). No fee sentence —
- * this isn't a sponsored placement. Same owner-approved-authorization rule
- * as consentTextWithVendor above: do not edit without owner sign-off.
- */
-const CONSENT_TEXT_WITHOUT_VENDOR =
-  "Yes — share my property details with a licensed insurance brokerage for my region so they can contact " +
-  "me about insurance. Any insurance quotes, advice, or coverage come from that licensed brokerage — " +
-  "Property Insights does not sell, quote, or bind insurance.";
+// Consent copy (owner+counsel approved, frozen as "coverage-profile-consent-v1")
+// now lives in src/lib/insurance/domain/consent-v1.ts — moved there
+// byte-identical, do-not-edit guard comment included, so the A1 dual-write
+// path (src/lib/insurance/application/cases.ts via
+// src/app/api/coverage-profile/route.ts) can recompute and verify the same
+// text server-side instead of trusting the client-supplied consentText.
+// Do not reintroduce a local copy here.
 
 const STEP_META = [
   {
@@ -331,7 +296,17 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
   );
 
   const [submittedProfileId, setSubmittedProfileId] = useState<string | null>(null);
+  const [caseAccessPath, setCaseAccessPath] = useState<string | null>(null);
   const [handoffRows, setHandoffRows] = useState<HandoffRow[]>([]);
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const caseAccessTokenRef = useRef<string | null>(null);
+  // Fingerprint of the submission-relevant payload from the last submit
+  // attempt (everything the user can edit — NOT idempotencyKey/
+  // caseAccessToken themselves). Lets submit() below tell a pure retry
+  // (lost response, same answers — safe to replay under the same identity)
+  // apart from an edited resubmission, which must mint a fresh identity;
+  // see the comment at the top of submit().
+  const lastAttemptFingerprintRef = useRef<string | null>(null);
 
   // --- Telemetry: wizard-started + step-completed + abandonment -----------
   //
@@ -421,6 +396,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
         line={line}
         vendorParam={prefill.vendorParam}
         rows={handoffRows}
+        caseAccessPath={caseAccessPath}
       />
     );
   }
@@ -475,6 +451,60 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
 
     setPhase("submitting");
 
+    // Fingerprint of every field the user can change between attempts —
+    // answers, contact info, line, expiry, etc. Deliberately excludes
+    // idempotencyKey/caseAccessToken (those are the identity being decided
+    // below, not inputs to it). Order is fixed so identical answers always
+    // produce an identical string.
+    const submissionFingerprint = JSON.stringify([
+      prefill.country,
+      prefill.region,
+      prefill.address,
+      line,
+      typeDraft.trim() || null,
+      parseNumericField(yearBuiltDraft),
+      parseNumericField(bedsDraft),
+      parseNumericField(bathsDraft),
+      parseNumericField(sqftDraft),
+      parseNumericField(valueDraft),
+      parseNumericField(rentDraft),
+      occupancy,
+      unitCount,
+      claims5yr,
+      coverageExpiryMonth,
+      roofAgeOption?.value ?? null,
+      name.trim(),
+      email.trim(),
+      normalizedPhone,
+      resolvedVendor?.id ?? null,
+    ]);
+
+    // Reuse the existing idempotencyKey/caseAccessToken ONLY when this
+    // attempt's payload is identical to the last one (a pure retry after a
+    // lost response — safe, and the whole point of idempotency). If the
+    // fingerprint differs, the user edited something after an earlier
+    // failure and resubmitted: reusing the old identity would let the
+    // server's idempotent replay return the ORIGINAL case with the OLD
+    // answers, so the wizard would show success while the correction was
+    // silently discarded. Mint a fresh key AND a fresh token in that case —
+    // access_token_hash is UNIQUE on insurance_cases (see
+    // db/migrations/0001_insurance_create_case_submission.sql), so reusing
+    // the token against a second case would violate the constraint anyway,
+    // and each case needs its own capability regardless.
+    if (
+      idempotencyKeyRef.current === null ||
+      caseAccessTokenRef.current === null ||
+      lastAttemptFingerprintRef.current !== submissionFingerprint
+    ) {
+      idempotencyKeyRef.current = crypto.randomUUID();
+      const bytes = crypto.getRandomValues(new Uint8Array(32));
+      caseAccessTokenRef.current = btoa(String.fromCharCode(...bytes))
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replaceAll("=", "");
+    }
+    lastAttemptFingerprintRef.current = submissionFingerprint;
+
     const payload = {
       country: prefill.country,
       region: prefill.region,
@@ -521,6 +551,9 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
       consent: true,
       consentText,
       source: "assess-result",
+      idempotencyKey: idempotencyKeyRef.current,
+      caseAccessToken: caseAccessTokenRef.current,
+      intendedRecipientId: resolvedVendor?.id ?? null,
     };
 
     try {
@@ -550,6 +583,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
       // POST has already succeeded but the ref hasn't caught up yet.
       submittedRef.current = true;
       signal("coverage_profile_submitted", { country: prefill.country, region: prefill.region, line });
+      setCaseAccessPath(typeof body.caseAccessPath === "string" ? body.caseAccessPath : null);
       setHandoffRows(buildHandoffRows());
       setSubmittedProfileId(id);
       setPhase("handoff");

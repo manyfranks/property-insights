@@ -13,6 +13,18 @@ const nextConfig: NextConfig = {
   // `npm run build`) this is a no-op: falls back to the normal ".next".
   distDir: process.env.NEXT_DIST_DIR || ".next",
   trailingSlash: false,
+  async headers() {
+    return [
+      {
+        source: "/insurance/case/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "private, no-store" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

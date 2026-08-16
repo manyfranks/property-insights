@@ -4,7 +4,7 @@
  * Uses the same Upstash Redis instance as our KV storage.
  * Keys are prefixed with "rl:" to avoid collisions with listing/event data.
  *
- * Eight limiters:
+ * Ten limiters:
  *   1. apiLimiter               — general per-IP limit for public endpoints (60 req/min)
  *   2. authApiLimiter           — per-user limit for authenticated endpoints (30 req/min)
  *   3. assessLimiter            — per-user daily cap for /api/assess (15/day)
@@ -13,6 +13,8 @@
  *   6. insuranceWaitlistLimiter — per-IP limit for /api/insurance/waitlist (5 req/min)
  *   7. partnerConnectLimiter    — per-IP limit for /api/partner-connect (20 req/min)
  *   8. signalLimiter            — per-IP limit for /api/signal (60 req/min)
+ *   9. insuranceCaseAccessLimiter — capability+IP case reads (10 req/min)
+ *  10. insuranceCasePortalIpLimiter — per-IP limit for the case status portal (30 req/min)
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -47,6 +49,8 @@ let _insuranceProfileLimiter: Ratelimit | null = null;
 let _insuranceWaitlistLimiter: Ratelimit | null = null;
 let _partnerConnectLimiter: Ratelimit | null = null;
 let _signalLimiter: Ratelimit | null = null;
+let _insuranceCaseAccessLimiter: Ratelimit | null = null;
+let _insuranceCasePortalIpLimiter: Ratelimit | null = null;
 
 /** 60 requests per 60 seconds, per IP — for public endpoints */
 export function apiLimiter(): Ratelimit | null {
@@ -183,4 +187,41 @@ export function signalLimiter(): Ratelimit | null {
     prefix: "rl:signal",
   });
   return _signalLimiter;
+}
+
+/** 10 reads per 60 seconds for one IP + hashed capability token. */
+export function insuranceCaseAccessLimiter(): Ratelimit | null {
+  if (_insuranceCaseAccessLimiter) return _insuranceCaseAccessLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _insuranceCaseAccessLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(10, "60 s"),
+    prefix: "rl:ins-case-access",
+  });
+  return _insuranceCaseAccessLimiter;
+}
+
+/**
+ * 30 requests per 60 seconds, per IP only — for the case status portal
+ * (`/insurance/case/[accessToken]`). insuranceCaseAccessLimiter above keys on
+ * IP + hashed token, so it protects a *known* token from being hammered but
+ * gives every distinct token guess its own fresh bucket — an attacker
+ * enumerating capability tokens from one IP never trips it. This limiter has
+ * no token in its key at all, so guesses against the same IP share one
+ * budget regardless of which token they try. 30/min is looser than the
+ * per-token limit since one legitimate visitor's browser can generate a
+ * handful of requests (reload, revisit), but still tight enough to make
+ * brute-forcing the token space impractical.
+ */
+export function insuranceCasePortalIpLimiter(): Ratelimit | null {
+  if (_insuranceCasePortalIpLimiter) return _insuranceCasePortalIpLimiter;
+  const redis = getRedis();
+  if (!redis) return null;
+  _insuranceCasePortalIpLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(30, "60 s"),
+    prefix: "rl:ins-case-portal-ip",
+  });
+  return _insuranceCasePortalIpLimiter;
 }

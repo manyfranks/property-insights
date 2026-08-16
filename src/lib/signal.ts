@@ -23,6 +23,7 @@
  */
 
 import { isOptedOutClient } from "@/lib/privacy";
+import { isSensitiveInsuranceCapabilityPath } from "@/lib/insurance/privacy/sensitive-routes";
 
 export type SignalPayload = Record<string, string | number | boolean>;
 
@@ -134,6 +135,7 @@ function attachLifecycleListeners(): void {
 export function signal(type: string, data?: SignalPayload): void {
   if (typeof window === "undefined") return;
   if (isOptedOutClient()) return;
+  if (isSensitiveInsuranceCapabilityPath(window.location.pathname)) return;
 
   attachLifecycleListeners();
 

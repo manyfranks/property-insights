@@ -3,15 +3,13 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import Image from "next/image";
 import { ClerkProvider, Show, SignInButton, UserButton } from "@clerk/nextjs";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import NavbarSearch from "@/components/navbar-search";
 import MobileNav from "@/components/mobile-nav";
 import { OrganizationJsonLd, OrganizationEntityJsonLd } from "@/components/json-ld";
 import Footer from "@/components/footer";
 import ConsentBanner from "@/components/consent-banner";
 import GpcHonor from "@/components/gpc-honor";
-import PageViewSignal from "@/components/page-view-signal";
+import PrivacyTelemetry from "@/components/privacy-telemetry";
 import PostHogIdentify from "@/components/posthog-identify";
 import { BASE_URL, SITE_NAME, SITE_DESCRIPTION, SITE_LOCALE } from "@/lib/seo";
 import "./globals.css";
@@ -142,9 +140,7 @@ export default function RootLayout({
           <ConsentBanner />
           <GpcHonor />
         </ClerkProvider>
-        <PageViewSignal />
-        <Analytics />
-        <SpeedInsights />
+        <PrivacyTelemetry />
       </body>
     </html>
   );

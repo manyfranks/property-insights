@@ -20,18 +20,22 @@
  */
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import posthog from "posthog-js";
 import { isOptedOutClient } from "@/lib/privacy";
 import { hasAnalyticsConsent } from "@/lib/consent";
+import { isSensitiveInsuranceCapabilityPath } from "@/lib/insurance/privacy/sensitive-routes";
 
 let identifiedThisSession = false;
 
 export default function PostHogIdentify() {
   const { isLoaded, isSignedIn, user } = useUser();
+  const pathname = usePathname() || "";
 
   useEffect(() => {
     if (!isLoaded) return;
+    if (isSensitiveInsuranceCapabilityPath(pathname)) return;
 
     if (isSignedIn && user) {
       if (isOptedOutClient()) return;
@@ -54,7 +58,7 @@ export default function PostHogIdentify() {
       posthog.reset();
       identifiedThisSession = false;
     }
-  }, [isLoaded, isSignedIn, user]);
+  }, [isLoaded, isSignedIn, user, pathname]);
 
   return null;
 }

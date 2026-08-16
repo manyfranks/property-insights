@@ -1,11 +1,11 @@
 /**
  * POST /api/coverage-profile
  *
- * Stage 2 of the insurance path (see
- * docs/proposals/insurance-distribution-proposal.html, "Stages" + "seam"
- * sections): stores a coverage profile — the prefilled property snapshot
- * plus the ~6 questions only the user can answer — ahead of a handoff to a
- * licensed partner, who becomes broker of record. After a successful
+ * Stores a coverage profile — the prefilled property snapshot plus the ~6
+ * questions only the user can answer — ahead of the existing affiliate
+ * handoff. A1 can additionally dual-write a canonical case and immutable
+ * submission, but no state in this route means provider delivery, review,
+ * quoting, or broker-of-record appointment. After a successful
  * insert, this route best-effort notifies the operator inbox
  * (sendCoverageProfileNotification in src/lib/email.ts — OPERATOR_NOTIFY_EMAIL
  * env var, defaults to insights@mail.propertyinsights.xyz) so the handoff
@@ -34,6 +34,23 @@
  * consent must be exactly `true`, or the request is rejected with 400 —
  * this endpoint never stores a profile the user didn't affirmatively
  * consent to, matching the CHECK(consent = TRUE) constraint on the table.
+ *
+ * A1 dual-write path: only taken when the kernel's caseRecord feature is on
+ * AND the request carries a valid idempotencyKey (UUID) and a non-empty
+ * caseAccessToken — a stale cached wizard bundle or a pre-A1 caller falls
+ * back to the legacy-only path instead of being rejected (console.warn'd
+ * once). On that path, the submitted `consentText` is recomputed
+ * server-side from the same (vendor, region) inputs
+ * (src/lib/insurance/domain/consent-v1.ts) and rejected on mismatch — never
+ * trusted as-is under the frozen "coverage-profile-consent-v1" label.
+ * Errors are classified: expected validation failures (ineligible intended
+ * recipient, malformed capability fields, consent-text mismatch) are a 400;
+ * canonical idempotency conflicts are a non-specific 409; and anything else
+ * (missing tables, DB outage, unexpected exceptions) is a 500 with a generic
+ * message and the raw error console.error'd server-side. An idempotent replay
+ * of the dual-write
+ * (same idempotencyKey) is reported back distinctly from a fresh create so
+ * the operator-notification email below fires at most once per case.
  */
 
 import { auth } from "@clerk/nextjs/server";
@@ -43,6 +60,7 @@ import {
   createCoverageProfile,
   validateCoverageProperty,
   validateCoverageAnswers,
+  CoverageProfileValidationError,
   type CreateCoverageProfileInput,
 } from "@/lib/db/coverage-profiles";
 import type { AffiliateSource, Country, InsuranceLine } from "@/config/affiliate-vendors";
@@ -50,6 +68,14 @@ import { isOptedOutRequest } from "@/lib/privacy";
 import { insuranceProfileLimiter } from "@/lib/rate-limit";
 import { stageAtLeast } from "@/config/insurance-stage";
 import { sendCoverageProfileNotification } from "@/lib/email";
+import { insuranceKernelExecution } from "@/config/insurance-kernel/execution-mode";
+import {
+  createFinalizedCoverageCase,
+  InsuranceCaseConflictError,
+} from "@/lib/insurance/application/cases";
+import { resolveVendor, regionFullName } from "@/components/insurance/resolve-vendor";
+import { assertIdempotencyKey } from "@/lib/insurance/domain/submission";
+import { coverageProfileConsentTextV1 } from "@/lib/insurance/domain/consent-v1";
 
 const VALID_COUNTRIES: Country[] = ["US", "CA"];
 const VALID_LINES: InsuranceLine[] = ["homeowner", "landlord", "tenant", "strata", "commercial"];
@@ -71,6 +97,18 @@ const VALID_SOURCES = [
 // Profiles carry a full property snapshot + answers, so the cap is larger
 // than partner-connect's 1KB click-tracking payload, but still bounded.
 const MAX_DATA_SIZE = 8192; // bytes
+
+/** Non-throwing UUID check for F2's stale-client fallback gate below —
+ *  reuses the canonical validator (src/lib/insurance/domain/submission.ts)
+ *  instead of duplicating its regex. */
+function isValidIdempotencyKey(value: string): boolean {
+  try {
+    assertIdempotencyKey(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: Request) {
   if (!stageAtLeast("intake")) {
@@ -181,14 +219,117 @@ export async function POST(req: Request) {
     source,
   };
 
+  const kernel = insuranceKernelExecution();
+  // Narrowed once here (rather than re-testing `kernel.mode !== "DISABLED"`
+  // inline below) so TypeScript can see `requestedExecutionMode` excludes
+  // "DISABLED" — matches CreateFinalizedCoverageCaseInput's executionMode
+  // type (RequestedKernelExecutionMode).
+  const requestedExecutionMode = kernel.mode !== "DISABLED" ? kernel.mode : null;
+  const kernelWantsCaseRecord = kernel.features.caseRecord && requestedExecutionMode !== null;
+
+  // F2: idempotencyKey/caseAccessToken are new, A1-only fields. A cached
+  // pre-A1 wizard bundle or a pre-A1 API caller won't send a valid pair even
+  // though the server-side kernel flag is on. Never 400 that — fall back to
+  // the legacy path exactly as when the flag is off, and log once so the
+  // fallback is visible (fail-loud, not silently degraded).
+  const idempotencyKeyCandidate = typeof body.idempotencyKey === "string" ? body.idempotencyKey : "";
+  const accessTokenCandidate = typeof body.caseAccessToken === "string" ? body.caseAccessToken : "";
+  const useKernelCaseRecord =
+    kernelWantsCaseRecord && isValidIdempotencyKey(idempotencyKeyCandidate) && accessTokenCandidate.length > 0;
+  if (kernelWantsCaseRecord && !useKernelCaseRecord) {
+    console.warn(
+      "insurance-a1: legacy client payload, dual-write skipped (missing/invalid idempotencyKey or caseAccessToken)"
+    );
+  }
+
   let profile: Awaited<ReturnType<typeof createCoverageProfile>>;
-  try {
-    profile = await createCoverageProfile(input);
-  } catch (err) {
-    // Fail loud: a malformed or unconsented profile is a 400, not a
-    // swallowed error — see src/lib/db/coverage-profiles.ts's validators.
-    const message = err instanceof Error ? err.message : "Failed to save coverage profile";
-    return NextResponse.json({ error: message }, { status: 400 });
+  let caseAccessPath: string | undefined;
+  let newlyCreated = true;
+
+  if (useKernelCaseRecord) {
+    try {
+      if (!requestedExecutionMode) {
+        // Unreachable: useKernelCaseRecord already implies
+        // kernelWantsCaseRecord, which implies requestedExecutionMode isn't
+        // null. Here purely so TypeScript narrows it to
+        // RequestedKernelExecutionMode for the createFinalizedCoverageCase
+        // call below.
+        throw new Error("insurance-a1: kernel unexpectedly disabled after gating");
+      }
+      const requestedRecipientId = typeof body.intendedRecipientId === "string" ? body.intendedRecipientId : null;
+      // F5: eligibility lists (src/config/affiliate-vendors.ts) use
+      // uppercase region codes, same as the legacy path's stored region —
+      // normalize before the eligibility check so a lowercase region can't
+      // wrongly reject (or silently mis-resolve) a valid submission.
+      const normalizedRegion = region.trim().toUpperCase();
+      const eligibleRecipient = requestedRecipientId
+        ? resolveVendor(country, normalizedRegion, line, requestedRecipientId)
+        : null;
+      if (requestedRecipientId && eligibleRecipient?.id !== requestedRecipientId) {
+        throw new CoverageProfileValidationError(
+          "intended recipient is not eligible for this country, region, and insurance line"
+        );
+      }
+      // F4: recompute the frozen consent-v1 text server-side from the same
+      // (vendor, region) inputs the client rendered it from
+      // (src/lib/insurance/domain/consent-v1.ts — the same module the
+      // wizard uses), and refuse to record a mismatch under the v1 label.
+      // A mismatch means a stale client or a tampered payload; silently
+      // storing it as v1 would corrupt the audit artifact.
+      const expectedConsentText = coverageProfileConsentTextV1(
+        eligibleRecipient?.name ?? null,
+        regionFullName(normalizedRegion)
+      );
+      if (consentText !== expectedConsentText) {
+        throw new CoverageProfileValidationError("consent text does not match coverage-profile-consent-v1");
+      }
+      const intendedRecipients = eligibleRecipient?.id === requestedRecipientId
+        ? [{
+            counterpartyId: eligibleRecipient.id,
+            name: eligibleRecipient.name,
+            role: eligibleRecipient.counterpartyRole ?? ("AFFILIATE" as const),
+          }]
+        : [];
+      const created = await createFinalizedCoverageCase({
+        ...input,
+        region: normalizedRegion,
+        executionMode: requestedExecutionMode,
+        idempotencyKey: idempotencyKeyCandidate,
+        accessToken: accessTokenCandidate,
+        intendedRecipients,
+      });
+      profile = { id: created.profileId, createdAt: created.createdAt };
+      newlyCreated = created.newlyCreated;
+      if (kernel.features.casePortal) caseAccessPath = `/insurance/case/${accessTokenCandidate}`;
+    } catch (err) {
+      // A server-authoritative idempotency mismatch is a safe, deliberately
+      // non-specific 409. It must not be collapsed into a 500 or reveal
+      // whether the key, case, or capability already exists.
+      if (err instanceof InsuranceCaseConflictError) {
+        return NextResponse.json({ error: err.message, code: err.code }, { status: 409 });
+      }
+      // F6: split expected validation failures (400, safe specific message)
+      // from everything else — missing tables, DB outage, unexpected
+      // exceptions (500, generic message; raw error logged server-side
+      // only). Classified by type, not by string-matching driver internals.
+      if (err instanceof CoverageProfileValidationError) {
+        return NextResponse.json({ error: err.message }, { status: 400 });
+      }
+      console.error(
+        "[coverage-profile] dual-write case creation FAILED:",
+        err instanceof Error ? err.message : String(err)
+      );
+      return NextResponse.json({ error: "Failed to save coverage profile" }, { status: 500 });
+    }
+  } else {
+    try {
+      profile = await createCoverageProfile(input);
+    } catch (err) {
+      // Fail loud: a malformed or unconsented profile is a 400, not a
+      // swallowed error — see src/lib/db/coverage-profiles.ts's validators.
+      const message = err instanceof Error ? err.message : "Failed to save coverage profile";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
   }
 
   // Operator notification is best-effort: a failed send never turns a
@@ -197,33 +338,43 @@ export async function POST(req: Request) {
   // be silently swallowed either — log it distinctively and report the
   // real outcome to the caller via `operatorNotified` rather than copying
   // sendAssessmentEmail's silent-soft-fail pattern.
+  //
+  // F8: on the A1 dual-write path, an idempotent replay (findExisting hit
+  // inside createFinalizedCoverageCase) is indistinguishable from a fresh
+  // create at the DB layer, so it's reported back via `newlyCreated` —
+  // skip the notification (and any other create-only side effect) on a
+  // replay so the operator inbox doesn't get the same case twice. The
+  // legacy path always creates a fresh row, so `newlyCreated` stays true
+  // there and this notification behavior is unchanged.
   let operatorNotified = false;
-  try {
-    const notifyResult = await sendCoverageProfileNotification({
-      id: profile.id,
-      createdAt: profile.createdAt,
-      country,
-      region,
-      address,
-      line,
-      // Re-validate the already-inserted raw payload to get the typed
-      // shape for the email — createCoverageProfile() validated the same
-      // body.property/body.answers to succeed above, so this cannot throw
-      // on data that just passed the identical validators.
-      property: validateCoverageProperty(body.property),
-      answers: validateCoverageAnswers(body.answers),
-      consentText,
-    });
-    operatorNotified = notifyResult.success;
-    if (!notifyResult.success) {
-      console.error("[coverage-profile] operator email FAILED:", notifyResult.error);
+  if (newlyCreated) {
+    try {
+      const notifyResult = await sendCoverageProfileNotification({
+        id: profile.id,
+        createdAt: profile.createdAt,
+        country,
+        region,
+        address,
+        line,
+        // Re-validate the already-inserted raw payload to get the typed
+        // shape for the email — createCoverageProfile() validated the same
+        // body.property/body.answers to succeed above, so this cannot throw
+        // on data that just passed the identical validators.
+        property: validateCoverageProperty(body.property),
+        answers: validateCoverageAnswers(body.answers),
+        consentText,
+      });
+      operatorNotified = notifyResult.success;
+      if (!notifyResult.success) {
+        console.error("[coverage-profile] operator email FAILED:", notifyResult.error);
+      }
+    } catch (err) {
+      console.error(
+        "[coverage-profile] operator email FAILED:",
+        err instanceof Error ? err.message : String(err)
+      );
     }
-  } catch (err) {
-    console.error(
-      "[coverage-profile] operator email FAILED:",
-      err instanceof Error ? err.message : String(err)
-    );
   }
 
-  return NextResponse.json({ id: profile.id, operatorNotified });
+  return NextResponse.json({ id: profile.id, operatorNotified, ...(caseAccessPath ? { caseAccessPath } : {}) });
 }

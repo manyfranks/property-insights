@@ -4,19 +4,16 @@
  * Persistence for Stage 2 of the insurance path (see
  * docs/proposals/insurance-distribution-proposal.html, "Stages" + "seam"
  * sections): the user confirms pre-filled property data, answers ~6
- * questions only they can answer, consents, and is handed off to a
- * licensed partner with the profile. The partner is broker of record at
- * this stage; the stored profile row is the strategic asset (warm pipeline
- * + conversion proof for the eventual Stage 3 internal-brokerage
- * submission), distinct from the affiliate click log in partner-clicks.ts.
+ * questions only they can answer, and consents. The stored profile row is
+ * distinct from the affiliate click log in partner-clicks.ts. Its optional
+ * vendor_id is legacy affiliate click attribution only: it does not record
+ * profile delivery, broker-of-record appointment, or provider activity.
  *
  * Ships stage-gated behind NEXT_PUBLIC_INSURANCE_STAGE reaching "intake" —
  * see stageAtLeast("intake") in src/config/insurance-stage.ts and the API
- * route, which 404s below that stage. This mirrors the reasoning in the
- * updated partner-connect
- * doc comment: the insurance handoff shares consented user data with a
- * partner, which the public privacy pages haven't yet been amended to
- * disclose.
+ * route, which 404s below that stage. Affiliate navigation remains separate
+ * from this persistence path. This module does not transmit a profile or
+ * consented data to a partner.
  *
  * Validation throws with clear messages (fail loud — a malformed or
  * unconsented profile must never be silently dropped or half-written). The
@@ -24,8 +21,27 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { NeonQueryFunction, NeonQueryFunctionInTransaction } from "@neondatabase/serverless";
 import { dbAvailable, sql } from "@/lib/db";
 import type { AffiliateSource, Country, InsuranceLine } from "@/config/affiliate-vendors";
+
+/**
+ * Thrown for every expected client-input validation failure below (bad
+ * shape, out-of-range value, unconsented submission, mismatched idempotency
+ * key/token, etc). Kept as a distinct class — rather than a plain Error —
+ * so callers (src/app/api/coverage-profile/route.ts) can classify a
+ * `catch` by type (400, safe message) instead of string-matching on driver
+ * internals, and so anything that ISN'T this class (a missing table, a DB
+ * outage, an unexpected exception) falls through to a generic 500 with the
+ * raw error logged server-side only. Still `instanceof Error`, so existing
+ * `err instanceof Error ? err.message : ...` call sites are unaffected.
+ */
+export class CoverageProfileValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CoverageProfileValidationError";
+  }
+}
 
 export type CoverageFieldSource = "known" | "modeled";
 export type CoverageOccupancy =
@@ -128,11 +144,11 @@ export function isCoverageProfileId(value: unknown): value is string {
 
 function requireString(value: unknown, label: string, maxLen: number): string {
   if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`${label} is required`);
+    throw new CoverageProfileValidationError(`${label} is required`);
   }
   const trimmed = value.trim();
   if (trimmed.length > maxLen) {
-    throw new Error(`${label} exceeds maximum length of ${maxLen}`);
+    throw new CoverageProfileValidationError(`${label} exceeds maximum length of ${maxLen}`);
   }
   return trimmed;
 }
@@ -140,21 +156,21 @@ function requireString(value: unknown, label: string, maxLen: number): string {
 function requireNullableNumber(value: unknown, label: string): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${label} must be a number or null`);
+    throw new CoverageProfileValidationError(`${label} must be a number or null`);
   }
   return value;
 }
 
 function requireFieldSource(value: unknown, label: string): CoverageFieldSource {
   if (typeof value !== "string" || !FIELD_SOURCES.includes(value as CoverageFieldSource)) {
-    throw new Error(`${label}.source must be one of: ${FIELD_SOURCES.join(", ")}`);
+    throw new CoverageProfileValidationError(`${label}.source must be one of: ${FIELD_SOURCES.join(", ")}`);
   }
   return value as CoverageFieldSource;
 }
 
 function requireObject(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} is required`);
+    throw new CoverageProfileValidationError(`${label} is required`);
   }
   return value as Record<string, unknown>;
 }
@@ -194,7 +210,7 @@ export function validateCoverageAnswers(input: unknown): CoverageProfileAnswers 
   const raw = requireObject(input, "answers");
 
   if (typeof raw.occupancy !== "string" || !OCCUPANCIES.includes(raw.occupancy as CoverageOccupancy)) {
-    throw new Error(`answers.occupancy must be one of: ${OCCUPANCIES.join(", ")}`);
+    throw new CoverageProfileValidationError(`answers.occupancy must be one of: ${OCCUPANCIES.join(", ")}`);
   }
   if (
     typeof raw.unitCount !== "number" ||
@@ -202,7 +218,7 @@ export function validateCoverageAnswers(input: unknown): CoverageProfileAnswers 
     raw.unitCount < 0 ||
     raw.unitCount > 500
   ) {
-    throw new Error("answers.unitCount must be a non-negative integer");
+    throw new CoverageProfileValidationError("answers.unitCount must be a non-negative integer");
   }
   if (
     typeof raw.claims5yr !== "number" ||
@@ -210,20 +226,20 @@ export function validateCoverageAnswers(input: unknown): CoverageProfileAnswers 
     raw.claims5yr < 0 ||
     raw.claims5yr > 50
   ) {
-    throw new Error("answers.claims5yr must be a non-negative integer");
+    throw new CoverageProfileValidationError("answers.claims5yr must be a non-negative integer");
   }
 
   let coverageExpiry: string | null = null;
   if (raw.coverageExpiry !== null && raw.coverageExpiry !== undefined) {
     if (typeof raw.coverageExpiry !== "string" || !ISO_DATE_RE.test(raw.coverageExpiry)) {
-      throw new Error("answers.coverageExpiry must be an ISO date (YYYY-MM-DD) or null");
+      throw new CoverageProfileValidationError("answers.coverageExpiry must be an ISO date (YYYY-MM-DD) or null");
     }
     coverageExpiry = raw.coverageExpiry;
   }
 
   const roofAge = requireNullableNumber(raw.roofAge, "answers.roofAge");
   if (roofAge !== null && (roofAge < 0 || roofAge > 200)) {
-    throw new Error("answers.roofAge is out of range");
+    throw new CoverageProfileValidationError("answers.roofAge is out of range");
   }
 
   const contactRaw = requireObject(raw.contact, "answers.contact");
@@ -232,7 +248,7 @@ export function validateCoverageAnswers(input: unknown): CoverageProfileAnswers 
     typeof contactRaw.preference !== "string" ||
     !CONTACT_PREFERENCES.includes(contactRaw.preference as ContactPreference)
   ) {
-    throw new Error(`answers.contact.preference must be one of: ${CONTACT_PREFERENCES.join(", ")}`);
+    throw new CoverageProfileValidationError(`answers.contact.preference must be one of: ${CONTACT_PREFERENCES.join(", ")}`);
   }
 
   let email: string | null = null;
@@ -242,7 +258,7 @@ export function validateCoverageAnswers(input: unknown): CoverageProfileAnswers 
       contactRaw.email.length > 254 ||
       !EMAIL_RE.test(contactRaw.email)
     ) {
-      throw new Error("answers.contact.email is invalid");
+      throw new CoverageProfileValidationError("answers.contact.email is invalid");
     }
     email = contactRaw.email;
   }
@@ -254,13 +270,13 @@ export function validateCoverageAnswers(input: unknown): CoverageProfileAnswers 
       contactRaw.phone.length > 30 ||
       contactRaw.phone.replace(/[^0-9]/g, "").length < 7
     ) {
-      throw new Error("answers.contact.phone is invalid");
+      throw new CoverageProfileValidationError("answers.contact.phone is invalid");
     }
     phone = contactRaw.phone;
   }
 
   if (!email && !phone) {
-    throw new Error("answers.contact requires at least one of email or phone");
+    throw new CoverageProfileValidationError("answers.contact requires at least one of email or phone");
   }
 
   return {
@@ -273,46 +289,106 @@ export function validateCoverageAnswers(input: unknown): CoverageProfileAnswers 
   };
 }
 
+/** Fully validated, ready-to-insert shape of a coverage profile — the
+ *  return of validateCoverageProfileInput() below. */
+export interface ValidatedCoverageProfileInput {
+  userId: string | null;
+  country: Country;
+  region: string;
+  address: string;
+  line: InsuranceLine;
+  property: CoverageProfileProperty;
+  answers: CoverageProfileAnswers;
+  consentText: string;
+  source: string | null;
+}
+
 /**
- * Insert a new coverage profile. Throws on any validation failure —
- * including `consent !== true`, which the schema's CHECK constraint also
- * enforces at the data layer as a second line of defense.
+ * Validates a raw CreateCoverageProfileInput end to end — including
+ * `consent !== true`, which the schema's CHECK constraint also enforces at
+ * the data layer as a second line of defense. Throws
+ * CoverageProfileValidationError on any failure.
+ *
+ * Shared by createCoverageProfile (legacy path, below) and the A1
+ * dual-write path (src/lib/insurance/application/cases.ts) so the
+ * compatibility `coverage_profiles` row's validation rules can't drift
+ * between the two write paths.
+ */
+export function validateCoverageProfileInput(
+  input: CreateCoverageProfileInput
+): ValidatedCoverageProfileInput {
+  if (!COUNTRIES.includes(input.country)) {
+    throw new CoverageProfileValidationError(`country must be one of: ${COUNTRIES.join(", ")}`);
+  }
+  const region = requireString(input.region, "region", 10).toUpperCase();
+  const address = requireString(input.address, "address", 300);
+  if (!LINES.includes(input.line)) {
+    throw new CoverageProfileValidationError(`line must be one of: ${LINES.join(", ")}`);
+  }
+  const property = validateCoverageProperty(input.property);
+  const answers = validateCoverageAnswers(input.answers);
+  if (input.consent !== true) {
+    throw new CoverageProfileValidationError("consent must be explicitly true");
+  }
+  const consentText = requireString(input.consentText, "consentText", 4000);
+  const source = input.source ? requireString(input.source, "source", 60) : null;
+  const userId = input.userId ? requireString(input.userId, "userId", 200) : null;
+
+  return { userId, country: input.country, region, address, line: input.line, property, answers, consentText, source };
+}
+
+/** Either a plain sql() client or the `tx` handle inside `.transaction()` —
+ *  both share the same tagged-template call signature. `boolean, boolean`
+ *  (not `false, false`) matches what `ReturnType<typeof neon>` actually
+ *  resolves to for src/lib/db/index.ts's `sql()` (TS falls back to the
+ *  generic's constraint, not its default, through ReturnType). */
+export type CoverageProfileSqlExecutor =
+  | NeonQueryFunction<boolean, boolean>
+  | NeonQueryFunctionInTransaction<boolean, boolean>;
+
+/**
+ * Builds (and, outside a transaction, executes) the `coverage_profiles`
+ * insert. Deliberately not `async` — a tagged-template call against the
+ * neon driver returns a lazy, thenable query object; awaiting it here would
+ * execute it immediately and break the A1 dual-write path, which needs to
+ * return this un-awaited so it can be batched into `db.transaction(...)`
+ * alongside the canonical-case inserts. The legacy path (createCoverageProfile
+ * below) awaits the return value itself.
+ *
+ * Column list and insert semantics are exactly what createCoverageProfile
+ * used to inline — preserved verbatim so the compatibility row's shape
+ * can't drift between the legacy and dual-write paths (F10).
+ */
+export function insertCoverageProfileRow(
+  executor: CoverageProfileSqlExecutor,
+  id: string,
+  profile: ValidatedCoverageProfileInput
+) {
+  return executor`
+    INSERT INTO coverage_profiles (
+      id, user_id, country, region, address, line, property, answers,
+      consent, consent_text, consented_at, source
+    ) VALUES (
+      ${id}, ${profile.userId}, ${profile.country}, ${profile.region}, ${profile.address}, ${profile.line},
+      ${JSON.stringify(profile.property)}, ${JSON.stringify(profile.answers)}, TRUE, ${profile.consentText}, NOW(), ${profile.source}
+    )
+    RETURNING id, created_at
+  `;
+}
+
+/**
+ * Insert a new coverage profile. Throws on any validation failure — see
+ * validateCoverageProfileInput() above.
  */
 export async function createCoverageProfile(
   input: CreateCoverageProfileInput
 ): Promise<CoverageProfile> {
   if (!dbAvailable()) throw new Error("DATABASE_URL not set — cannot persist coverage profile");
 
-  if (!COUNTRIES.includes(input.country)) {
-    throw new Error(`country must be one of: ${COUNTRIES.join(", ")}`);
-  }
-  const region = requireString(input.region, "region", 10).toUpperCase();
-  const address = requireString(input.address, "address", 300);
-  if (!LINES.includes(input.line)) {
-    throw new Error(`line must be one of: ${LINES.join(", ")}`);
-  }
-  const property = validateCoverageProperty(input.property);
-  const answers = validateCoverageAnswers(input.answers);
-  if (input.consent !== true) {
-    throw new Error("consent must be explicitly true");
-  }
-  const consentText = requireString(input.consentText, "consentText", 4000);
-  const source = input.source ? requireString(input.source, "source", 60) : null;
-  const userId = input.userId ? requireString(input.userId, "userId", 200) : null;
-
+  const validated = validateCoverageProfileInput(input);
   const id = randomUUID();
   const db = sql();
-  const rows = (await db`
-    INSERT INTO coverage_profiles (
-      id, user_id, country, region, address, line, property, answers,
-      consent, consent_text, consented_at, source
-    ) VALUES (
-      ${id}, ${userId}, ${input.country}, ${region}, ${address}, ${input.line},
-      ${JSON.stringify(property)}, ${JSON.stringify(answers)},
-      ${input.consent}, ${consentText}, NOW(), ${source}
-    )
-    RETURNING id, created_at
-  `) as CoverageProfileRow[];
+  const rows = (await insertCoverageProfileRow(db, id, validated)) as CoverageProfileRow[];
 
   const row = rows[0];
   if (!row) throw new Error("coverage_profiles insert returned no row");
@@ -320,11 +396,10 @@ export async function createCoverageProfile(
 }
 
 /**
- * Records that a profile was handed off to a licensed partner (registry id
- * from src/config/affiliate-vendors.ts) — the authoritative reconciliation
- * record for a coverage-profile handoff (see getAffiliateUrl's doc comment
- * in src/config/affiliate-vendors.ts for why the click URL's sub_id isn't
- * itself authoritative).
+ * Records legacy affiliate click attribution (the registry id from
+ * src/config/affiliate-vendors.ts) on a coverage profile. This is not a
+ * delivery acknowledgement, licensed-partner handoff, broker-of-record
+ * appointment, or reconciliation record for provider activity.
  *
  * First-write-wins: the UPDATE only matches a profile whose vendor_id is
  * still NULL, so a duplicate or replayed partner-connect click (the POST is
@@ -332,8 +407,8 @@ export async function createCoverageProfile(
  * overwrite an earlier, possibly-different stamp. Returns `false` — not an
  * error — when the profile doesn't exist, the id is malformed in a way that
  * still passed isCoverageProfileId (shouldn't happen), or it was already
- * stamped; callers that only want best-effort click attribution, not to
- * enforce uniqueness, should treat `false` as a silent no-op.
+ * stamped; callers that only want best-effort click attribution should treat
+ * `false` as a silent no-op.
  */
 export async function markProfileHandoff(id: string, vendorId: string): Promise<boolean> {
   if (!dbAvailable()) throw new Error("DATABASE_URL not set — cannot update coverage profile");
