@@ -331,7 +331,10 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
   );
 
   const [submittedProfileId, setSubmittedProfileId] = useState<string | null>(null);
+  const [caseAccessPath, setCaseAccessPath] = useState<string | null>(null);
   const [handoffRows, setHandoffRows] = useState<HandoffRow[]>([]);
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const caseAccessTokenRef = useRef<string | null>(null);
 
   // --- Telemetry: wizard-started + step-completed + abandonment -----------
   //
@@ -421,6 +424,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
         line={line}
         vendorParam={prefill.vendorParam}
         rows={handoffRows}
+        caseAccessPath={caseAccessPath}
       />
     );
   }
@@ -475,6 +479,15 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
 
     setPhase("submitting");
 
+    idempotencyKeyRef.current ||= crypto.randomUUID();
+    if (!caseAccessTokenRef.current) {
+      const bytes = crypto.getRandomValues(new Uint8Array(32));
+      caseAccessTokenRef.current = btoa(String.fromCharCode(...bytes))
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replaceAll("=", "");
+    }
+
     const payload = {
       country: prefill.country,
       region: prefill.region,
@@ -521,6 +534,9 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
       consent: true,
       consentText,
       source: "assess-result",
+      idempotencyKey: idempotencyKeyRef.current,
+      caseAccessToken: caseAccessTokenRef.current,
+      intendedRecipientId: resolvedVendor?.id ?? null,
     };
 
     try {
@@ -550,6 +566,7 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
       // POST has already succeeded but the ref hasn't caught up yet.
       submittedRef.current = true;
       signal("coverage_profile_submitted", { country: prefill.country, region: prefill.region, line });
+      setCaseAccessPath(typeof body.caseAccessPath === "string" ? body.caseAccessPath : null);
       setHandoffRows(buildHandoffRows());
       setSubmittedProfileId(id);
       setPhase("handoff");

@@ -1,11 +1,11 @@
 /**
  * POST /api/coverage-profile
  *
- * Stage 2 of the insurance path (see
- * docs/proposals/insurance-distribution-proposal.html, "Stages" + "seam"
- * sections): stores a coverage profile — the prefilled property snapshot
- * plus the ~6 questions only the user can answer — ahead of a handoff to a
- * licensed partner, who becomes broker of record. After a successful
+ * Stores a coverage profile — the prefilled property snapshot plus the ~6
+ * questions only the user can answer — ahead of the existing affiliate
+ * handoff. A1 can additionally dual-write a canonical case and immutable
+ * submission, but no state in this route means provider delivery, review,
+ * quoting, or broker-of-record appointment. After a successful
  * insert, this route best-effort notifies the operator inbox
  * (sendCoverageProfileNotification in src/lib/email.ts — OPERATOR_NOTIFY_EMAIL
  * env var, defaults to insights@mail.propertyinsights.xyz) so the handoff
@@ -50,6 +50,9 @@ import { isOptedOutRequest } from "@/lib/privacy";
 import { insuranceProfileLimiter } from "@/lib/rate-limit";
 import { stageAtLeast } from "@/config/insurance-stage";
 import { sendCoverageProfileNotification } from "@/lib/email";
+import { insuranceKernelExecution } from "@/config/insurance-kernel/execution-mode";
+import { createFinalizedCoverageCase } from "@/lib/insurance/application/cases";
+import { resolveVendor } from "@/components/insurance/resolve-vendor";
 
 const VALID_COUNTRIES: Country[] = ["US", "CA"];
 const VALID_LINES: InsuranceLine[] = ["homeowner", "landlord", "tenant", "strata", "commercial"];
@@ -181,9 +184,39 @@ export async function POST(req: Request) {
     source,
   };
 
+  const kernel = insuranceKernelExecution();
   let profile: Awaited<ReturnType<typeof createCoverageProfile>>;
+  let caseAccessPath: string | undefined;
   try {
-    profile = await createCoverageProfile(input);
+    if (kernel.features.caseRecord && kernel.mode !== "DISABLED") {
+      const idempotencyKey = typeof body.idempotencyKey === "string" ? body.idempotencyKey : "";
+      const accessToken = typeof body.caseAccessToken === "string" ? body.caseAccessToken : "";
+      const requestedRecipientId = typeof body.intendedRecipientId === "string" ? body.intendedRecipientId : null;
+      const eligibleRecipient = requestedRecipientId
+        ? resolveVendor(country, region, line, requestedRecipientId)
+        : null;
+      if (requestedRecipientId && eligibleRecipient?.id !== requestedRecipientId) {
+        throw new Error("intended recipient is not eligible for this country, region, and insurance line");
+      }
+      const intendedRecipients = eligibleRecipient?.id === requestedRecipientId
+        ? [{
+            counterpartyId: eligibleRecipient.id,
+            name: eligibleRecipient.name,
+            role: eligibleRecipient.counterpartyRole ?? ("AFFILIATE" as const),
+          }]
+        : [];
+      const created = await createFinalizedCoverageCase({
+        ...input,
+        executionMode: kernel.mode,
+        idempotencyKey,
+        accessToken,
+        intendedRecipients,
+      });
+      profile = { id: created.profileId, createdAt: created.createdAt };
+      if (kernel.features.casePortal) caseAccessPath = `/insurance/case/${accessToken}`;
+    } else {
+      profile = await createCoverageProfile(input);
+    }
   } catch (err) {
     // Fail loud: a malformed or unconsented profile is a 400, not a
     // swallowed error — see src/lib/db/coverage-profiles.ts's validators.
@@ -225,5 +258,5 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json({ id: profile.id, operatorNotified });
+  return NextResponse.json({ id: profile.id, operatorNotified, ...(caseAccessPath ? { caseAccessPath } : {}) });
 }

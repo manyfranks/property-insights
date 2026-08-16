@@ -68,6 +68,7 @@ export default function CoverageHandoff({
   line,
   vendorParam,
   rows,
+  caseAccessPath,
 }: {
   profileId: string;
   country: Country;
@@ -75,6 +76,7 @@ export default function CoverageHandoff({
   line: InsuranceLine;
   vendorParam: string | null;
   rows: HandoffRow[];
+  caseAccessPath?: string | null;
 }) {
   const [clicked, setClicked] = useState(false);
   const vendor = resolveVendor(country, region, line, vendorParam);
@@ -205,6 +207,16 @@ export default function CoverageHandoff({
           {COMPLIANCE_NOTE}
         </p>
       </div>
+
+      {caseAccessPath && (
+        <a
+          href={caseAccessPath}
+          rel="noreferrer"
+          className="mt-4 block text-center text-xs font-medium text-foreground underline underline-offset-4"
+        >
+          View saved profile status
+        </a>
+      )}
 
       {clicked && vendor && (
         <p className="text-xs text-muted text-center mt-3">Opening {partnerName} in a new tab…</p>

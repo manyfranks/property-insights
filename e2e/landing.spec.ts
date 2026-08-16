@@ -137,6 +137,17 @@ test.describe("/coverage-profile gate", () => {
   });
 });
 
+test.describe("A1 case portal default-deny", () => {
+  test("404s while the server-only portal flag is off and sets capability-safe headers", async ({ page }) => {
+    const token = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const res = await page.goto(`/insurance/case/${token}`);
+    expect(res?.status()).toBe(404);
+    expect(res?.headers()["referrer-policy"]).toBe("no-referrer");
+    expect(res?.headers()["cache-control"]).toContain("no-store");
+    expect(res?.headers()["x-robots-tag"]).toContain("noindex");
+  });
+});
+
 test.describe("waitlist POST via real page interaction", () => {
   test.use({ extraHTTPHeaders: geo("CA", "BC") });
 

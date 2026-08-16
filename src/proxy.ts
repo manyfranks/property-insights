@@ -8,6 +8,7 @@ import {
   SESSION_ID_COOKIE,
   SESSION_ID_MAX_AGE_SECONDS,
 } from "@/lib/analytics-ids";
+import { isSensitiveInsuranceCapabilityPath } from "@/lib/insurance/privacy/sensitive-routes";
 
 const isProtectedRoute = createRouteMatcher(["/api/subscribe(.*)"]);
 
@@ -144,7 +145,12 @@ export default clerkMiddleware(async (auth, req) => {
   // response/cookie object is even built — see mintAnalyticsCookies's doc
   // comment on why that ordering is non-negotiable.
   const { pathname } = req.nextUrl;
-  if (!pathname.startsWith("/api/") && !pathname.startsWith("/trpc") && !isOptedOutRequest(req)) {
+  if (
+    !pathname.startsWith("/api/") &&
+    !pathname.startsWith("/trpc") &&
+    !isSensitiveInsuranceCapabilityPath(pathname) &&
+    !isOptedOutRequest(req)
+  ) {
     const response = NextResponse.next();
     mintAnalyticsCookies(req, response);
     return response;

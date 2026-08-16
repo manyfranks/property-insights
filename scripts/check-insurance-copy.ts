@@ -148,6 +148,7 @@ function main() {
     ...checkVendorCopy(AFFILIATE_VENDORS),
     ...checkInsuranceCounterpartyRoles(AFFILIATE_VENDORS),
     ...checkComponentFiles(join(process.cwd(), "src/components/insurance")),
+    ...checkComponentFiles(join(process.cwd(), "src/app/insurance/case")),
   ];
 
   if (violations.length > 0) {

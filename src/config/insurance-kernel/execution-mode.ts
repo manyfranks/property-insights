@@ -13,11 +13,15 @@ export type RequestedKernelExecutionMode = Exclude<KernelExecutionMode, "DISABLE
 export interface KernelFeatureFlags {
   /** A0: collect an insurance profile only. */
   profileCapture: boolean;
-  /** A1: submit a quote request to an approved provider. */
+  /** A1: dual-write a durable case and finalized submission. */
+  caseRecord: boolean;
+  /** A1: expose the factual, read-only capability-token status surface. */
+  casePortal: boolean;
+  /** A2+: submit a quote request to an approved provider. */
   quoteRequest: boolean;
   /** Future: submit a bind request. Never means that bind succeeded. */
   bindRequest: boolean;
-  /** A1: submit first-notice-of-loss intake to the authorized recipient. */
+  /** Future: submit first-notice-of-loss intake to the authorized recipient. */
   claimIntake: boolean;
 }
 
@@ -40,6 +44,8 @@ export interface KernelExecutionEnvironment {
   VERCEL_ENV?: string;
   INSURANCE_KERNEL_EXECUTION_MODE?: string;
   INSURANCE_KERNEL_ENABLE_PROFILE_CAPTURE?: string;
+  INSURANCE_KERNEL_ENABLE_CASE_RECORD?: string;
+  INSURANCE_KERNEL_ENABLE_CASE_PORTAL?: string;
   INSURANCE_KERNEL_ENABLE_QUOTE_REQUEST?: string;
   INSURANCE_KERNEL_ENABLE_BIND_REQUEST?: string;
   INSURANCE_KERNEL_ENABLE_CLAIM_INTAKE?: string;
@@ -52,6 +58,8 @@ const PRODUCTION_BIND_ACK = "I_UNDERSTAND_BIND_IS_LIVE";
 
 const DISABLED_FEATURES: Readonly<KernelFeatureFlags> = Object.freeze({
   profileCapture: false,
+  caseRecord: false,
+  casePortal: false,
   quoteRequest: false,
   bindRequest: false,
   claimIntake: false,
@@ -132,6 +140,10 @@ export function resolveKernelExecution(
 
   const mode = narrowExecutionMode(requestedMode, runtimeMaximum(env));
   const profileCapture = isEnabled(env.INSURANCE_KERNEL_ENABLE_PROFILE_CAPTURE);
+  // Feature dependencies only narrow capability. A child flag can never
+  // activate a parent feature that the operator left disabled.
+  const caseRecord = profileCapture && isEnabled(env.INSURANCE_KERNEL_ENABLE_CASE_RECORD);
+  const casePortal = caseRecord && isEnabled(env.INSURANCE_KERNEL_ENABLE_CASE_PORTAL);
   const quoteRequest = isEnabled(env.INSURANCE_KERNEL_ENABLE_QUOTE_REQUEST);
   const claimIntake = isEnabled(env.INSURANCE_KERNEL_ENABLE_CLAIM_INTAKE);
   const bindRequest =
@@ -146,6 +158,8 @@ export function resolveKernelExecution(
     simulatorOutputsAllowed: mode === "SIMULATION" && !productionDeployment,
     features: Object.freeze({
       profileCapture,
+      caseRecord,
+      casePortal,
       quoteRequest,
       claimIntake,
       bindRequest,

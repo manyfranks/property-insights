@@ -27,6 +27,8 @@ for (const requested of ["SIMULATION", "SANDBOX"]) {
     VERCEL_ENV: "production",
     INSURANCE_KERNEL_EXECUTION_MODE: requested,
     INSURANCE_KERNEL_ENABLE_PROFILE_CAPTURE: "1",
+    INSURANCE_KERNEL_ENABLE_CASE_RECORD: "1",
+    INSURANCE_KERNEL_ENABLE_CASE_PORTAL: "1",
     INSURANCE_KERNEL_ENABLE_QUOTE_REQUEST: "1",
     INSURANCE_KERNEL_ENABLE_BIND_REQUEST: "1",
     INSURANCE_KERNEL_ENABLE_CLAIM_INTAKE: "1",
@@ -42,11 +44,14 @@ const simulation = config({
   VERCEL_ENV: "preview",
   INSURANCE_KERNEL_EXECUTION_MODE: "SIMULATION",
   INSURANCE_KERNEL_ENABLE_PROFILE_CAPTURE: "1",
+  INSURANCE_KERNEL_ENABLE_CASE_RECORD: "1",
+  INSURANCE_KERNEL_ENABLE_CASE_PORTAL: "1",
   INSURANCE_KERNEL_ENABLE_QUOTE_REQUEST: "1",
   INSURANCE_KERNEL_ENABLE_CLAIM_INTAKE: "1",
 });
 expect(simulation.mode === "SIMULATION" && simulation.simulatorOutputsAllowed, "preview simulation should be explicit");
 expect(!simulation.features.bindRequest, "simulation must never authorize a bind request");
+expect(simulation.features.caseRecord && simulation.features.casePortal, "A1 child flags require their parent");
 assertSimulatorOutputsAllowed(simulation);
 
 const previewProductionRequest = config({
@@ -86,6 +91,21 @@ const unknownHostedTier = config({
   INSURANCE_KERNEL_EXECUTION_MODE: "SIMULATION",
 });
 expect(unknownHostedTier.mode === "DISABLED", "unknown hosted deployment tier must fail closed");
+
+const orphanedPortal = config({
+  NODE_ENV: "development",
+  INSURANCE_KERNEL_EXECUTION_MODE: "SIMULATION",
+  INSURANCE_KERNEL_ENABLE_CASE_PORTAL: "1",
+});
+expect(!orphanedPortal.features.caseRecord, "case record must default off");
+expect(!orphanedPortal.features.casePortal, "portal flag cannot widen a disabled case record");
+
+const recordWithoutCapture = config({
+  NODE_ENV: "development",
+  INSURANCE_KERNEL_EXECUTION_MODE: "SIMULATION",
+  INSURANCE_KERNEL_ENABLE_CASE_RECORD: "1",
+});
+expect(!recordWithoutCapture.features.caseRecord, "case record cannot bypass profile-capture gate");
 
 // Narrowing is monotonic: a caller cannot widen any runtime ceiling.
 expect(narrowExecutionMode("SIMULATION", "SANDBOX") === "SIMULATION", "narrowing must retain lower requested mode");
