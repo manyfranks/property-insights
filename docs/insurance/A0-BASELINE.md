@@ -39,6 +39,29 @@ payment, issuance, policy-service, or claims verification. Before each deploy,
 record the smoke timestamp, base URL, expected stage, git SHA, environment
 deployment ID, result, and any skipped assertion in the release record.
 
+## Release record — A0 deployed
+
+- Deployed: 2026-08-16 (America/Vancouver), via push of `main` to origin
+  (`146bd10..c1c03d1`; includes `fda9031` A0 foundation + `c1c03d1` rev-4 docs).
+- Base URL: `https://www.propertyinsights.xyz` · expected stage: `intake`.
+- New copy observed live ~60s after push (poll for "insurance partner").
+- Post-deploy smoke: `npm run smoke:prod` PASSED 5/5; waitlist POST
+  intentionally skipped (`WRITE_CHECK=0`).
+- Copy verification on `/insurance`: 0 occurrences of "broker of record" and
+  "matched with a licensed broker"; 14 occurrences of "insurance partner".
+- Vercel deployment ID: not captured in this session (no authenticated Vercel
+  CLI); recorded evidence is the observable production signature above.
+- Branch record: `codex/insurance-a0-foundation` pushed to origin at `fda9031`.
+
+## Database-linkage evidence (closes the identity caveat above)
+
+Per project records, the locally configured `DATABASE_URL` was cross-checked as
+the production Neon database on 2026-08-14. The zero counts below are therefore
+best read as a production traffic signal, not an environment mismatch. Formal
+deployment-to-database linkage (matching the deployed environment's database
+identity to this connection) should still be captured in the A1 migration-runner
+work before A1 metrics are treated as authoritative.
+
 ## Configured-database funnel baseline
 
 A read-only aggregate query was run on 2026-08-16 through the repository's
