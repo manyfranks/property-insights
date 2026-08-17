@@ -73,3 +73,25 @@ HITL required before any production change:
 - enable the public portal only after copy review and a production smoke test;
 - keep consent v1 frozen; and
 - keep public withdrawal and historical-PII backfill disabled pending counsel.
+
+## Production migration record — 2026-08-16 (America/Vancouver)
+
+- Release: `d65f41a` (PR #4 merge). Release owner: Matt Francis; executed by
+  Claude session on the owner's instruction (`INSURANCE_MIGRATION_ACTOR=
+  claude-session-on-behalf-of-matt`, `INSURANCE_MIGRATION_RELEASE_ID=d65f41a`).
+- Target: production Neon (`ep-winter-credit-ad7gj8x6-pooler`, cross-checked
+  as the deployed database 2026-08-14). Credential injected via
+  `INSURANCE_MIGRATION_DATABASE_URL` for the release commands only.
+- Pre-migration evidence: `coverage_profiles=0`, `insurance_waitlist=0`,
+  A1 tables absent; `insurance:migrate:check` → 0 applied, 2 pending.
+- Applied: `0001_insurance_create_case_submission.sql` (sha256 160c074816c3…),
+  `0002_insurance_idempotency_and_submission_commands.sql` (sha256
+  aa547ee4a894…). Post-check → 2 applied, 0 pending; 9 insurance_* tables
+  present; `npm run smoke:prod` 5/5.
+- Risk note: both migrations are expand-only against empty tables; no legacy
+  table was altered. PITR: Neon default retention assumed — console
+  confirmation by the owner recommended and noted as an open item.
+- NOT done in this release (deliberately): historical backfill (either mode),
+  `INSURANCE_KERNEL_ENABLE_CASE_RECORD`, `INSURANCE_KERNEL_ENABLE_CASE_PORTAL`
+  (flag activation is a separate canary release after this verification),
+  consent replacement, public withdrawal.
