@@ -107,6 +107,13 @@ const recordWithoutCapture = config({
 });
 expect(!recordWithoutCapture.features.caseRecord, "case record cannot bypass profile-capture gate");
 
+const quoteWithoutCase = config({
+  NODE_ENV: "development",
+  INSURANCE_KERNEL_EXECUTION_MODE: "SIMULATION",
+  INSURANCE_KERNEL_ENABLE_QUOTE_REQUEST: "1",
+});
+expect(!quoteWithoutCase.features.quoteRequest, "delivery cannot bypass durable profile/case gates");
+
 // Narrowing is monotonic: a caller cannot widen any runtime ceiling.
 expect(narrowExecutionMode("SIMULATION", "SANDBOX") === "SIMULATION", "narrowing must retain lower requested mode");
 expect(narrowExecutionMode("PRODUCTION", "SANDBOX") === "SANDBOX", "narrowing must cap production at sandbox");

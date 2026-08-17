@@ -55,3 +55,27 @@ export function assertSubmissionTransition(from: A1SubmissionState, to: A1Submis
     throw new Error(`insurance-a1: forbidden submission transition ${from} -> ${to}`);
   }
 }
+
+/** A2 is an explicit extension, not a weakening of A1's local-only guard. */
+export const A2_SUBMISSION_STATES = ["READY", "SUBMITTING", "AWAITING_PROVIDER", "SUBMITTED", "PROVIDER_ERROR", "WITHDRAWN"] as const;
+export type A2SubmissionState = (typeof A2_SUBMISSION_STATES)[number];
+
+const A2_SUBMISSION_TRANSITIONS: Readonly<Record<A2SubmissionState, readonly A2SubmissionState[]>> = {
+  READY: ["SUBMITTING", "WITHDRAWN"],
+  // Withdrawal must remain reachable while a delivery is in flight or stuck
+  // in error, not only before dispatch. Cancelling the in-flight provider
+  // transaction itself is B2 scope; this only lets the local submission
+  // record its owner's withdrawal intent.
+  SUBMITTING: ["AWAITING_PROVIDER", "PROVIDER_ERROR", "WITHDRAWN"],
+  // A timeout stays ambiguous: neither success nor decline may be inferred.
+  AWAITING_PROVIDER: ["SUBMITTED", "PROVIDER_ERROR", "WITHDRAWN"],
+  SUBMITTED: [],
+  PROVIDER_ERROR: ["AWAITING_PROVIDER", "WITHDRAWN"],
+  WITHDRAWN: [],
+};
+
+export function assertA2SubmissionTransition(from: A2SubmissionState, to: A2SubmissionState): void {
+  if (!A2_SUBMISSION_TRANSITIONS[from].includes(to)) {
+    throw new Error(`insurance-a2: forbidden submission transition ${from} -> ${to}`);
+  }
+}

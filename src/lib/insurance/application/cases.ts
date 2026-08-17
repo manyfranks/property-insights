@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { NeonDbError } from "@neondatabase/serverless";
 import { dbAvailable, sql } from "@/lib/db";
 import {
   validateCoverageProfileInput,
@@ -490,7 +491,15 @@ export async function finalizeCoverageCase(input: FinalizeCoverageCaseInput): Pr
 
 export interface CaseStatusView {
   caseId: string;
-  status: "DRAFT" | "COLLECTING_FACTS" | "READY_FOR_SUBMISSION";
+  // Reachable set for the read path: the three A1-local states plus
+  // SUBMISSION_IN_PROGRESS, added by migration 0004 for A2 delivery. This
+  // must track insurance_cases_status_check exactly — a status the query can
+  // return but this union doesn't list is a silent portal crash risk (see
+  // A1-STATUS-COPY-REVIEW.md addendum). It does NOT include A2's in-flight
+  // submission states (SUBMITTING/AWAITING_PROVIDER/etc.) — those live on
+  // insurance_submissions, not insurance_cases.status, and are out of scope
+  // for this read path.
+  status: "DRAFT" | "COLLECTING_FACTS" | "READY_FOR_SUBMISSION" | "SUBMISSION_IN_PROGRESS";
   submissionVersion: number | null;
   updatedAt: string;
 }
@@ -502,11 +511,37 @@ interface CaseStatusRow {
   updated_at: string | Date;
 }
 
-export async function readCaseStatusByAccessToken(accessToken: string): Promise<CaseStatusView | null> {
-  if (!dbAvailable()) return null;
-  const tokenHash = hashAccessToken(accessToken);
-  const db = sql();
-  const rows = (await db`
+const CASE_STATUS_UNDEFINED_COLUMN = "42703";
+
+async function queryCaseStatusRows(
+  db: ReturnType<typeof sql>,
+  tokenHash: string,
+  strict: boolean
+): Promise<CaseStatusRow[]> {
+  // `strict` additionally requires the record to be a real production case.
+  // It depends on columns added by migration 0003 (record_classification)
+  // and, implicitly, on execution_mode already existing (0001). Those two
+  // migrations may not both be applied in every environment yet — in
+  // particular, at time of writing prod has only 0001-0002 applied. Rather
+  // than probing catalogs or swallowing errors generically, the caller
+  // attempts this strict form first and falls back only on the specific
+  // "column does not exist" error.
+  if (strict) {
+    return (await db`
+      SELECT c.id, c.status, MAX(s.version)::int AS submission_version, c.updated_at
+      FROM insurance_cases c
+      LEFT JOIN insurance_submissions s ON s.case_id = c.id
+      WHERE c.access_token_hash = ${tokenHash}
+        AND c.access_token_revoked_at IS NULL
+        AND c.access_token_expires_at > NOW()
+        AND c.status <> 'WITHDRAWN'
+        AND c.execution_mode = 'PRODUCTION'
+        AND c.record_classification = 'PRODUCTION'
+      GROUP BY c.id
+      LIMIT 1
+    `) as CaseStatusRow[];
+  }
+  return (await db`
     SELECT c.id, c.status, MAX(s.version)::int AS submission_version, c.updated_at
     FROM insurance_cases c
     LEFT JOIN insurance_submissions s ON s.case_id = c.id
@@ -517,6 +552,34 @@ export async function readCaseStatusByAccessToken(accessToken: string): Promise<
     GROUP BY c.id
     LIMIT 1
   `) as CaseStatusRow[];
+}
+
+/**
+ * Public case-status portal read. The production portal must serve only
+ * production, non-simulation, non-test records — a SIMULATION/TEST-mode
+ * canary must never render on the public status page. This is a disclosed
+ * degraded mode, not a silent one: if migration 0003's classification
+ * columns are missing (undefined-column, SQLSTATE 42703), that specific
+ * condition is logged and the query falls back to the legacy filter (no
+ * classification narrowing) so the live portal does not 500. The fallback
+ * disappears naturally once migrations reach 0003+. Any other database
+ * error is not swallowed here — it propagates to the caller.
+ */
+export async function readCaseStatusByAccessToken(accessToken: string): Promise<CaseStatusView | null> {
+  if (!dbAvailable()) return null;
+  const tokenHash = hashAccessToken(accessToken);
+  const db = sql();
+  let rows: CaseStatusRow[];
+  try {
+    rows = await queryCaseStatusRows(db, tokenHash, true);
+  } catch (error) {
+    if (error instanceof NeonDbError && error.code === CASE_STATUS_UNDEFINED_COLUMN) {
+      console.error("insurance-portal: classification columns missing — run migrations; serving legacy filter");
+      rows = await queryCaseStatusRows(db, tokenHash, false);
+    } else {
+      throw error;
+    }
+  }
   const row = rows[0];
   if (!row || row.status === "WITHDRAWN") return null;
   return {

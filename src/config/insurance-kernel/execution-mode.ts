@@ -144,7 +144,10 @@ export function resolveKernelExecution(
   // activate a parent feature that the operator left disabled.
   const caseRecord = profileCapture && isEnabled(env.INSURANCE_KERNEL_ENABLE_CASE_RECORD);
   const casePortal = caseRecord && isEnabled(env.INSURANCE_KERNEL_ENABLE_CASE_PORTAL);
-  const quoteRequest = isEnabled(env.INSURANCE_KERNEL_ENABLE_QUOTE_REQUEST);
+  // A2 delivery is a child of the durable case/submission kernel. A flag by
+  // itself must never create a route to a provider with no consent/case audit
+  // chain, even in a future production-authorized adapter deployment.
+  const quoteRequest = caseRecord && isEnabled(env.INSURANCE_KERNEL_ENABLE_QUOTE_REQUEST);
   const claimIntake = isEnabled(env.INSURANCE_KERNEL_ENABLE_CLAIM_INTAKE);
   const bindRequest =
     mode === "PRODUCTION" &&

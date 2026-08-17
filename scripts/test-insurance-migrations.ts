@@ -11,8 +11,17 @@ function command(commandName: string, args: string[], env: NodeJS.ProcessEnv = p
   return result.stdout.trim();
 }
 
+/**
+ * --single-transaction wraps the whole script in an implicit BEGIN/COMMIT.
+ * Without it, a multi-statement script under ON_ERROR_STOP=1 still commits
+ * every statement before the one that fails (psql's default is autocommit
+ * per statement) -- so a test asserting "this whole sequence is rejected"
+ * could pass while quietly leaving an earlier statement's effect committed.
+ * With it, any failing statement aborts the transaction and nothing in the
+ * script is retained once the connection closes.
+ */
 function expectPsqlFailure(sql: string, env: NodeJS.ProcessEnv, label: string): void {
-  const result = spawnSync("psql", ["-X", "-v", "ON_ERROR_STOP=1"], { env, input: sql, encoding: "utf8" });
+  const result = spawnSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "--single-transaction"], { env, input: sql, encoding: "utf8" });
   if (result.status === 0) fail(`${label} was not rejected`);
 }
 
@@ -82,7 +91,7 @@ function main(): void {
     );
     if (!/^[0-9a-f]{64}\|(t|true)$/i.test(structuralHash)) fail(`structural backfill must create a non-PII 64-hex request hash; got ${structuralHash}`);
     const ledgerCount = command("psql", ["-X", "-A", "-t", "-c", "SELECT count(*) FROM schema_migrations WHERE namespace='insurance'"], pgEnv);
-    if (ledgerCount !== "2") fail(`expected two ledger rows after idempotent apply; got ${ledgerCount}`);
+    if (ledgerCount !== "7") fail(`expected seven ledger rows (0001-0007) after idempotent apply; got ${ledgerCount}`);
 
     const fixtureSql = `
       INSERT INTO coverage_profiles(id, country, region, address, line, property, answers, consent, consent_text, consented_at)
@@ -122,7 +131,7 @@ function main(): void {
     expectPsqlFailure(
       "UPDATE insurance_submissions SET status='SUBMITTED' WHERE id='50000000-0000-4000-8000-000000000001';\n",
       pgEnv,
-      "A2 provider-delivery state in A1 schema"
+      "A2 submission transitions cannot skip durable delivery states"
     );
     // A1 edits must create a new immutable draft version, which temporarily
     // returns the case to fact collection; no in-place edit of v1 is allowed.
@@ -167,6 +176,100 @@ function main(): void {
       pgEnv,
       "duplicate create idempotency key"
     );
+
+    // A2 uses an explicit, forward-only delivery chain. A bare READY
+    // submission cannot claim provider receipt, but durable transaction +
+    // outbox intent may move it through the intermediate states.
+    command("psql", ["-X", "-v", "ON_ERROR_STOP=1"], pgEnv, `
+      INSERT INTO insurance_provider_connections(id,provider_key,display_name,counterparty_role,supported_execution_modes,enabled)
+      VALUES ('a0000000-0000-4000-8000-000000000001','deterministic-simulator','Deterministic simulator','MGA',ARRAY['SIMULATION'],true);
+      INSERT INTO insurance_provider_submissions(id,case_id,submission_id,provider_connection_id,execution_mode,status,provider_idempotency_key,request_hash,provider_schema_version)
+      VALUES ('a0000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000002','a0000000-0000-4000-8000-000000000001','SIMULATION','PENDING_DISPATCH','a0000000-0000-4000-8000-000000000003',repeat('1',64),'a2-v1');
+      INSERT INTO insurance_outbox_events(id,aggregate_type,aggregate_id,event_type,schema_version,execution_mode,correlation_id,idempotency_key,payload_reference,payload_hash)
+      VALUES ('a0000000-0000-4000-8000-000000000004','PROVIDER_SUBMISSION','a0000000-0000-4000-8000-000000000002','SUBMISSION_DISPATCH','a2-v1','SIMULATION','a2-correlation','a0000000-0000-4000-8000-000000000003','test://no-pii',repeat('2',64));
+      UPDATE insurance_submissions SET status='SUBMITTING' WHERE id='50000000-0000-4000-8000-000000000002';
+      UPDATE insurance_cases SET status='SUBMISSION_IN_PROGRESS' WHERE id='20000000-0000-4000-8000-000000000001';
+      UPDATE insurance_submissions SET status='AWAITING_PROVIDER' WHERE id='50000000-0000-4000-8000-000000000002';
+      UPDATE insurance_provider_submissions SET status='AWAITING_PROVIDER' WHERE id='a0000000-0000-4000-8000-000000000002';
+    `);
+    const deliveryAtomic = command("psql", ["-X", "-A", "-t", "-c", "SELECT (SELECT count(*) FROM insurance_provider_submissions) || '|' || (SELECT count(*) FROM insurance_outbox_events) || '|' || (SELECT status FROM insurance_submissions WHERE id='50000000-0000-4000-8000-000000000002')"], pgEnv);
+    if (deliveryAtomic !== "1|1|AWAITING_PROVIDER") fail(`expected A2 delivery intent and awaiting state; got ${deliveryAtomic}`);
+    expectPsqlFailure(
+      "UPDATE insurance_submissions SET status='SUBMITTED' WHERE id='50000000-0000-4000-8000-000000000002'; UPDATE insurance_submissions SET status='SUBMITTING' WHERE id='50000000-0000-4000-8000-000000000002';",
+      pgEnv,
+      "A2 delivery state cannot regress after acknowledgement attempt"
+    );
+    const submissionStateAfterRollback = command(
+      "psql", ["-X", "-A", "-t", "-c", "SELECT status FROM insurance_submissions WHERE id='50000000-0000-4000-8000-000000000002'"], pgEnv
+    );
+    if (submissionStateAfterRollback !== "AWAITING_PROVIDER") {
+      fail(`expectPsqlFailure must roll back the whole multi-statement script, not just stop after the first commit; got ${submissionStateAfterRollback}`);
+    }
+
+    // 0007 (b): one-directional acknowledged_at CHECK. The row is currently
+    // AWAITING_PROVIDER; ACKNOWLEDGED without a timestamp must still be
+    // rejected (the CHECK's "requires" direction survives 0007's relaxation).
+    expectPsqlFailure(
+      "UPDATE insurance_provider_submissions SET status='ACKNOWLEDGED' WHERE id='a0000000-0000-4000-8000-000000000002';",
+      pgEnv,
+      "0007 CHECK must still require acknowledged_at when status becomes ACKNOWLEDGED"
+    );
+    command("psql", ["-X", "-v", "ON_ERROR_STOP=1"], pgEnv, `
+      UPDATE insurance_provider_submissions SET status='ACKNOWLEDGED',acknowledged_at=NOW() WHERE id='a0000000-0000-4000-8000-000000000002';
+    `);
+
+    // 0007 (d): reopen guard denies COLLECTING_FACTS while the case's only
+    // provider submission is ACKNOWLEDGED (active, not DEAD_LETTER).
+    expectPsqlFailure(
+      "UPDATE insurance_cases SET status='COLLECTING_FACTS' WHERE id='20000000-0000-4000-8000-000000000001';",
+      pgEnv,
+      "0007 reopen guard must deny COLLECTING_FACTS while a provider submission is still active"
+    );
+
+    // 0007 (b continued): a legal post-ack transition (ACKNOWLEDGED ->
+    // RECONCILIATION_REQUIRED) must keep the existing acknowledged_at rather
+    // than the old biconditional CHECK forcing it to NULL.
+    command("psql", ["-X", "-v", "ON_ERROR_STOP=1"], pgEnv, `
+      UPDATE insurance_provider_submissions SET status='RECONCILIATION_REQUIRED',updated_at=NOW() WHERE id='a0000000-0000-4000-8000-000000000002';
+    `);
+    const acknowledgedAtPersisted = command(
+      "psql", ["-X", "-A", "-t", "-c", "SELECT (acknowledged_at IS NOT NULL) FROM insurance_provider_submissions WHERE id='a0000000-0000-4000-8000-000000000002'"], pgEnv
+    );
+    if (acknowledgedAtPersisted !== "t") fail(`expected acknowledged_at to persist through ACKNOWLEDGED -> RECONCILIATION_REQUIRED; got ${acknowledgedAtPersisted}`);
+
+    // 0007 (a continued): drive the submission to DEAD_LETTER, then confirm
+    // the exact F1 example (a late worker reporting ACKNOWLEDGED against a
+    // dead-lettered submission) is denied by the DB guard.
+    command("psql", ["-X", "-v", "ON_ERROR_STOP=1"], pgEnv, `
+      UPDATE insurance_provider_submissions SET status='DEAD_LETTER',updated_at=NOW() WHERE id='a0000000-0000-4000-8000-000000000002';
+    `);
+    expectPsqlFailure(
+      "UPDATE insurance_provider_submissions SET status='ACKNOWLEDGED',acknowledged_at=NOW() WHERE id='a0000000-0000-4000-8000-000000000002';",
+      pgEnv,
+      "0007 provider-submission transition guard must deny DEAD_LETTER -> ACKNOWLEDGED (late-worker conflict)"
+    );
+
+    // 0007 (d continued): once every provider submission for the case is
+    // DEAD_LETTER, the reopen guard must allow COLLECTING_FACTS again.
+    command("psql", ["-X", "-v", "ON_ERROR_STOP=1"], pgEnv, `
+      UPDATE insurance_cases SET status='COLLECTING_FACTS' WHERE id='20000000-0000-4000-8000-000000000001';
+    `);
+    const reopenAllowed = command(
+      "psql", ["-X", "-A", "-t", "-c", "SELECT status FROM insurance_cases WHERE id='20000000-0000-4000-8000-000000000001'"], pgEnv
+    );
+    if (reopenAllowed !== "COLLECTING_FACTS") fail(`expected reopen to succeed once every provider submission is DEAD_LETTER; got ${reopenAllowed}`);
+    // Restore the fixture case to SUBMISSION_IN_PROGRESS so later assertions
+    // in this script see the state they expect.
+    command("psql", ["-X", "-v", "ON_ERROR_STOP=1"], pgEnv, `
+      UPDATE insurance_cases SET status='READY_FOR_SUBMISSION' WHERE id='20000000-0000-4000-8000-000000000001';
+      UPDATE insurance_cases SET status='SUBMISSION_IN_PROGRESS' WHERE id='20000000-0000-4000-8000-000000000001';
+    `);
+
+    command("node", ["--import", "tsx", "scripts/classify-insurance-test-data.ts", "--apply", "--case-id", "20000000-0000-4000-8000-000000000001", "--coverage-profile-id", "10000000-0000-4000-8000-000000000001"], {
+      ...runnerEnv, INSURANCE_TEST_DATA_REASON: "scratch canary", INSURANCE_TEST_DATA_ACTOR: "scratch-test", INSURANCE_TEST_DATA_LABEL: "scratch-a2-canary",
+    });
+    const classified = command("psql", ["-X", "-A", "-t", "-c", "SELECT (SELECT record_classification FROM insurance_cases WHERE id='20000000-0000-4000-8000-000000000001') || '|' || (SELECT record_classification FROM coverage_profiles WHERE id='10000000-0000-4000-8000-000000000001') || '|' || (SELECT count(*) FROM insurance_test_data_runs)"], pgEnv);
+    if (classified !== "TEST|TEST|1") fail(`expected exact auditable TEST classification; got ${classified}`);
 
     appendFileSync(resolve(migrations, "0001_insurance_create_case_submission.sql"), "\n-- forbidden checksum mutation\n");
     const drift = spawnSync("node", ["--import", "tsx", "scripts/insurance-migrate.ts", "--mode=check"], {

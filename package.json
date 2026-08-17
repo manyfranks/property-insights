@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "tsx scripts/check-insurance-copy.ts && tsx scripts/journey-matrix.ts --check && tsx scripts/validate-insurance-kernel-execution.ts && tsx scripts/validate-insurance-a1-domain.ts && tsx scripts/test-insurance-case-portal.ts && tsx scripts/insurance-migrate.ts --mode=plan && tsx scripts/generate-sitemap.ts",
+    "prebuild": "tsx scripts/check-insurance-copy.ts && tsx scripts/journey-matrix.ts --check && tsx scripts/validate-insurance-kernel-execution.ts && tsx scripts/validate-insurance-a1-domain.ts && tsx scripts/validate-insurance-a2-domain.ts && tsx scripts/test-insurance-case-portal.ts && tsx scripts/insurance-migrate.ts --mode=plan && tsx scripts/generate-sitemap.ts",
     "journey:generate": "tsx scripts/journey-matrix.ts",
     "journey:check": "tsx scripts/journey-matrix.ts --check",
     "journey:table": "tsx scripts/journey-matrix.ts --table",
@@ -15,6 +15,8 @@
     "insurance:migrate:apply": "tsx scripts/insurance-migrate.ts --mode=apply",
     "insurance:migrate:test": "node --import tsx scripts/test-insurance-migrations.ts",
     "insurance:backfill:dry-run": "tsx scripts/backfill-insurance-cases.ts",
+    "insurance:test-data:dry-run": "tsx scripts/classify-insurance-test-data.ts",
+    "insurance-a2:check": "tsx scripts/validate-insurance-a2-domain.ts && tsx scripts/test-insurance-a2-simulator.ts",
     "smoke:prod": "tsx scripts/prod-smoke.ts",
     "build": "next build",
     "start": "next start",

@@ -1,7 +1,10 @@
 # Iteration A1 implementation record
 
-Status: implemented on `codex/insurance-a1-case-submission`; production
-migration and public exposure are intentionally not performed.
+Status: implemented, migrated, and activated in production on 2026-08-16/17.
+The immutable A1 kernel and factual case portal are live; all delivery,
+quote, bind, policy, claim, withdrawal, and historical-PII capabilities
+remain separately gated. Historical release evidence below is retained as an
+append-only record.
 
 ## Vertical slice
 
@@ -64,7 +67,7 @@ replay conflicts, command-level create/update/finalize execution against
 scratch Postgres, migration idempotency/checksum drift, immutable consent and
 submissions, TypeScript, lint, build, and the existing journey E2E suite.
 
-HITL required before any production change:
+HITL gates (completed where recorded below; still required for later scopes):
 
 - approve the strings in `A1-STATUS-COPY-REVIEW.md`;
 - approve and run the production migration with backup/PITR and release-owner
