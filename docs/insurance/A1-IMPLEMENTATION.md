@@ -95,3 +95,33 @@ HITL required before any production change:
   `INSURANCE_KERNEL_ENABLE_CASE_RECORD`, `INSURANCE_KERNEL_ENABLE_CASE_PORTAL`
   (flag activation is a separate canary release after this verification),
   consent replacement, public withdrawal.
+
+## Flag activation record — 2026-08-16/17 (America/Vancouver)
+
+- Owner approvals recorded in-session: status copy APPROVED AS WRITTEN
+  (see A1-STATUS-COPY-REVIEW.md); canary authorized via CLI.
+- Env set in Vercel production (via CLI, scope manyfranks-projects):
+  `INSURANCE_KERNEL_EXECUTION_MODE=PRODUCTION`,
+  `INSURANCE_KERNEL_ENABLE_PROFILE_CAPTURE=1`,
+  `INSURANCE_KERNEL_ENABLE_CASE_RECORD=1`, then after canary verification
+  `INSURANCE_KERNEL_ENABLE_CASE_PORTAL=1`; redeploys of the d65f41a-line build.
+- **Ops incident (resolved, worth remembering):** values first added via
+  `echo | vercel env add` stored a literal trailing `\n`; the kernel's
+  exact-match parsing correctly refused them (default-deny narrowed to
+  DISABLED — two test submissions took the legacy-only path, proving the
+  fallback). Re-added with `printf`. Lesson: always `printf`, and verify with
+  `vercel env pull` + `cat -A` after adding exact-match flags.
+- Canary verification (production, real route): test POST created exactly one
+  `insurance_cases` row (READY_FOR_SUBMISSION, PRODUCTION, BC/homeowner) with
+  submission, consent artifact, and audit events; an identical replay POST
+  returned the SAME profile id with `operatorNotified:false` (idempotent
+  dedup + single-email confirmed live). Portal check: valid token → 200 with
+  approved copy + disclaimer; bogus token → 404. `smoke:prod` 5/5 after each
+  redeploy.
+- Test data left in prod (owner to decide on cleanup): 4 legacy-only
+  coverage_profiles rows from the flag-off canary attempts + 2 canary
+  cases/profiles (address prefix "TEST CANARY"), contact
+  mfrancis45+a1canary@gmail.com; operator emails for these went to the owner.
+  These rows pollute funnel counts until removed.
+- Still deliberately OFF: quote/bind/claim-intake flags, historical backfill,
+  public consent withdrawal (counsel), consent v1 replacement (counsel).

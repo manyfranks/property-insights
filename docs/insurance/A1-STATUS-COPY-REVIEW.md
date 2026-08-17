@@ -1,6 +1,8 @@
 # A1 case-status copy review
 
-Status: **OWNER REVIEW REQUIRED BEFORE `INSURANCE_KERNEL_ENABLE_CASE_PORTAL=1`**
+Status: **APPROVED AS WRITTEN by owner (Matt Francis), 2026-08-16** — recorded
+via interactive approval in the release session. `CASE_PORTAL` may enable after
+the `CASE_RECORD` canary verifies and a production smoke passes.
 
 The case portal is default-off. These strings are intentionally factual and
 stop before provider delivery. They do not imply review, quoting, partner
