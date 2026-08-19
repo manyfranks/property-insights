@@ -35,15 +35,12 @@ function rotateByDay<T>(candidates: T[]): T {
  *
  * Geo-targeting: page.tsx reads Vercel's `x-vercel-ip-*` edge headers via
  * `headers()` (same headers src/app/api/geo/route.ts uses) and passes them
- * in as `geo`. Reading `headers()` normally opts a route out of static
- * generation, but this homepage is already fully dynamic regardless —
- * `ClerkProvider` in src/app/layout.tsx reads request headers/cookies for
- * auth state, which forces every route in this app to render on demand
- * (confirmed via `next build`'s route list: `/` is already marked `ƒ`
- * Dynamic, not static/ISR, even without this change). So there's no
- * static-vs-dynamic tradeoff being made here — `geo` is nullable purely
- * because it's genuinely absent locally / off Vercel, not because the geo
- * branch was judged not worth the rendering-mode cost.
+ * in as `geo`. That `headers()` call is itself what opts "/" out of static
+ * generation/ISR (see the comment in src/app/page.tsx) — it is a deliberate
+ * choice, not a side effect of something else already forcing this route
+ * dynamic. `geo` being nullable is purely because it's genuinely absent
+ * locally / off Vercel, not because the geo branch was judged not worth the
+ * rendering-mode cost.
  *
  * Selection order: (a) a listing in the visitor's own region/city, when geo
  * resolved to something and a match exists; else (b) the highest-scoring /

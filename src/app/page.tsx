@@ -23,10 +23,15 @@ export default async function Home() {
 
   // Vercel's edge geo headers — same ones src/app/api/geo/route.ts reads.
   // Null everywhere locally / off Vercel; ExampleAnalysisCard falls back to
-  // its tier-based pool in that case. Reading headers() here doesn't change
-  // this route's rendering mode — it's already fully dynamic because
-  // ClerkProvider (src/app/layout.tsx) reads request headers/cookies for
-  // auth state on every route in this app.
+  // its tier-based pool in that case. Reading headers() here is itself what
+  // opts this route out of static rendering/ISR (revalidate above is
+  // therefore a no-op for "/") — this is this route's own dynamic API call,
+  // not something inherited from the root layout. (Previously this comment
+  // attributed the dynamism to ClerkProvider reading auth state in
+  // src/app/layout.tsx; that was stale — the actual culprit there was
+  // `<Show>` rendered as a Server Component, fixed by moving it into
+  // src/components/auth-nav.tsx as a "use client" boundary. See cache
+  // investigation, 2026-08-19.)
   const hdrs = await headers();
   const rawCity = hdrs.get("x-vercel-ip-city");
   const geo = {

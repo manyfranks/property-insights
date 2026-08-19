@@ -10,11 +10,26 @@ import RankingsTable, { type InvestmentScoreRow } from "../rankings-table";
 
 // Same heavy-aggregate caching story as the national page — county-scores.ts
 // caches the underlying query for 24h; this keeps the route in step with it.
-// Deliberately NOT using generateStaticParams here: the table is built from
-// a DB query (like /us/[state]/[county]), so this stays a dynamic (ƒ) route
-// that resolves per-request against the 24h cache, rather than a build-time
-// static page that could drift from it.
+//
+// Previously this comment argued for deliberately skipping
+// generateStaticParams so the route "stays dynamic (ƒ) ... rather than a
+// build-time static page that could drift from" the DB query. That
+// reasoning doesn't hold: /us/[state]/[county] runs the same kind of DB
+// query per page and DOES use generateStaticParams + this same 24h
+// `revalidate`, and it does not "drift" — ISR re-runs the query in the
+// background every 86400s, same as this route's own in-process cache. What
+// skipping generateStaticParams actually did was leave this route with zero
+// known paths at build time, which makes Next serve it fully
+// server-rendered on every request — `revalidate` is silently inert in that
+// state. Measured live: this route was uncacheable at the edge
+// (x-vercel-cache MISS on every hit, cache investigation 2026-08-19), same
+// defect as the sibling rankings/rent-to-price/[state] route, which already
+// has generateStaticParams below and serves as ISR.
 export const revalidate = 86400;
+
+export async function generateStaticParams() {
+  return getAllStatesWithCounties().map((s) => ({ state: s.stateSlug }));
+}
 
 async function loadState(stateSlug: string) {
   const allStates = getAllStatesWithCounties();
