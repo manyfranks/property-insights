@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import Image from "next/image";
-import { ClerkProvider, Show, SignInButton, UserButton } from "@clerk/nextjs";
+import { ClerkProvider } from "@clerk/nextjs";
+import AuthNav from "@/components/auth-nav";
 import NavbarSearch from "@/components/navbar-search";
 import MobileNav from "@/components/mobile-nav";
 import { OrganizationJsonLd, OrganizationEntityJsonLd } from "@/components/json-ld";
@@ -122,16 +123,7 @@ export default function RootLayout({
                 <Link href="/insurance" className="hover:text-foreground transition-colors">
                   Insurance
                 </Link>
-                <Show when="signed-out">
-                  <SignInButton mode="modal">
-                    <button className="px-3 py-1 text-sm rounded-full border border-foreground text-foreground hover:bg-foreground hover:text-white transition-all">
-                      Sign in
-                    </button>
-                  </SignInButton>
-                </Show>
-                <Show when="signed-in">
-                  <UserButton />
-                </Show>
+                <AuthNav />
               </nav>
             </div>
           </header>

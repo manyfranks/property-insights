@@ -7,7 +7,12 @@ import PartnerCta from "@/components/partner-cta";
 import StatCard from "@/components/stat-card";
 import { assertAffiliateHealth } from "@/config/affiliate-vendors";
 import { fmt, pct } from "@/lib/utils";
-import { getCountyBySlug, getCountiesByState } from "@/lib/us-counties";
+import {
+  getCountyBySlug,
+  getCountiesByState,
+  US_COUNTIES,
+  TOP_METRO_FIPS,
+} from "@/lib/us-counties";
 import {
   getCountyRentPanel,
   getCountyFipsWithFmrAmong,
@@ -15,6 +20,22 @@ import {
 } from "@/lib/db/regional-econ";
 
 export const revalidate = 86400; // 24h ISR — HUD FMR is an annual data source
+// Without generateStaticParams a dynamic segment has no known paths at
+// build time, so Next serves it fully server-rendered on every request —
+// `revalidate` above is silently inert in that state (measured: uncacheable
+// at the edge, x-vercel-cache MISS on every hit — cache investigation,
+// 2026-08-19). Seed the same top-metro set /us/[state]/[county]/page.tsx
+// prebuilds; dynamicParams keeps every other county rendering on-demand and
+// getting cached from its first real hit onward instead of staying dynamic
+// forever.
+export const dynamicParams = true; // any county not in generateStaticParams renders on-demand
+
+export async function generateStaticParams() {
+  return TOP_METRO_FIPS.map((fips) => {
+    const county = US_COUNTIES.find((c) => c.fips === fips);
+    return county ? { state: county.stateSlug, county: county.countySlug } : null;
+  }).filter((p): p is { state: string; county: string } => p !== null);
+}
 
 // ---------------------------------------------------------------------------
 // Shared helpers
