@@ -12,6 +12,7 @@ import ConsentBanner from "@/components/consent-banner";
 import GpcHonor from "@/components/gpc-honor";
 import PrivacyTelemetry from "@/components/privacy-telemetry";
 import PostHogIdentify from "@/components/posthog-identify";
+import ClerkBoundary from "@/components/clerk-boundary";
 import { BASE_URL, SITE_NAME, SITE_DESCRIPTION, SITE_LOCALE } from "@/lib/seo";
 import "./globals.css";
 
@@ -88,6 +89,28 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Header pieces that carry no Clerk dependency. Both the normal header and
+  // the Clerk-free fallback header render them.
+  const brand = (
+    <Link href="/" className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground" aria-label="Property Insights home">
+      <Image src="/logo.png" alt="Property Insights" width={20} height={20} className="shrink-0" />
+      <span className="text-sm sm:text-base">Property Insights</span>
+    </Link>
+  );
+  const navLinks = (
+    <>
+      <Link href="/how-it-works" className="hover:text-foreground transition-colors">
+        How it works
+      </Link>
+      <Link href="/dashboard" className="hover:text-foreground transition-colors">
+        Discover
+      </Link>
+      <Link href="/insurance" className="hover:text-foreground transition-colors">
+        Insurance
+      </Link>
+    </>
+  );
+
   return (
     <html lang="en">
       <body
@@ -103,35 +126,56 @@ export default function RootLayout({
         <meta name="fo-verify" content="f7a80bd4-10ee-4813-941a-6be2253e7186" />
         <OrganizationEntityJsonLd url={BASE_URL} />
         <OrganizationJsonLd url={BASE_URL} />
-        <ClerkProvider>
-          <PostHogIdentify />
-          <header className="relative z-50 border-b border-border bg-white">
-            <div className="relative max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
-              <Link href="/" className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground" aria-label="Property Insights home">
-                <Image src="/logo.png" alt="Property Insights" width={20} height={20} className="shrink-0" />
-                <span className="text-sm sm:text-base">Property Insights</span>
-              </Link>
-              <NavbarSearch />
-              <MobileNav />
-              <nav className="hidden sm:flex items-center gap-6 text-sm text-muted">
-                <Link href="/how-it-works" className="hover:text-foreground transition-colors">
-                  How it works
-                </Link>
-                <Link href="/dashboard" className="hover:text-foreground transition-colors">
-                  Discover
-                </Link>
-                <Link href="/insurance" className="hover:text-foreground transition-colors">
-                  Insurance
-                </Link>
-                <AuthNav />
-              </nav>
-            </div>
-          </header>
-          {children}
-          <Footer />
-          <ConsentBanner />
-          <GpcHonor />
-        </ClerkProvider>
+        <ClerkBoundary
+          fallback={
+            <>
+              {/* Clerk-free header. The search box, mobile nav, and modal
+                  sign-in all need clerk-js, which never loaded, so this path
+                  shows a static sign-in link instead. Deliberately does not
+                  import AuthNav (or any Clerk control) here — see
+                  src/components/auth-nav.tsx's header comment for why a
+                  Server Component import of Show/SignInButton/UserButton
+                  reintroduces the ƒ (Dynamic) regression fixed elsewhere. */}
+              <header className="relative z-50 border-b border-border bg-white">
+                <div className="relative max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+                  {brand}
+                  <nav className="hidden sm:flex items-center gap-6 text-sm text-muted">
+                    {navLinks}
+                    <a href={process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL ?? "/"} className="px-3 py-1 text-sm rounded-full border border-foreground text-foreground hover:bg-foreground hover:text-white transition-all">
+                      Sign in
+                    </a>
+                  </nav>
+                </div>
+              </header>
+              {children}
+              <Footer />
+              {/* GpcHonor carries no Clerk dependency, so privacy opt-out
+                  still works. PostHogIdentify and ConsentBanner need Clerk and
+                  only act on a signed-in user, of which there is none here, so
+                  this path drops both. */}
+              <GpcHonor />
+            </>
+          }
+        >
+          <ClerkProvider>
+            <PostHogIdentify />
+            <header className="relative z-50 border-b border-border bg-white">
+              <div className="relative max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+                {brand}
+                <NavbarSearch />
+                <MobileNav />
+                <nav className="hidden sm:flex items-center gap-6 text-sm text-muted">
+                  {navLinks}
+                  <AuthNav />
+                </nav>
+              </div>
+            </header>
+            {children}
+            <Footer />
+            <ConsentBanner />
+            <GpcHonor />
+          </ClerkProvider>
+        </ClerkBoundary>
         <PrivacyTelemetry />
       </body>
     </html>
