@@ -149,6 +149,16 @@ async function checkDisclosures(): Promise<void> {
   record("GET /disclosures", res.status === 200, `status ${res.status}`);
 }
 
+// The five per-surface children scripts/generate-sitemap.ts's sitemapindex
+// (2026-08-20 split) points at — see that file's header for the rationale.
+const SITEMAP_CHILDREN = [
+  "sitemap-static.xml",
+  "sitemap-blog.xml",
+  "sitemap-discover.xml",
+  "sitemap-property.xml",
+  "sitemap-us.xml",
+];
+
 async function checkSitemap(): Promise<void> {
   const res = await fetchText("/sitemap-main.xml");
   if ("error" in res) {
@@ -159,12 +169,42 @@ async function checkSitemap(): Promise<void> {
     record("GET /sitemap-main.xml", false, `expected 200, got ${res.status}`);
     return;
   }
-  const hasInsurance = res.body.includes("/insurance");
+  // /sitemap-main.xml is now a <sitemapindex>, not a flat <urlset> — check
+  // it references every expected child, then check each child is itself
+  // reachable. /insurance lives in the static child, not the index.
+  const isIndex = res.body.includes("<sitemapindex");
+  const missingChildren = SITEMAP_CHILDREN.filter((f) => !res.body.includes(`/${f}`));
   record(
     "GET /sitemap-main.xml",
-    hasInsurance,
-    hasInsurance ? "200, contains /insurance" : "200 but no /insurance entry found"
+    isIndex && missingChildren.length === 0,
+    isIndex
+      ? missingChildren.length === 0
+        ? `200, <sitemapindex> references all ${SITEMAP_CHILDREN.length} children`
+        : `200 but missing children: ${missingChildren.join(", ")}`
+      : "200 but body is not a <sitemapindex> (split regressed to a flat urlset?)"
   );
+
+  for (const file of SITEMAP_CHILDREN) {
+    const childRes = await fetchText(`/${file}`);
+    if ("error" in childRes) {
+      record(`GET /${file}`, false, `request failed: ${childRes.error}`);
+      continue;
+    }
+    if (childRes.status !== 200) {
+      record(`GET /${file}`, false, `expected 200, got ${childRes.status}`);
+      continue;
+    }
+    if (file === "sitemap-static.xml") {
+      const hasInsurance = childRes.body.includes("/insurance");
+      record(
+        `GET /${file}`,
+        hasInsurance,
+        hasInsurance ? "200, contains /insurance" : "200 but no /insurance entry found"
+      );
+    } else {
+      record(`GET /${file}`, true, "200");
+    }
+  }
 }
 
 async function checkRobots(): Promise<void> {

@@ -14,16 +14,38 @@
  *
  * Runs the REAL generator as a subprocess (same command `npm run
  * prebuild` uses) against real .env.local-configured KV/DB, then parses
- * the real output file. No mocks, no fixtures — this is an assertion over
+ * the real output. No mocks, no fixtures — this is an assertion over
  * production-shaped data, not a unit test of the parsing logic.
+ *
+ * public/sitemap-main.xml is a <sitemapindex> (2026-08-20 split — see
+ * generate-sitemap.ts's header), not a flat <urlset>, so this test reads
+ * it to find the child sitemap files and concatenates their <url> entries
+ * before running the same checks as before. This also doubles as a
+ * structural check: the index must parse and every child it names must
+ * exist on disk.
  *
  * Usage: npx tsx scripts/test-sitemap-lastmod.ts
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-const SITEMAP_PATH = join(process.cwd(), "public", "sitemap-main.xml");
+const PUBLIC_DIR = join(process.cwd(), "public");
+const INDEX_PATH = join(PUBLIC_DIR, "sitemap-main.xml");
+
+/** Parse a <sitemapindex>, return the local public/ filename of each <sitemap><loc>. */
+function parseSitemapIndex(xml: string): string[] {
+  const blocks = xml.match(/<sitemap>[\s\S]*?<\/sitemap>/g) ?? [];
+  if (blocks.length === 0) {
+    throw new Error(`No <sitemap> entries found in ${INDEX_PATH} — expected a <sitemapindex>.`);
+  }
+  return blocks.map((block) => {
+    const locMatch = block.match(/<loc>(.*?)<\/loc>/);
+    if (!locMatch) throw new Error(`Malformed <sitemap> block (no <loc>): ${block}`);
+    const pathname = new URL(locMatch[1]).pathname;
+    return pathname.replace(/^\//, "");
+  });
+}
 
 // W3C datetime (the sitemap protocol's required lastmod format) as emitted
 // by JS's Date#toISOString(): YYYY-MM-DDTHH:mm:ss.sssZ
@@ -121,12 +143,25 @@ function main() {
   const windowLo = buildWindowStart - 60_000;
   const windowHi = buildWindowEnd + 60_000;
 
-  const xml = readFileSync(SITEMAP_PATH, "utf-8");
-  const entries = parseSitemap(xml);
-  if (entries.length < 10_000) {
-    throw new Error(`Sanity check failed: only ${entries.length} <url> entries parsed — sitemap looks truncated/broken.`);
+  const indexXml = readFileSync(INDEX_PATH, "utf-8");
+  const childFiles = parseSitemapIndex(indexXml);
+  console.log(`[test-sitemap-lastmod] index references ${childFiles.length} child sitemap(s): ${childFiles.join(", ")}`);
+
+  const entries: UrlEntry[] = [];
+  for (const file of childFiles) {
+    const childPath = join(PUBLIC_DIR, file);
+    if (!existsSync(childPath)) {
+      throw new Error(`Index references "${file}" but public/${file} does not exist on disk.`);
+    }
+    const childXml = readFileSync(childPath, "utf-8");
+    const childEntries = parseSitemap(childXml);
+    console.log(`[test-sitemap-lastmod]   ${file}: ${childEntries.length} <url> entries`);
+    entries.push(...childEntries);
   }
-  console.log(`[test-sitemap-lastmod] parsed ${entries.length} <url> entries.`);
+  if (entries.length < 10_000) {
+    throw new Error(`Sanity check failed: only ${entries.length} <url> entries parsed across all children — sitemap looks truncated/broken.`);
+  }
+  console.log(`[test-sitemap-lastmod] parsed ${entries.length} <url> entries total across all children.`);
 
   const failures: string[] = [];
   const valuesByGroup = new Map<string, Set<string>>();

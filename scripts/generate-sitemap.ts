@@ -1,5 +1,6 @@
 /**
- * Build-time sitemap generator — writes public/sitemap.xml as a STATIC file.
+ * Build-time sitemap generator — writes a sitemap INDEX plus five child
+ * sitemaps as STATIC files under public/.
  *
  * Why static: GSC's sitemap fetcher repeatedly failed ("Couldn't fetch")
  * against the dynamic /api/sitemap function behind a next.config rewrite,
@@ -15,6 +16,30 @@
  *
  * KV creds come from the environment (Vercel build env or .env.local).
  *
+ * --- sitemap split (2026-08-20) -------------------------------------------
+ * sitemap-main.xml used to be one flat <urlset> holding all ~11,840 URLs
+ * from every surface pooled together. That makes GSC's "Sitemaps" report
+ * (submitted vs. indexed) an aggregate over the whole site — there was no
+ * way to tell whether Google was actually crawling the differentiated
+ * county data or spending its budget on address pages that compete with
+ * Zillow/Redfin. It is now a <sitemapindex> pointing at five per-surface
+ * child sitemaps (public/sitemap-{static,blog,discover,property,us}.xml),
+ * so each surface gets its own row in that report. This is a structural
+ * split only — the URL set is identical, just redistributed; see
+ * scripts/test-sitemap-split.ts for the identity proof this generator is
+ * checked against.
+ *
+ * public/sitemap-main.xml keeps its name and stays the URL robots.ts
+ * advertises (see src/app/robots.ts) specifically so nothing has to change
+ * there: /sitemap.xml is pinned in a GSC fetch-failure state from an
+ * earlier incident, and re-pointing robots.txt at yet another fresh URL
+ * would risk repeating that. Only its *format* changes, from <urlset> to
+ * <sitemapindex>.
+ *
+ * public/sitemap.xml remains the flat, all-surfaces merge (unchanged
+ * format) — legacy path, still reachable, kept live so nothing that
+ * already fetched it 404s or has to be taught about the index.
+ *
  * --- lastmod policy (2026-08-19) -----------------------------------------
  * `<lastmod>` used to be `new Date()` (build time) stamped onto every one
  * of the ~11,840 URLs. That is a fabricated signal: it asserts every page
@@ -25,8 +50,10 @@
  *
  * Rule: lastmod is either a real per-record modification timestamp, or it
  * is omitted for that URL. Never a build/deploy timestamp, never a value
- * synthesized from a data vintage year. See emitEntry() below — passing
- * `null` omits the tag rather than falling back to `now`.
+ * synthesized from a data vintage year. See makeEntry() below — passing
+ * `null` omits the tag rather than falling back to `now`. The split above
+ * changes nothing about this: every URL keeps exactly the lastmod (or
+ * absence of one) it had before, just filed into a different document.
  *
  * Per-surface sourcing:
  *   - /property/[slug]   listing.enrichedAt (per-listing pipeline-enrichment
@@ -88,6 +115,15 @@ loadEnvLocal();
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+
+interface Entry {
+  loc: string;
+  lastmod: string | null;
+  xml: string;
+}
+
+/** One sitemap ceiling per the protocol; every child below sits far under this. */
+const SITEMAP_URL_CEILING = 50_000;
 
 async function main() {
   const { getAllListings } = await import("../src/lib/kv/listings");
@@ -156,8 +192,11 @@ async function main() {
   const allUsFips = US_COUNTIES.map((c) => c.fips);
   const globalUsLastmod = maxLastmod(allUsFips);
 
-  const emitEntry = (url: string, lastmod: string | null, changefreq: string, priority: number) =>
-    `<url><loc>${url}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<changefreq>${changefreq}</changefreq><priority>${priority}</priority></url>`;
+  const makeEntry = (url: string, lastmod: string | null, changefreq: string, priority: number): Entry => ({
+    loc: url,
+    lastmod,
+    xml: `<url><loc>${url}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<changefreq>${changefreq}</changefreq><priority>${priority}</priority></url>`,
+  });
 
   const tagSlugs = [...new Set(BLOG_POSTS.flatMap((p) => p.tags.map((t) => slugify(t))))];
   const citySlugs = [...new Set(listings.map((l) => l.city.toLowerCase().replace(/\s+/g, "-")))];
@@ -194,30 +233,45 @@ async function main() {
     return dates.length ? dates.reduce((a, b) => (b > a ? b : a)) : null;
   };
 
-  const urls: string[] = [
-    // Static marketing/legal pages: no real per-page modification signal
-    // exists (no CMS, no DB row) — omitted per lastmod policy above rather
-    // than guessed. TODO: see file header for what would be needed to stop
+  // --- Five surface groups — same URLs the old flat array held, just filed
+  // into named buckets instead of one undifferentiated list. -------------
+
+  const staticEntries: Entry[] = [
+    // No real per-page modification signal exists for any of these (no
+    // CMS, no DB row) — omitted per lastmod policy above rather than
+    // guessed. TODO: see file header for what would be needed to stop
     // omitting these.
-    emitEntry(BASE_URL, null, "daily", 1.0),
-    emitEntry(`${BASE_URL}/dashboard`, null, "daily", 0.9),
-    emitEntry(`${BASE_URL}/how-it-works`, null, "monthly", 0.7),
-    emitEntry(`${BASE_URL}/insurance`, null, "weekly", 0.8),
-    emitEntry(`${BASE_URL}/blog`, blogIndexLastmod, "weekly", 0.8),
-    emitEntry(`${BASE_URL}/tools/assessment-gap`, null, "monthly", 0.7),
-    emitEntry(`${BASE_URL}/privacy`, null, "yearly", 0.3),
-    emitEntry(`${BASE_URL}/terms`, null, "yearly", 0.3),
-    emitEntry(`${BASE_URL}/data-usage`, null, "yearly", 0.3),
-    emitEntry(`${BASE_URL}/disclosures`, null, "yearly", 0.3),
-    ...BLOG_POSTS.map((post) => emitEntry(`${BASE_URL}/blog/${post.slug}`, postDate(post), "monthly", 0.8)),
-    ...tagSlugs.map((tag) => emitEntry(`${BASE_URL}/blog/tags/${tag}`, tagLastmod(tag), "weekly", 0.6)),
-    ...citySlugs.map((city) => emitEntry(`${BASE_URL}/discover/${city}`, cityLastmod.get(city) ?? null, "daily", 0.8)),
-    ...propertySlugs.map((slug) =>
-      emitEntry(`${BASE_URL}/property/${slug}`, propertySlugLastmod.get(slug) ?? null, "weekly", 0.8)
-    ),
-    emitEntry(`${BASE_URL}/us`, globalUsLastmod, "monthly", 0.7),
+    makeEntry(BASE_URL, null, "daily", 1.0),
+    makeEntry(`${BASE_URL}/dashboard`, null, "daily", 0.9),
+    makeEntry(`${BASE_URL}/how-it-works`, null, "monthly", 0.7),
+    makeEntry(`${BASE_URL}/insurance`, null, "weekly", 0.8),
+    makeEntry(`${BASE_URL}/tools/assessment-gap`, null, "monthly", 0.7),
+    makeEntry(`${BASE_URL}/privacy`, null, "yearly", 0.3),
+    makeEntry(`${BASE_URL}/terms`, null, "yearly", 0.3),
+    makeEntry(`${BASE_URL}/data-usage`, null, "yearly", 0.3),
+    makeEntry(`${BASE_URL}/disclosures`, null, "yearly", 0.3),
+    makeEntry(`${BASE_URL}/tools/appeal-checker`, null, "monthly", 0.7),
+    makeEntry(`${BASE_URL}/resources`, null, "monthly", 0.6),
+  ];
+
+  const blogEntries: Entry[] = [
+    makeEntry(`${BASE_URL}/blog`, blogIndexLastmod, "weekly", 0.8),
+    ...BLOG_POSTS.map((post) => makeEntry(`${BASE_URL}/blog/${post.slug}`, postDate(post), "monthly", 0.8)),
+    ...tagSlugs.map((tag) => makeEntry(`${BASE_URL}/blog/tags/${tag}`, tagLastmod(tag), "weekly", 0.6)),
+  ];
+
+  const discoverEntries: Entry[] = citySlugs.map((city) =>
+    makeEntry(`${BASE_URL}/discover/${city}`, cityLastmod.get(city) ?? null, "daily", 0.8)
+  );
+
+  const propertyEntries: Entry[] = propertySlugs.map((slug) =>
+    makeEntry(`${BASE_URL}/property/${slug}`, propertySlugLastmod.get(slug) ?? null, "weekly", 0.8)
+  );
+
+  const usEntries: Entry[] = [
+    makeEntry(`${BASE_URL}/us`, globalUsLastmod, "monthly", 0.7),
     ...getAllStatesWithCounties().map((s) =>
-      emitEntry(
+      makeEntry(
         `${BASE_URL}/us/${s.stateSlug}`,
         maxLastmod(getCountiesByState(s.stateSlug).map((c) => c.fips)),
         "monthly",
@@ -225,7 +279,7 @@ async function main() {
       )
     ),
     ...US_COUNTIES.map((c) =>
-      emitEntry(
+      makeEntry(
         `${BASE_URL}/us/${c.stateSlug}/${c.countySlug}`,
         countyLastmod(c.fips),
         "monthly",
@@ -233,7 +287,7 @@ async function main() {
       )
     ),
     ...US_COUNTIES.filter((c) => fmrFips.has(`US-${c.fips}`) || fmrFips.has(c.fips)).map((c) =>
-      emitEntry(
+      makeEntry(
         `${BASE_URL}/us/${c.stateSlug}/${c.countySlug}/rent`,
         countyLastmod(c.fips),
         "monthly",
@@ -241,46 +295,88 @@ async function main() {
       )
     ),
     ...US_COUNTIES.filter((c) => taxFips.has(`US-${c.fips}`) || taxFips.has(c.fips)).map((c) =>
-      emitEntry(
+      makeEntry(
         `${BASE_URL}/us/${c.stateSlug}/${c.countySlug}/property-tax`,
         countyLastmod(c.fips),
         "monthly",
         isTopMetroCounty(c.fips) ? 0.7 : 0.6
       )
     ),
-    emitEntry(`${BASE_URL}/tools/appeal-checker`, null, "monthly", 0.7),
-    emitEntry(`${BASE_URL}/resources`, null, "monthly", 0.6),
-    emitEntry(`${BASE_URL}/us/rankings/investment`, globalUsLastmod, "weekly", 0.8),
-    emitEntry(`${BASE_URL}/us/rankings/rent-to-price`, globalUsLastmod, "weekly", 0.8),
+    makeEntry(`${BASE_URL}/us/rankings/investment`, globalUsLastmod, "weekly", 0.8),
+    makeEntry(`${BASE_URL}/us/rankings/rent-to-price`, globalUsLastmod, "weekly", 0.8),
     ...getAllStatesWithCounties().flatMap((s) => {
       const stateLastmod = maxLastmod(getCountiesByState(s.stateSlug).map((c) => c.fips));
       return [
-        emitEntry(`${BASE_URL}/us/rankings/investment/${s.stateSlug}`, stateLastmod, "monthly", 0.6),
-        emitEntry(`${BASE_URL}/us/rankings/rent-to-price/${s.stateSlug}`, stateLastmod, "monthly", 0.6),
+        makeEntry(`${BASE_URL}/us/rankings/investment/${s.stateSlug}`, stateLastmod, "monthly", 0.6),
+        makeEntry(`${BASE_URL}/us/rankings/rent-to-price/${s.stateSlug}`, stateLastmod, "monthly", 0.6),
       ];
     }),
   ];
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;
+  const groups: { name: string; file: string; entries: Entry[] }[] = [
+    { name: "static", file: "sitemap-static.xml", entries: staticEntries },
+    { name: "blog", file: "sitemap-blog.xml", entries: blogEntries },
+    { name: "discover", file: "sitemap-discover.xml", entries: discoverEntries },
+    { name: "property", file: "sitemap-property.xml", entries: propertyEntries },
+    { name: "us", file: "sitemap-us.xml", entries: usEntries },
+  ];
 
-  // Two on-disk copies, byte-identical, written from the same buffer:
-  //   - public/sitemap.xml       legacy path, still reachable/indexed, kept
-  //                              live so nothing that already fetched it 404s.
-  //   - public/sitemap-main.xml  the URL robots.ts actually advertises (see
-  //                              src/app/robots.ts) — sitemap.xml is pinned
-  //                              in a GSC fetch-failure state from an
-  //                              earlier incident, so crawlers are pointed
-  //                              at this fresh path instead.
-  // Both are gitignored (see .gitignore): they're ~2.1MB regenerated
-  // artifacts, and committing them turned every deploy into a ~47k-line
-  // diff for no benefit — they're fully reproducible from KV + static data
-  // at build time. Do not remove either write path without first checking
-  // robots.ts for which URL is currently advertised.
-  const out = join(process.cwd(), "public", "sitemap.xml");
-  writeFileSync(out, xml);
-  const out2 = join(process.cwd(), "public", "sitemap-main.xml");
-  writeFileSync(out2, xml);
-  console.log(`[sitemap] wrote ${out} + sitemap-main.xml: ${urls.length} URLs (${propertySlugs.length} unique properties from ${listings.length} listings)`);
+  for (const g of groups) {
+    if (g.entries.length > SITEMAP_URL_CEILING) {
+      throw new Error(
+        `[sitemap] "${g.name}" child has ${g.entries.length} URLs, over the ${SITEMAP_URL_CEILING}-URL sitemap ceiling — split it further before shipping.`
+      );
+    }
+  }
+
+  const renderUrlset = (entries: Entry[]): string =>
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries
+      .map((e) => e.xml)
+      .join("\n")}\n</urlset>`;
+
+  /** MAX lastmod across a group's entries, or null if none carry one — never fabricated. */
+  const groupMaxLastmod = (entries: Entry[]): string | null => {
+    let max: string | null = null;
+    for (const e of entries) {
+      if (e.lastmod && (!max || e.lastmod > max)) max = e.lastmod;
+    }
+    return max;
+  };
+
+  const publicDir = join(process.cwd(), "public");
+  let totalUrls = 0;
+  for (const g of groups) {
+    writeFileSync(join(publicDir, g.file), renderUrlset(g.entries));
+    totalUrls += g.entries.length;
+  }
+
+  // Sitemap index — this is what public/sitemap-main.xml now contains
+  // (format change only; see the 2026-08-20 header note above for why the
+  // filename itself doesn't change).
+  const indexXml = `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${groups
+    .map((g) => {
+      const lastmod = groupMaxLastmod(g.entries);
+      return `<sitemap><loc>${BASE_URL}/${g.file}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}</sitemap>`;
+    })
+    .join("\n")}\n</sitemapindex>`;
+
+  // Flat, all-surfaces merge — unchanged format, same URL set, same
+  // lastmod per URL as the split children. Kept for back-compat (see file
+  // header). Both public/sitemap.xml and public/sitemap-main.xml are
+  // gitignored (see .gitignore): they're regenerated build artifacts
+  // (~2.1MB total), and committing them turned every deploy into a
+  // ~47k-line diff for no benefit — they're fully reproducible from KV +
+  // static data at build time. Do not remove either write path without
+  // first checking robots.ts for which URL is currently advertised.
+  const flatXml = renderUrlset(groups.flatMap((g) => g.entries));
+  writeFileSync(join(publicDir, "sitemap.xml"), flatXml);
+  writeFileSync(join(publicDir, "sitemap-main.xml"), indexXml);
+
+  const perGroupCounts = groups.map((g) => `${g.name}=${g.entries.length}`).join(", ");
+  console.log(
+    `[sitemap] wrote sitemap-main.xml (index) + ${groups.length} child sitemaps + sitemap.xml (flat legacy): ` +
+      `${totalUrls} URLs total (${perGroupCounts}) (${propertySlugs.length} unique properties from ${listings.length} listings)`
+  );
 }
 
 main().catch((err) => {

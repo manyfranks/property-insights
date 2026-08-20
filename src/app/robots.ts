@@ -47,6 +47,12 @@ export default function robots(): MetadataRoute.Robots {
     // incident (see 71caf49 "Publish sitemap at fresh URL"). The
     // sitemap.xml route itself keeps being served (no callers removed),
     // this only changes which URL robots.txt advertises to crawlers.
+    //
+    // As of 2026-08-20, sitemap-main.xml is a <sitemapindex> pointing at
+    // five per-surface child sitemaps (scripts/generate-sitemap.ts) rather
+    // than one flat <urlset> — same URL here on purpose, only the format
+    // behind it changed, to avoid re-pinning robots.txt at yet another
+    // fresh path.
     sitemap: `${BASE_URL}/sitemap-main.xml`,
   };
 }
