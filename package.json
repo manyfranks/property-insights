@@ -17,6 +17,7 @@
     "insurance:backfill:dry-run": "tsx scripts/backfill-insurance-cases.ts",
     "smoke:prod": "tsx scripts/prod-smoke.ts",
     "test:sitemap-lastmod": "tsx scripts/test-sitemap-lastmod.ts",
+    "test:regional-econ-stamping": "node --import tsx scripts/test-regional-econ-stamping.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

@@ -114,14 +114,50 @@ export interface RegionalEconRow {
  * sets `month` (ACS/FHFA/HUD/FEMA), this is a no-op behavior change: NULL
  * month always collapses to the same COALESCE(...,0) bucket, so the
  * one-row-per-year guarantee those scripts depend on is unchanged.
+ *
+ * `updated_at` is stamped conditionally: DO UPDATE always fires on a
+ * conflict (there is no "only if different" clause), so an unconditional
+ * `NOW()` would restamp every re-ingested row even when nothing changed —
+ * collapsing the per-record sitemap <lastmod> signal (see
+ * scripts/generate-sitemap.ts) back into a single build-time value. The
+ * CASE compares every payload column DO UPDATE actually sets (value,
+ * geo_name, month, unit, source) with IS DISTINCT FROM (NULL-safe) and only
+ * advances `updated_at` when at least one changed; unchanged rows keep
+ * their existing `regional_econ.updated_at`. Inside ON CONFLICT DO UPDATE,
+ * a bare `regional_econ.col` reference reads the pre-update row regardless
+ * of SET-list order, so this sees the old value even though `updated_at`
+ * is set last.
  */
-export async function upsertRegionalEcon(rows: RegionalEconRow[]): Promise<number> {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DATABASE_URL required for --commit (see src/lib/db/index.ts for the expected connection string shape).");
+/** Structural shape of a Neon tagged-template SQL client — just enough to
+ * type-check the injected test client below without importing Neon's
+ * (complex, version-coupled) query-function type. */
+type SqlTag = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+
+/**
+ * Test-only seam: lets scripts/test-regional-econ-stamping.ts exercise this
+ * exact upsert against a throwaway local Postgres. @neondatabase/serverless's
+ * neon() speaks Neon's HTTP proxy protocol, not raw Postgres wire protocol —
+ * it cannot target a local `postgresql://` instance (same reason
+ * src/lib/db/index.ts exposes setSqlForTest instead of letting tests call
+ * neon() directly; see scripts/test-insurance-case-commands.ts for the
+ * precedent of shelling out to psql for scratch-DB tests instead).
+ * Production call sites never pass this — restricted like setSqlForTest.
+ */
+export async function upsertRegionalEcon(rows: RegionalEconRow[], sqlClientForTest?: SqlTag): Promise<number> {
+  let sql: SqlTag;
+  if (sqlClientForTest) {
+    if (process.env.NODE_ENV !== "test" && process.env.INGEST_SCRATCH_TEST !== "1") {
+      throw new Error("sqlClientForTest is restricted to test processes");
+    }
+    sql = sqlClientForTest;
+  } else {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      throw new Error("DATABASE_URL required for --commit (see src/lib/db/index.ts for the expected connection string shape).");
+    }
+    const { neon } = await import("@neondatabase/serverless");
+    sql = neon(url) as unknown as SqlTag;
   }
-  const { neon } = await import("@neondatabase/serverless");
-  const sql = neon(url);
 
   const BATCH = 1000;
   let wrote = 0;
@@ -147,7 +183,15 @@ export async function upsertRegionalEcon(rows: RegionalEconRow[]): Promise<numbe
         month = EXCLUDED.month,
         unit = EXCLUDED.unit,
         source = EXCLUDED.source,
-        updated_at = NOW()
+        updated_at = CASE
+          WHEN regional_econ.value    IS DISTINCT FROM EXCLUDED.value
+            OR regional_econ.geo_name IS DISTINCT FROM EXCLUDED.geo_name
+            OR regional_econ.month    IS DISTINCT FROM EXCLUDED.month
+            OR regional_econ.unit     IS DISTINCT FROM EXCLUDED.unit
+            OR regional_econ.source   IS DISTINCT FROM EXCLUDED.source
+          THEN NOW()
+          ELSE regional_econ.updated_at
+        END
     `;
     wrote += batch.length;
     console.log(`  upserted ${wrote.toLocaleString()}/${rows.length.toLocaleString()}`);
