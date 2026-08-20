@@ -56,11 +56,19 @@ next-env.d.ts
 # keep the example env template tracked
 !.env.example
 
-# generated sitemaps — both public/sitemap.xml and public/sitemap-main.xml
-# are prebuild artifacts written fresh on every deploy by
-# scripts/generate-sitemap.ts (~2.1MB each, ~11.8k <url> entries). They were
-# previously committed, which produced a full-file diff on every deploy for
-# no reason (the files are reproducible from KV + static data at build
-# time). See scripts/generate-sitemap.ts for why there are two files.
+# generated sitemaps — all prebuild artifacts written fresh on every deploy
+# by scripts/generate-sitemap.ts (~2.1MB total, ~11.8k <url> entries across
+# them). They were previously committed, which produced a full-file diff on
+# every deploy for no reason (the files are reproducible from KV + static
+# data at build time). sitemap-main.xml is now a <sitemapindex> (still the
+# URL robots.ts advertises); sitemap.xml is the flat legacy all-surfaces
+# merge; the sitemap-{static,blog,discover,property,us}.xml files are the
+# per-surface children the index points at. See scripts/generate-sitemap.ts
+# for the full rationale.
 public/sitemap.xml
 public/sitemap-main.xml
+public/sitemap-static.xml
+public/sitemap-blog.xml
+public/sitemap-discover.xml
+public/sitemap-property.xml
+public/sitemap-us.xml
