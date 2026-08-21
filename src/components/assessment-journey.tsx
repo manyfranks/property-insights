@@ -336,6 +336,7 @@ export function AssessmentJourneyPanel({
   goalContent,
   lead,
   focusPlacement = "after-lead",
+  preserveContainedSubjectGapResult = false,
   children,
 }: {
   enabled?: boolean;
@@ -350,6 +351,12 @@ export function AssessmentJourneyPanel({
   goalContent?: Partial<Record<AssessmentGoal, ReactNode>>;
   lead?: ReactNode;
   focusPlacement?: "after-lead" | "embedded";
+  /**
+   * Preserve a child that already contains an unresolved-subject result.
+   * This applies only to a subject evidence gap; ordinary unavailable goals
+   * and excluded property classes continue to use the generic withheld panel.
+   */
+  preserveContainedSubjectGapResult?: boolean;
   children?: ReactNode;
 }) {
   const [goal, setGoal] = useState<AssessmentGoal>(initialGoal ?? "buy_home");
@@ -418,13 +425,15 @@ export function AssessmentJourneyPanel({
     statusForGoal,
     switchGoal,
   };
-  const renderAutomaticFocus = focusPlacement === "after-lead" || effectiveStatus.availability === "unavailable";
+  const preserveContainedGap = preserveContainedSubjectGapResult && subjectEvidenceGap;
+  const renderAutomaticFocus = focusPlacement === "after-lead" ||
+    (effectiveStatus.availability === "unavailable" && !preserveContainedGap);
 
   return (
     <AssessmentJourneyContext.Provider value={contextValue}>
       {lead}
       {renderAutomaticFocus && <AssessmentJourneyFocus />}
-      {gateUnsupported && effectiveStatus.availability === "unavailable" ? (
+      {gateUnsupported && effectiveStatus.availability === "unavailable" && !preserveContainedGap ? (
         <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 mb-6" data-p4-capability-gate="true">
           <div className="text-xs uppercase tracking-widest text-amber-700 mb-2">Report withheld for this focus</div>
           <h2 className="text-lg font-semibold text-amber-950 mb-2">

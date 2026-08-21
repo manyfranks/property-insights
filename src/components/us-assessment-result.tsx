@@ -295,6 +295,15 @@ const EQUITY_TIER_STYLE: Record<EquityTenureSignal["tier"], { badge: string; lab
   short_hold_flip: { badge: "bg-amber-100 text-amber-700", label: "Short-Hold Resale Pattern" },
   long_tenure_high_equity: { badge: "bg-emerald-100 text-emerald-700", label: "Long-Tenure Equity" },
   moderate_hold: { badge: "bg-zinc-100 text-zinc-600", label: "Moderate Hold" },
+  recorded_value_history: { badge: "bg-zinc-100 text-zinc-600", label: "Recorded Value History" },
+};
+
+const OFF_MARKET_VALUE_HISTORY_LABEL: Record<EquityTenureSignal["tier"], string> = {
+  loss_sale_distress: "Below Last Sale",
+  short_hold_flip: "Short-Hold Value Pattern",
+  long_tenure_high_equity: "Long-Term Value Change",
+  moderate_hold: "Recorded Hold",
+  recorded_value_history: "Recorded Value History",
 };
 
 /**
@@ -303,30 +312,45 @@ const EQUITY_TIER_STYLE: Record<EquityTenureSignal["tier"], { badge: string; lab
  * bento card, not just a chip, since it's derived from real transaction
  * history (sale date + price), not text pattern-matching.
  */
-function EquityTenureCard({ equitySignal }: { equitySignal: EquityTenureSignal | null }) {
+export function EquityTenureCard({
+  equitySignal,
+  variant = "listed",
+}: {
+  equitySignal: EquityTenureSignal | null;
+  variant?: "listed" | "off_market";
+}) {
+  // The signal provenance is authoritative when present. The explicit
+  // variant still controls the no-history empty state.
+  const offMarket = variant === "off_market" || equitySignal?.currentValueKind === "avm_estimate";
   if (!equitySignal) {
     return (
       <div className="border border-border rounded-xl p-4 bg-white">
-        <div className="text-xs uppercase tracking-widest text-muted mb-3">Seller Equity &amp; Tenure</div>
+        <div className="text-xs uppercase tracking-widest text-muted mb-3">
+          {offMarket ? "Recorded Sale & Value History" : <>Seller Equity &amp; Tenure</>}
+        </div>
         <p className="text-xs text-muted/70">
-          No prior sale on record for this address from RentCast — hold length and equity position can&apos;t be
-          estimated.
+          {offMarket
+            ? "No prior sale is recorded for this address in the current RentCast history."
+            : <>No prior sale on record for this address from RentCast — hold length and equity position can&apos;t be estimated.</>}
         </p>
       </div>
     );
   }
 
   const style = EQUITY_TIER_STYLE[equitySignal.tier];
+  const badgeLabel = offMarket ? OFF_MARKET_VALUE_HISTORY_LABEL[equitySignal.tier] : style.label;
 
   return (
     <div className="border border-border rounded-xl p-4 bg-white">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-xs uppercase tracking-widest text-muted">Seller Equity &amp; Tenure</div>
-        <span className={`text-xs px-2 py-0.5 rounded-full ${style.badge}`}>{style.label}</span>
+        <div className="text-xs uppercase tracking-widest text-muted">
+          {offMarket ? "Recorded Sale & Modeled Value" : <>Seller Equity &amp; Tenure</>}
+        </div>
+        <span className={`text-xs px-2 py-0.5 rounded-full ${style.badge}`}>{badgeLabel}</span>
       </div>
       <div className="grid grid-cols-2 gap-2 text-sm mb-3">
         <div>
-          <div className="text-muted text-xs">Hold period</div>
+          <div className="text-muted text-xs">{offMarket ? "Since recorded sale" : "Hold period"}</div>
           <div className="font-mono font-medium">{equitySignal.holdYears.toFixed(1)}yr</div>
         </div>
         <div>
@@ -334,7 +358,7 @@ function EquityTenureCard({ equitySignal }: { equitySignal: EquityTenureSignal |
           <div className="font-mono font-medium">{fmt(equitySignal.lastSalePrice)}</div>
         </div>
         <div>
-          <div className="text-muted text-xs">Implied change</div>
+          <div className="text-muted text-xs">{offMarket ? "Modeled change" : "Implied change"}</div>
           <div className="font-mono font-medium">
             {equitySignal.impliedAppreciationPct >= 0 ? "+" : ""}
             {pct(equitySignal.impliedAppreciationPct)}
@@ -355,8 +379,9 @@ function EquityTenureCard({ equitySignal }: { equitySignal: EquityTenureSignal |
       </div>
       <p className="text-xs text-muted leading-relaxed">{equitySignal.narrative}</p>
       <p className="text-xs text-muted/60 mt-2">
-        Modeled from RentCast sale history — the appreciation figure doesn&apos;t account for any mortgage balance or
-        paydown.
+        {offMarket
+          ? "Modeled from RentCast sale history and AVM evidence; it is not a statement about ownership, equity, or willingness to transact."
+          : <>Modeled from RentCast sale history — the appreciation figure doesn&apos;t account for any mortgage balance or paydown.</>}
       </p>
     </div>
   );
@@ -1356,7 +1381,7 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <EquityTenureCard equitySignal={equitySignal} />
+        <EquityTenureCard equitySignal={equitySignal} variant="off_market" />
         {!rentalScreen && <InvestorYieldCard investorYield={investorYield} />}
         <RiskMomentumCard riskMomentum={riskMomentum} />
       </div>
@@ -1407,6 +1432,10 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
 
 function UsFallbackView({ data, activeGoal }: { data: UsFallbackResult; activeGoal: AssessmentGoal | null }) {
   const { assessment, marketPanel } = data;
+  // Only the identity-miss branch proves that returned modeled values cannot
+  // safely be attached to the requested unit/building/parcel. Transient
+  // provider/quota fallbacks retain their existing action composition.
+  const allowPropertyActions = data.propertyDataUnavailableReason !== "property_identity_not_found";
   const unavailable = usPropertyDataUnavailableMessage(
     data.propertyDataUnavailableReason,
     !!assessment?.liveCountySource
@@ -1433,6 +1462,11 @@ function UsFallbackView({ data, activeGoal }: { data: UsFallbackResult; activeGo
       >
         <div className="text-sm font-semibold">{unavailable.title}</div>
         <p className="text-sm mt-1 text-amber-800">{unavailable.detail}</p>
+        {!allowPropertyActions && (
+          <p className="text-xs mt-2 text-amber-800" data-property-actions-withheld="identity_not_confirmed">
+            Property-oriented actions are withheld until an exact property identity is confirmed.
+          </p>
+        )}
       </div>
 
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
@@ -1459,9 +1493,11 @@ function UsFallbackView({ data, activeGoal }: { data: UsFallbackResult; activeGo
 
       {rentalScreen && <RentalScreen model={rentalScreen} />}
 
-      <div className="mb-6">
-        <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
-      </div>
+      {allowPropertyActions && (
+        <div className="mb-6">
+          <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
+        </div>
+      )}
 
       <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-sm text-amber-800">
         {usOfferModelUnavailableMessage(
@@ -1472,17 +1508,19 @@ function UsFallbackView({ data, activeGoal }: { data: UsFallbackResult; activeGo
 
       <MarketPanelSection marketPanel={marketPanel} />
 
-      <div className="mb-6">
-        <PartnerCta
-          country="US"
-          state={data.state}
-          source="assess-result"
-          mode={audience.mode}
-          surface={audience.surface}
-          heading="Act on this analysis"
-          city={data.city}
-        />
-      </div>
+      {allowPropertyActions && (
+        <div className="mb-6">
+          <PartnerCta
+            country="US"
+            state={data.state}
+            source="assess-result"
+            mode={audience.mode}
+            surface={audience.surface}
+            heading="Act on this analysis"
+            city={data.city}
+          />
+        </div>
+      )}
 
       <FooterCredits marketPanel={marketPanel} includeRentCast={false} />
     </div>
@@ -1499,6 +1537,8 @@ function UsUnresolvedSubjectView({ data }: { data: UsAssessResult }) {
           {data.countyName}, {data.state}
         </p>
       </div>
+
+      <AssessmentJourneyFocus />
 
       <section className="border border-amber-200 bg-amber-50 rounded-xl p-5 sm:p-6 mb-6" data-subject-evidence-withheld="true">
         <div className="text-xs uppercase tracking-widest text-amber-700 mb-2">Exact property required</div>

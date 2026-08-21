@@ -1120,7 +1120,7 @@ function UsPropertyFactsCard({ listing }: { listing: Listing }) {
 }
 
 function UsEquityTenureCard({ equitySignal }: { equitySignal: EquityTenureSignal | null }) {
-  if (!equitySignal || equitySignal.tier === "moderate_hold") return null;
+  if (!equitySignal || equitySignal.currentValueKind !== "asking" || equitySignal.tier === "moderate_hold") return null;
   const isShortHold = equitySignal.tier === "short_hold_flip";
   const label = isShortHold ? "Short-Hold Resale Pattern" : equitySignal.label;
   const narrative = isShortHold
