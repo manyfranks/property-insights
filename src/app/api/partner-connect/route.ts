@@ -44,6 +44,7 @@ import { NextResponse } from "next/server";
 import { trackEvent } from "@/lib/db/user-events";
 import { trackPartnerClick } from "@/lib/db/partner-clicks";
 import { isCoverageProfileId, markProfileHandoff } from "@/lib/db/coverage-profiles";
+import { privacyResolvedOwnerId } from "@/lib/security/authorization";
 import { AFFILIATE_VENDORS } from "@/config/affiliate-vendors";
 import { isOptedOutRequest } from "@/lib/privacy";
 import { partnerConnectLimiter } from "@/lib/rate-limit";
@@ -144,7 +145,7 @@ export async function POST(req: Request) {
   const clientOptOut = body.optOut === true;
   const isOptedOut = clientOptOut || isOptedOutRequest(req);
   // Never attribute a click to a signed-in account once opted out.
-  const userId = isOptedOut ? null : authUserId;
+  const userId = privacyResolvedOwnerId(authUserId, isOptedOut);
 
   // Sanitize optional string fields
   const state =
@@ -223,7 +224,7 @@ export async function POST(req: Request) {
     );
     if (registryVendor) {
       try {
-        await markProfileHandoff(profileId, registryVendor.id);
+        await markProfileHandoff(profileId, registryVendor.id, userId);
       } catch (err) {
         console.error("partner-connect: markProfileHandoff failed:", err);
       }

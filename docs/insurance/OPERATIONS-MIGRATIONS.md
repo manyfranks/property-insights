@@ -1,8 +1,52 @@
 # Insurance operations: migrations and recovery
 
-These conventions apply to the insurance data domain before the first
-production schema change. They are forward-only and deliberately avoid
-production mutation from web routes.
+These conventions were established before the first insurance production
+schema change and remain the release contract for every later change. They are
+forward-only and deliberately avoid production mutation from web routes.
+
+## Current production truth — 2026-08-20
+
+- Migrations `0001_insurance_create_case_submission.sql` and
+  `0002_insurance_idempotency_and_submission_commands.sql` were applied to the
+  production Neon database on 2026-08-16; the ledger reported 2 applied and 0
+  pending. See `A1-IMPLEMENTATION.md` for the release IDs and checksums.
+- Case record and the capability-protected case portal were enabled after a
+  production canary. Quote, bind, claim-intake, historical backfill, consent
+  replacement, and public withdrawal remain disabled.
+- The production dataset still contains 4 legacy-only canary profiles and 2 A1
+  canary cases/profiles. Cleanup or KPI-query exclusion remains an owner action;
+  no cleanup is claimed by this document.
+- Neon PITR was assumed during the migration. Console confirmation and an
+  isolated point-in-time restore exercise remain open. No recovery SLO or
+  restore capability should be claimed as verified until that evidence exists.
+- Consent replacement, withdrawal, historical-PII backfill, APOLLO reliance
+  expansion, and legal characterization of partner compensation remain
+  counsel/partner gated.
+
+## Sprint 25 release prerequisite
+
+Closed by root review on 2026-08-21. Before Insurance A2 or another
+sensitive-schema change, preserve this evidence baseline:
+
+1. record the remediated Clerk/Next and other direct production dependency
+   versions plus the resulting audit output;
+2. pass unauthenticated/cross-owner negatives for private assessment, billing,
+   and coverage profile/case linkage, plus valid/invalid capability portal
+   tests;
+3. rerun TypeScript, production build, the full Property Intelligence and
+   journey matrices, insurance kernel/A1 validation, browser E2E, and
+   production smoke; and
+4. record each unresolved canary/PITR/counsel item with an owner and explicit
+   decision rather than treating silence as closure.
+
+Sprint 25 passed with a zero-advisory production graph, 8/8 authorization
+regressions, 143/143 Property Intelligence fixtures, 2,688 journey cells,
+TypeScript/build/insurance validation, browser E2E (14 passed, one intentional
+live-fixture skip), and 11/11 production smoke checks. Canary KPI cleanup,
+provider-console PITR/restore proof, and counsel-controlled items remain
+explicitly owned open operations rather than silently claimed complete. The
+next feature phase is A2 only after the P5 curated live-acceptance matrix also
+passes.
 
 ## Enforceable migration convention
 

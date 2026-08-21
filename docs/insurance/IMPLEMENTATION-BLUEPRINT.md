@@ -16,6 +16,22 @@ Primary inputs:
 
 ---
 
+## Implementation status — 2026-08-21
+
+| Iteration | Repository/production state | Remaining gate |
+|---|---|---|
+| A0 | Deployed; production smoke and legacy affiliate/intake boundary recorded | Historical baseline only; see `A0-BASELINE.md` |
+| A1 | Production migrations applied; case record and capability portal activated; idempotent canary passed | Canary KPI cleanup/exclusion, PITR console proof/restore exercise, and counsel-controlled consent/withdrawal items remain open |
+| Sprint 25 closure | Closed 2026-08-21 | Production dependency audit 0; authorization negatives 8/8; Property Intelligence 143/143; journey 2,688; TypeScript/build/insurance checks pass; browser E2E 14 pass/1 intentional skip; production smoke 11/11 |
+| A2 | Not started | Begins only after Sprint 25 and the P5 curated live-acceptance matrix close; simulation only |
+
+The A1 production activation does not authorize real carrier delivery,
+personalized quote, bind, policy/payment, or claims outcomes. Quote, bind, and
+claim-intake runtime flags remain off. The exact operational record and open
+items live in `A1-IMPLEMENTATION.md` and `OPERATIONS-MIGRATIONS.md`.
+
+---
+
 ## 1. Delivery outcome
 
 Build a production-shaped, provider-neutral insurance transaction platform now. It must demo the complete customer, broker, policy, and claims journey using synthetic providers, then accept real broker, carrier, MGA, BMS, property-data, document, payment, and TPA adapters without changing its domain model or customer-facing state language.
@@ -483,6 +499,10 @@ Acceptance:
 #### Iteration A2 — durable delivery spine and simulator adapter
 
 **Goal:** submit the versioned payload through a provider-neutral interface and prove delivery semantics.
+
+**Start gate:** Sprint 25 dependency/auth closure and the P5 curated live
+acceptance matrix are both recorded as passed. A2 is not an alternative way to
+bypass either gate and does not add a new public product-stage switch.
 
 Deliverables:
 

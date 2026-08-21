@@ -20,6 +20,7 @@ import type {
   SubjectScope,
   SubjectSelection,
 } from "@/lib/property-intelligence/subject";
+import { isOwnedByUser } from "@/lib/security/authorization";
 
 export type AssessmentResultVariant = "listed" | "off_market" | "regional_fallback";
 
@@ -39,6 +40,7 @@ export interface UserAssessmentState {
 
 interface UserAssessmentRow {
   id: string;
+  user_id: string;
   country: string;
   result_variant: string;
   result_ref: string | null;
@@ -115,6 +117,11 @@ function toState(row: UserAssessmentRow): UserAssessmentState {
   };
 }
 
+/** Defense in depth after the owner-scoped SQL predicate. */
+function toOwnedState(row: UserAssessmentRow | undefined, userId: string): UserAssessmentState | null {
+  return row && isOwnedByUser(userId, row.user_id) ? toState(row) : null;
+}
+
 export async function createUserAssessmentState(input: {
   userId: string;
   country: "US" | "CA";
@@ -137,10 +144,10 @@ export async function createUserAssessmentState(input: {
       ${input.assessmentGoal}, ${input.assessmentGoal}, ${input.subject.scope},
       ${subjectUnit}, ${input.subject.selectedBy}
     )
-    RETURNING id, country, result_variant, result_ref, assessment_goal, active_view,
+    RETURNING id, user_id, country, result_variant, result_ref, assessment_goal, active_view,
       subject_scope, subject_unit, subject_selected_by, created_at, updated_at
   ` as UserAssessmentRow[];
-  return toState(rows[0]);
+  return toOwnedState(rows[0], input.userId);
 }
 
 export async function getUserAssessmentState(
@@ -151,13 +158,13 @@ export async function getUserAssessmentState(
   if (!dbAvailable()) return null;
   const db = sql();
   const rows = await db`
-    SELECT id, country, result_variant, result_ref, assessment_goal, active_view,
+    SELECT id, user_id, country, result_variant, result_ref, assessment_goal, active_view,
       subject_scope, subject_unit, subject_selected_by, created_at, updated_at
     FROM user_assessments
     WHERE id = ${id} AND user_id = ${userId}
     LIMIT 1
   ` as UserAssessmentRow[];
-  return rows[0] ? toState(rows[0]) : null;
+  return toOwnedState(rows[0], userId);
 }
 
 export async function updateUserAssessmentView(
@@ -170,10 +177,10 @@ export async function updateUserAssessmentView(
     UPDATE user_assessments
     SET active_view = ${activeView}, updated_at = NOW()
     WHERE id = ${id} AND user_id = ${userId}
-    RETURNING id, country, result_variant, result_ref, assessment_goal, active_view,
+    RETURNING id, user_id, country, result_variant, result_ref, assessment_goal, active_view,
       subject_scope, subject_unit, subject_selected_by, created_at, updated_at
   ` as UserAssessmentRow[];
-  return rows[0] ? toState(rows[0]) : null;
+  return toOwnedState(rows[0], userId);
 }
 
 export async function updateUserAssessmentSubject(
@@ -191,10 +198,10 @@ export async function updateUserAssessmentSubject(
     SET subject_scope = ${subject.scope}, subject_unit = ${subjectUnit},
       subject_selected_by = ${subject.selectedBy}, updated_at = NOW()
     WHERE id = ${id} AND user_id = ${userId}
-    RETURNING id, country, result_variant, result_ref, assessment_goal, active_view,
+    RETURNING id, user_id, country, result_variant, result_ref, assessment_goal, active_view,
       subject_scope, subject_unit, subject_selected_by, created_at, updated_at
   ` as UserAssessmentRow[];
-  return rows[0] ? toState(rows[0]) : null;
+  return toOwnedState(rows[0], userId);
 }
 
 export async function deleteUserAssessmentState(userId: string, id: string): Promise<boolean> {
@@ -202,7 +209,7 @@ export async function deleteUserAssessmentState(userId: string, id: string): Pro
   const rows = await db`
     DELETE FROM user_assessments
     WHERE id = ${id} AND user_id = ${userId}
-    RETURNING id
-  ` as Array<{ id: string }>;
-  return rows.length === 1;
+    RETURNING id, user_id
+  ` as Array<{ id: string; user_id: string }>;
+  return rows.length === 1 && isOwnedByUser(userId, rows[0].user_id);
 }

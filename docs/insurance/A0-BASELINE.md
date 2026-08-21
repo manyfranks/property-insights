@@ -1,5 +1,11 @@
 # A0 production truth baseline
 
+> **Historical baseline, not current funnel truth.** A0 was followed by the A1
+> production migration and flag activation recorded in
+> `A1-IMPLEMENTATION.md`. The zero-row snapshot below predates six documented
+> canary coverage-profile rows (two linked to A1 cases) and must not be reused
+> as a current customer KPI.
+
 Observed 2026-08-16 (America/Vancouver). This is an outside-in, read-only
 baseline. It is not proof of environment-variable values, database state,
 carrier connectivity, or successful write-path operation.
@@ -93,3 +99,7 @@ consent label as a legal characterization of APOLLO compensation or expand
 APOLLO reliance until counsel approves a versioned replacement. A1 must store
 the approved wording and version as a consent artifact rather than silently
 rewriting historical consent.
+
+This hold remains open after A1 activation. Public consent withdrawal,
+historical-PII backfill, any APOLLO reliance expansion, and any definitive legal
+characterization of APOLLO compensation remain counsel-controlled changes.

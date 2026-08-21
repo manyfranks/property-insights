@@ -13,26 +13,34 @@ import { NextResponse } from "next/server";
 import { getStripe, stripeConfigured } from "@/lib/billing";
 import { getSubscription } from "@/lib/db/subscriptions";
 import { BASE_URL } from "@/lib/seo";
+import {
+  authenticatedUserId,
+  ownedBillingCustomerId,
+} from "@/lib/security/authorization";
 
 export async function POST() {
-  if (!stripeConfigured()) {
-    return NextResponse.json({ error: "Billing is not configured" }, { status: 503 });
-  }
-
-  const { userId } = await auth();
+  const { userId: authUserId } = await auth();
+  const userId = authenticatedUserId(authUserId);
   if (!userId) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
 
+  // Authenticate before exposing billing configuration or loading account
+  // state. The row is checked again below before its Stripe customer is used.
+  if (!stripeConfigured()) {
+    return NextResponse.json({ error: "Billing is not configured" }, { status: 503 });
+  }
+
   const sub = await getSubscription(userId);
-  if (!sub?.stripeCustomerId) {
+  const stripeCustomerId = ownedBillingCustomerId(userId, sub);
+  if (!stripeCustomerId) {
     return NextResponse.json({ error: "No billing account found" }, { status: 400 });
   }
 
   try {
     const stripe = getStripe();
     const session = await stripe.billingPortal.sessions.create({
-      customer: sub.stripeCustomerId,
+      customer: stripeCustomerId,
       return_url: `${BASE_URL}/pricing`,
     });
 

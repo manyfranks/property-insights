@@ -16,11 +16,17 @@ P0 Safety baseline
   -> P4 Add explicit per-assessment goals + view switching
   -> P5 Ship Investor / Landlord V1
   -> P6 Move Buyer + Owner journeys onto the same platform
-
-After P4: I1 Insurance distribution experiment may run beside P5
-After I1 proves demand: I2 Coverage Profile intake
-Not on the current critical path: commercial data expansion, insurance underwriting
 ```
+
+Insurance now runs as a parallel platform track rather than the original I1/I2
+experiment sequence. A0 (truth/safety baseline) and A1 (case, consent, and
+versioned submission) are active in production. A2 (durable delivery spine and
+simulator adapter) is next only after the production security/operations closure
+sprint. See `docs/insurance/IMPLEMENTATION-BLUEPRINT.md` and
+`docs/insurance/A1-IMPLEMENTATION.md`.
+
+Not on the current critical path: commercial data expansion, insurance
+underwriting, real quote/bind, or real carrier delivery.
 
 ## How to use this document
 
@@ -67,12 +73,13 @@ These are release-blocking requirements, not preferences:
 | **P0 — Safety baseline** | `[x] Complete; quota/scope regressions hardened 2026-08-12` | Prevent address-only residential overclaims; lock vocabulary and fixtures | None | 20/20 P0 fixtures; 3/3 King unit-scope; 16/16 guard; 20/20 integration |
 | **P1 — Evidence preservation** | `[x] Complete 2026-08-11` | Stop discarding classification evidence from RentCast, Zoocasa, and assessments | P0 | Field matrix + mapper fixtures |
 | **P2 — Subject resolution** | `[x] Complete 2026-08-11` | Distinguish listing, unit, building, parcel, and unknown subjects | P1 | 23/23 resolver fixtures + common subject envelope |
-| **P3 — Classification/capabilities** | `[~] In progress — shadow built; P3.5 acceptance active 2026-08-11` | Confidence-tagged, scope-aware classification and honest module availability | P2 | Shadow-mode report + routing fixtures |
-| **P4 — Goal UX/instrumentation** | `[~] Result hierarchy correction built; post-deploy acceptance pending 2026-08-14` | Optional per-assessment goal, conditional scope clarification, private restore, manual view switching | P3 | Funnel events + route-specific rollout |
-| **P5 — Investor/Landlord V1** | `[~] CA land containment built 2026-08-14; post-deploy acceptance pending` | Address-level US rental screen; capability-gated Canadian version | P4 | End-to-end journey QA + KPI baseline |
+| **P3 — Classification/capabilities** | `[~] Implementation complete; human shadow-review gates remain open` | Confidence-tagged, scope-aware classification and honest module availability | P2 | 15/15 P3 routing fixtures; fixture-category launch review still required |
+| **P4 — Goal UX/instrumentation** | `[~] Implementation and automated acceptance complete; curated live acceptance remains open` | Optional per-assessment goal, conditional scope clarification, private restore, manual view switching | P3 | Journey matrix + route-specific production acceptance |
+| **P5 — Investor/Landlord V1** | `[~] Cross-geo composition implemented; persistence, live matrix, and KPI gates remain open` | Address-level US rental screen; capability-gated Canadian version | P4 | 17/17 P5 fixtures + live cross-geo QA + KPI baseline |
 | **P6 — Buyer/Owner convergence** | `[ ]` | Existing buyer parity plus current-owner/landlord view on shared contracts | P5 | Regression parity + owner journey QA |
-| **I1 — Insurance distribution test** | `[ ] Parallel after P4` | Measure intent-matched insurance demand without claiming underwriting | P4; preferably P5 | Pre-registered test + measured results |
-| **I2 — Coverage Profile** | `[ ] Gated` | Prefill a partner-ready intake and ask users for missing insurance facts | I1 go decision | Partner/legal approval + handoff QA |
+| **A0 — Insurance truth/safety baseline** | `[x] Deployed 2026-08-16` | Explicit legacy affiliate seam, execution-mode boundary, migration/recovery convention | Parallel | Production smoke 5/5; see `docs/insurance/A0-BASELINE.md` |
+| **A1 — Insurance case/submission kernel** | `[x] Migrated and activated 2026-08-16/17` | Canonical case, consent artifact, versioned submission, capability-protected status portal | A0 | Production migration + idempotent canary + portal verification; ops cleanup remains open |
+| **A2 — Insurance delivery spine** | `[ ] Next after security/operations and P5 acceptance closure` | Transactional outbox, webhook inbox, provider interface, deterministic simulator, retries/replay/reconciliation | A1 + Sprint 25 + P5 live matrix | Synthetic-only delivery acceptance; no real provider or quote/bind activation |
 | **X1 — Data expansions** | `[ ] Deferred` | Municipal development data or non-residential commercial discovery | P3 stability + business case | Separate approved proposal |
 
 ---
@@ -316,11 +323,12 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Exit gate
 
-- [ ] Users can correct scope and change views without re-entering the address.
-- [ ] No classification path automatically changes the selected journey.
-- [ ] Funnel events answer: which goals are selected, where clarification occurs, which views users switch to, and which capabilities are missing.
-- [ ] Existing buyer flow remains available and regression-tested on plain `/assess`.
-- [ ] Mobile and desktop flows pass browser QA.
+- [x] Automated/browser acceptance proves users can correct scope and change views without re-entering the address.
+- [x] Routing fixtures prove no classification path automatically changes the selected journey.
+- [x] Funnel events capture selected goals, clarification, switching, classifications, and missing capabilities; the current sample remains too small for a launch decision.
+- [x] Existing buyer flow remains available and regression-tested on plain `/assess`.
+- [x] Recorded P4 mobile and desktop browser QA passes.
+- [ ] Curated post-deploy P4/P5 asset-matrix acceptance closes without a scope substitution, unsupported module, or provider refetch.
 
 ### Evidence
 
@@ -349,21 +357,21 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Build
 
-- [ ] **[A] Create the investor result composition** from P3 capabilities rather than country-only branching.
+- [x] **[A] Create the investor result composition** from P3 capabilities rather than country-only branching.
 - [x] **[A] Separate address-level expected rent from regional benchmark rent** in UI, narrative, and types.
 - [x] **[A] Rename “Investor Flip” to “Short-hold resale pattern”** and remove claims that renovation or seller motivation is proven.
-- [ ] **[A] Show gross yield by default;** show cash flow/cap rate only when required expenses are known or user-supplied.
-- [ ] **[A] Add inputs for financing, vacancy, maintenance, management, utilities, insurance, and other operating costs** without blocking the first useful result.
+- [x] **[A] Show gross yield by default;** show cash flow/cap rate only when required expenses are known or user-supplied.
+- [x] **[A] Add inputs for financing, vacancy, maintenance, management, utilities, insurance, and other operating costs** without blocking the first useful result.
 - [x] **[A] Feed real journey state** into `AudienceMode` and `result-investor` CTA surfaces.
 - [x] **[A] Capability-gate Canadian output:** no address-level rent language when only CMA/CMHC data exists; land/improvement insight only where the split exists.
 - [ ] **[A] Save assumptions** per assessment/saved property, not as universal truths.
-- [ ] **[A+M] Define the V1 success readout before launch:** selection rate, result completion, view switching, missing-capability rate, investor CTA engagement, and saved/shared assessments.
+- [ ] **[A+M] Complete the V1 success readout:** instrumentation now reports selection, result support state, switching, missing capabilities, and CTA engagement, but the observation window, minimum sample, and go/iterate threshold were not pre-registered before exposure.
 
 ### Exit gate
 
 - [ ] A supported US residential rental fixture completes end to end with address-level and regional values clearly distinguished.
-- [ ] Canadian results never relabel regional rent as expected property rent.
-- [ ] Unit-level calculations never use whole-building values, or vice versa.
+- [x] Canadian render and capability fixtures never relabel regional rent as expected property rent; curated production/mobile acceptance remains open below.
+- [x] Unit/building mismatch fixtures withhold the calculator rather than combining scopes; curated production acceptance remains open below.
 - [ ] Investor CTA routing is intent-matched and FTC disclosure remains adjacent.
 - [ ] Unsupported commercial whole-building analysis degrades honestly.
 - [ ] KPI baseline is captured after the agreed observation window.
@@ -376,9 +384,11 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 - Acceptance failure (2026-08-14): production records `2496-rosstown-rd` and `1827-main-st` both contain high-confidence Zoocasa `Land` evidence and deterministic `listingScope: parcel`, but `parcelUse` remains `unknown`. `residentialExclusion()` reads `parcelUse`, not the resolved listing-scope land decision, so rental/offer/insurance capabilities report `missing_field` or `available` instead of `provider_exclusion`. Both pages consequently present the four-goal handoff and residential partner CTAs; `1827-main-st` also renders unsupported seller-motivation narrative. P5 acceptance is paused pending `22-CA-LAND-LISTING-CONTAINMENT-SPRINT.md`.
 - Containment implementation (2026-08-14): deterministic/high-confidence `listingScope: parcel` now excludes residential valuation, rent, offer, gross-yield, and insurance capabilities without promoting listing evidence into `parcelUse`. A read-time reconciliation contains pre-fix persisted envelopes. Property pages use a collapsed focus control below the primary result, withhold incompatible partner actions, and replace land offer/motivation output with evidence-scoped land price context. Local browser replay against both stored records passed; production replay remains the release gate.
 - Result-hierarchy correction (2026-08-14): production replay of `2820-cosgrove-cres` showed that Sprint 22 moved the base-property handoff but not the journey result wrapper. Explicit handoff goals now bypass the redundant chooser, and CA plus all US result variants render one collapsed focus switch after the address and primary offer/value surface. See `23-ASSESSMENT-FOCUS-RESULT-HIERARCHY.md`.
-- Production cache/layout correction (2026-08-14): the first deployed Cosgrove rental replay proved the hierarchy but exposed a duplicate nested address and a stale, internally inconsistent cached offer/assessment snapshot. Assessment-origin property reads now bypass the five-minute KV fetch cache, cached language offers cannot render an assessment ratio, and the result identity renders once. US provider-backed live acceptance is deferred until the monthly credit reset; no US call is required for this correction.
+- Production cache/layout correction (2026-08-14): the first deployed Cosgrove rental replay proved the hierarchy but exposed a duplicate nested address and a stale, internally inconsistent cached offer/assessment snapshot. Assessment-origin property reads now bypass the five-minute KV fetch cache, cached language offers cannot render an assessment ratio, and the result identity renders once. The reset was the original reason to defer US provider-backed live acceptance; the acceptance gate remains open independently of quota timing.
 - Contract fixtures: `scripts/test-property-intelligence-p5.ts` covers explicit-goal routing, supported address-level output, regional-only degradation, capability withholding, legacy composition parity, and zero provider calls.
-- Commit/PR: _TBD_
+- Operating-scenario commits: `733efb3` (`Add Canadian rental operating scenarios`) and `bacc647` (`Add US rental operating scenarios`).
+- Repository verification (2026-08-21): the combined Property Intelligence fixture suite passed 143/143 across 11 suites, including Canadian land containment; this is automated contract evidence, not a substitute for the live asset matrix.
+- Observed 30-day journey sample at the 2026-08-20 re-baseline: 2 recorded rental selections and 9 rental result views (3 supported, 2 limited, 4 unavailable). This proves telemetry is flowing but is too small to close the KPI gate.
 - Production examples: _TBD_
 - KPI readout: _TBD_
 
@@ -417,62 +427,43 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ---
 
-## I1 — Insurance distribution experiment (parallel after P4)
+## Insurance platform track — supersedes the original I1/I2 sequence
 
-**Purpose:** validate demand and partner economics before building a deeper intake. This is not underwriting.
+The original affiliate-experiment/coverage-profile sequence is retained in git
+history but no longer describes the repository. The active source of truth is:
 
-### Build and measure
+- `docs/insurance/A0-BASELINE.md` — A0 truth, safety, compatibility, and
+  production smoke record.
+- `docs/insurance/A1-IMPLEMENTATION.md` — A1 canonical case, immutable consent,
+  versioned submission, production migrations, flags, canary, and portal.
+- `docs/insurance/IMPLEMENTATION-BLUEPRINT.md` — A2 and later delivery sequence.
+- `docs/insurance/OPERATIONS-MIGRATIONS.md` — migration, recovery, and release
+  evidence requirements.
 
-- [ ] **[A] Establish the current insurance impression/click baseline** by surface and geography.
-- [ ] **[A+M] Pre-register experiment eligibility, copy, success metrics, minimum observation window/sample, and stop conditions** before launch.
-- [ ] **[A] Show insurance CTAs only where journey, property scope, geography, and partner coverage fit.**
-- [ ] **[A] Separate homeowners and landlord-insurance messaging.**
-- [ ] **[A] Track eligible impression → click → partner handoff;** capture downstream conversion only where the partner contract permits it.
-- [ ] **[A] Keep county hazard context separate from quote eligibility or pricing claims.**
-- [ ] **[M] Make the go/iterate/stop decision** from the pre-registered readout.
+### Current production boundary
 
-### Exit gate
+- [x] A0 is deployed and the public intake/affiliate seam remains explicit.
+- [x] A1 migrations `0001` and `0002` are applied; case record and case portal
+  are enabled in production.
+- [x] The production canary proved one canonical case, idempotent replay, and
+  valid-capability `200` / bogus-capability `404` portal behavior.
+- [ ] Remove or explicitly exclude the 4 legacy-only canary profiles and 2 A1
+  canary cases/profiles before treating funnel totals as customer KPIs.
+- [ ] Confirm Neon PITR in the provider console and record an isolated restore
+  exercise; the release record currently documents an assumption, not proof.
+- [ ] Replace consent v1 only after counsel approves versioned wording. Keep
+  public withdrawal, historical-PII backfill, APOLLO reliance expansion, and
+  any legal characterization of compensation gated until then.
+- [x] Sprint 25 dependency/auth security closure completed on 2026-08-21; the
+  P5 curated live matrix remains the other A2 start gate.
 
-- [ ] The experiment can be evaluated without relying on anecdotal clicks.
-- [ ] No UI or copy claims that Property Insights underwrites, quotes, binds, or determines eligibility.
-- [ ] A dated go/iterate/stop decision is recorded.
+### A2 boundary
 
-### Evidence
-
-- Experiment spec: _TBD_
-- Results: _TBD_
-- Decision: _TBD_
-
----
-
-## I2 — Coverage Profile intake (only after I1 go decision)
-
-**Purpose:** prefill known facts, ask the user for missing facts, and hand a transparent coverage profile to an approved partner.
-
-### Required gates before build
-
-- [ ] **[M] I1 demonstrates sufficient demand/partner value** under the agreed test.
-- [ ] **[M] Partner confirms accepted fields, attribution, state/province coverage, handoff mechanism, and downstream reporting.**
-- [ ] **[M] Legal/privacy review covers disclosures, consent, retention, licensing posture, and sensitive insurance/claims inputs.**
-- [ ] **[A] Data provenance is visible** so users can correct modeled or stale property facts.
-
-### Candidate intake
-
-- Known/prefilled where supported: resolved subject, address, property type/form, year built, size, value, rent estimate, regional context
-- User-confirmed: occupancy/use, number of units, construction, roof and system ages, renovations, short-term rental use, claims, current coverage, and desired coverage
-
-### Exit gate
-
-- [ ] Every prefilled field is labeled and editable.
-- [ ] Required unknowns are asked rather than inferred.
-- [ ] Consent and partner handoff are explicit.
-- [ ] The product remains described as matching, prequalification, or submission prefill—not underwriting.
-
-### Evidence
-
-- Partner requirements: _TBD_
-- Legal approval: _TBD_
-- Handoff QA: _TBD_
+A2 is synthetic delivery infrastructure only: transactional outbox, signed and
+deduplicated webhook inbox, provider-neutral submission interface,
+deterministic simulator, timeout/retry/dead-letter/replay/reconciliation, and
+an operator exception queue. It does not authorize personalized pricing, real
+carrier delivery, quote, bind, payment, policy issuance, or claims decisions.
 
 ---
 
@@ -519,12 +510,13 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 | Clarification completion rate | TBD | TBD | Set after P4 baseline | — |
 | High-confidence classification coverage, US residential | TBD | TBD | Set after P3 report | — |
 | High-confidence classification coverage, Canada by province | TBD | TBD | Set separately per province | — |
-| Property-level modules shown without satisfied capability | TBD | **>0: CA listing-only land** | **0** | 2026-08-14 |
+| Property-level modules shown without satisfied capability | TBD | 0 in CA land containment/render fixtures; full live matrix pending | **0** | 2026-08-20 |
 | Automatic journey switches caused by classification | 0 | 0 | **0** | — |
-| Goal selection rate | N/A | N/A | Observe after P4 | — |
-| Result-view switch rate | N/A | N/A | Observe after P4 | — |
+| Goal selection rate | N/A | 2 recorded rental selections in the 30-day re-baseline sample | Observe; set minimum sample before decision | 2026-08-20 |
+| Rental result support state | N/A | 9 views: 3 supported / 2 limited / 4 unavailable | Report by geo/scope; no aggregate launch claim yet | 2026-08-20 |
+| Result-view switch rate | N/A | Instrumented; sample too small for a decision | Set after P4/P5 acceptance | 2026-08-20 |
 | Investor results with address-level rent | TBD | TBD | Report separately from regional proxy | — |
-| Insurance eligible impressions/clicks/handoffs | TBD | TBD | Pre-register in I1 | — |
+| Insurance eligible impressions/clicks/handoffs | TBD | Instrumented; A1 canary rows contaminate raw totals | Exclude/remove canaries, then set observation window and report by geo/line/surface | 2026-08-20 |
 
 ## Decision log
 
@@ -547,18 +539,46 @@ Update this table at each phase gate. Never aggregate away geography or subject 
 | 2026-08-14 | Only durable `user_confirmation` provenance restores subject scope | URL scope is forgeable and an application-only version disappears on DB reads | Persistence schema or trust contract changes |
 | 2026-08-14 | Pause broad P5 acceptance for listing-only land containment | Real CA land listings resolve to parcel scope but bypass residential exclusions, partner gating, and narrative safeguards | Sprint 22 fixtures and curated acceptance matrix pass |
 | 2026-08-14 | Assessment focus is a supplemental result control | A user already selected a goal at handoff; repeating the chooser and placing focus above the property result makes routing state look like the product's primary output | Sprint 23 post-deploy replay fails the fixed order or needs a refetch |
+| 2026-08-16 | Insurance A0/A1 replace the original I1/I2 planning sequence | The repository now has an activated canonical case/submission kernel, not only an unstarted affiliate experiment | A later platform plan deliberately supersedes the insurance blueprint |
+| 2026-08-20 | Close dependency/auth and operational truth before Insurance A2 | A2 widens a sensitive production data plane; known dependency advisories, canary KPI pollution, and recovery evidence must be resolved or explicitly owned first | Sprint 25 exit evidence is recorded |
+
+## Sprint 25 — production security and truth closure
+
+**Status: `[x]` closed by root review on 2026-08-21.** Recorded evidence:
+
+- direct production dependencies are pinned to `@clerk/nextjs@7.8.0`,
+  `next@16.3.2`, `eslint-config-next@16.3.2`, `resend@6.21.0`, and
+  `puppeteer-core@25.8.0`; the production dependency graph reports zero
+  advisories;
+- 8/8 offline authorization regressions cover unauthenticated, cross-owner,
+  billing-owner, anonymous-profile, and case-capability failure paths. The
+  review also fixed a real cross-owner profile-handoff linkage defect by making
+  the profile owner part of the atomic update predicate;
+- TypeScript and the production build pass; Property Intelligence passes
+  143/143 across 11 suites; the journey matrix passes 2,688 cells; insurance
+  kernel/A1 validations pass; browser E2E passes 14 with one intentionally
+  skipped unstable live-property fixture; and production smoke passes 11/11;
+- canary rows remain excluded from customer KPI claims pending approved cleanup,
+  Neon PITR/restore remains unverified pending the owned provider-console
+  exercise, and consent/APOLLO/withdrawal items remain counsel/partner gated.
+
+Dependency-file changes alone did not close this sprint; the root validation
+and explicit ownership above did. No A2 feature work is counted as Sprint 25.
 
 ## Immediate next implementation slice
 
-Sprint 23 is deployed. Sprint 24 cross-geo composition is implemented with
-pure-math, render, and Canadian CMHC browser evidence. Finish the live US and
-narrow-viewport gates before persistence:
+Sprint 24 cross-geo composition is implemented and Sprint 25 is closed. The
+next sequence is deployment, live acceptance, then new platform work:
 
-1. Verify the Canadian operating scenario at a narrow/mobile viewport.
-2. After US credits reset, spot-check one US listed result, one off-market
-   result, one county fallback, and one unit/building scope mismatch. Confirm
-   scenario edits and view switches do not refetch.
-3. Add owner-scoped assumption persistence only through an explicit additive
-   schema/privacy slice; do not hide it inside the calculator UI patch.
-4. Resume the remaining curated asset matrix after the cross-geo checks pass;
-   keep occupancy personalization and commercial financial claims out of scope.
+1. **P5 live acceptance.** Verify Canadian mapped/unmapped CMHC at desktop and
+   narrow/mobile widths, then one US listed result, one off-market result, one
+   county fallback, and one unit/building mismatch. Confirm edits and view
+   switches do not refetch and excluded classes withhold residential modules
+   and partner actions.
+2. **Insurance A2.** Start only after the P5 live matrix closes; Sprint 25 is
+   already closed. Keep A2 synthetic and
+   provider-neutral under the existing server-side execution boundary.
+3. **P5 persistence/P6 remain deferred** until the live matrix passes and the
+   journey sample is large enough to justify storing more private assumptions.
+   Occupancy personalization and commercial financial claims remain out of
+   scope.

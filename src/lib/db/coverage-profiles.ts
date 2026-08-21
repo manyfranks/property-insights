@@ -404,13 +404,20 @@ export async function createCoverageProfile(
  * First-write-wins: the UPDATE only matches a profile whose vendor_id is
  * still NULL, so a duplicate or replayed partner-connect click (the POST is
  * fire-and-forget over a plain `<a>` click, not idempotency-keyed) can't
- * overwrite an earlier, possibly-different stamp. Returns `false` — not an
- * error — when the profile doesn't exist, the id is malformed in a way that
- * still passed isCoverageProfileId (shouldn't happen), or it was already
- * stamped; callers that only want best-effort click attribution should treat
- * `false` as a silent no-op.
+ * overwrite an earlier, possibly-different stamp. The requester owner is
+ * matched atomically with PostgreSQL's null-safe comparison: account-owned
+ * profiles require the same account, while anonymous/opted-out profiles can
+ * be stamped only by a request whose privacy-resolved owner is also null.
+ * That preserves the intentionally anonymous flow without letting a guessed
+ * UUID cross the signed-in ownership boundary. Returns `false` — not an
+ * error — when the profile doesn't exist, belongs to a different owner, or
+ * was already stamped.
  */
-export async function markProfileHandoff(id: string, vendorId: string): Promise<boolean> {
+export async function markProfileHandoff(
+  id: string,
+  vendorId: string,
+  ownerUserId: string | null
+): Promise<boolean> {
   if (!dbAvailable()) throw new Error("DATABASE_URL not set — cannot update coverage profile");
   if (!isCoverageProfileId(id)) throw new Error("Invalid coverage profile id");
   const vendor = requireString(vendorId, "vendorId", 60);
@@ -419,7 +426,9 @@ export async function markProfileHandoff(id: string, vendorId: string): Promise<
   const rows = (await db`
     UPDATE coverage_profiles
     SET vendor_id = ${vendor}
-    WHERE id = ${id} AND vendor_id IS NULL
+    WHERE id = ${id}
+      AND user_id IS NOT DISTINCT FROM ${ownerUserId}
+      AND vendor_id IS NULL
     RETURNING id
   `) as Array<{ id: string }>;
   return rows.length === 1;

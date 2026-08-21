@@ -149,6 +149,32 @@ async function checkDisclosures(): Promise<void> {
   record("GET /disclosures", res.status === 200, `status ${res.status}`);
 }
 
+async function checkCaseCapabilityPrivacy(): Promise<void> {
+  const token = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+  try {
+    const res = await fetch(`${BASE_URL}/insurance/case/${token}`, { redirect: "manual" });
+    const cacheControl = res.headers.get("cache-control") ?? "";
+    const referrerPolicy = res.headers.get("referrer-policy") ?? "";
+    const robots = res.headers.get("x-robots-tag") ?? "";
+    const pass =
+      res.status === 404 &&
+      cacheControl.includes("no-store") &&
+      referrerPolicy === "no-referrer" &&
+      robots.includes("noindex");
+    record(
+      "GET /insurance/case/[invalid-capability]",
+      pass,
+      `status ${res.status}; cache=${cacheControl || "missing"}; referrer=${referrerPolicy || "missing"}; robots=${robots || "missing"}`
+    );
+  } catch (err) {
+    record(
+      "GET /insurance/case/[invalid-capability]",
+      false,
+      `request failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
 // The five per-surface children scripts/generate-sitemap.ts's sitemapindex
 // (2026-08-20 split) points at — see that file's header for the rationale.
 const SITEMAP_CHILDREN = [
@@ -297,6 +323,7 @@ async function main() {
   await checkInsuranceLanding();
   await checkCoverageProfile();
   await checkDisclosures();
+  await checkCaseCapabilityPrivacy();
   await checkSitemap();
   await checkRobots();
   await checkWaitlistWrite();

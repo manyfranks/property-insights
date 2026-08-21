@@ -1,4 +1,4 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 import { apiLimiter, authApiLimiter } from "@/lib/rate-limit";
 import { isOptedOutRequest } from "@/lib/privacy";
@@ -10,34 +10,39 @@ import {
 } from "@/lib/analytics-ids";
 import { isSensitiveInsuranceCapabilityPath } from "@/lib/insurance/privacy/sensitive-routes";
 
-const isProtectedRoute = createRouteMatcher(["/api/subscribe(.*)"]);
+function createPathPrefixMatcher(prefixes: string[]) {
+  return (req: NextRequest): boolean => {
+    const pathname = req.nextUrl.pathname;
+    return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  };
+}
 
 // Public API routes that get per-IP rate limiting
-const isPublicApi = createRouteMatcher([
-  "/api/autocomplete(.*)",
-  "/api/search(.*)",
-  "/api/discover(.*)",
+const isPublicApi = createPathPrefixMatcher([
+  "/api/autocomplete",
+  "/api/search",
+  "/api/discover",
   // partner-connect now accepts anonymous clicks too — needs the per-IP
   // limit since it can no longer rely solely on the per-user one below.
-  "/api/partner-connect(.*)",
+  "/api/partner-connect",
 ]);
 
 // Authenticated API routes that get per-user rate limiting (applied in
 // addition to the per-IP limit above when the caller is signed in)
-const isAuthApi = createRouteMatcher([
-  "/api/track(.*)",
-  "/api/consent(.*)",
-  "/api/subscribe(.*)",
-  "/api/request-city(.*)",
-  "/api/partner-connect(.*)",
-  "/api/analyze(.*)",
+const isAuthApi = createPathPrefixMatcher([
+  "/api/track",
+  "/api/consent",
+  "/api/subscribe",
+  "/api/request-city",
+  "/api/partner-connect",
+  "/api/analyze",
   // Requires a live Clerk session by definition (it stamps *my* signed-in
   // identity onto *my* recent anonymous rows) — see
   // src/app/api/signal/stitch/route.ts. /api/signal itself (anonymous
   // ingest) deliberately is NOT here: it has its own dedicated per-IP
   // signalLimiter (src/lib/rate-limit.ts), checked inside the route, since
   // most of its traffic has no Clerk session to key a per-user limit on.
-  "/api/signal/stitch(.*)",
+  "/api/signal/stitch",
 ]);
 
 // /api/assess is rate-limited inside the route handler so failed Zoocasa
@@ -108,10 +113,6 @@ function mintAnalyticsCookies(req: NextRequest, res: NextResponse): void {
 }
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) {
-    await auth.protect();
-  }
-
   // --- Rate limiting for public API routes (per-IP) ---
   if (isPublicApi(req)) {
     const limiter = apiLimiter();
