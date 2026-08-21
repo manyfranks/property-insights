@@ -36,6 +36,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { signal, flushSignals } from "@/lib/signal";
 import type { InsuranceLine } from "@/config/affiliate-vendors";
 import type { CoverageOccupancy } from "@/lib/db/coverage-profiles";
+import type { CoverageHazardBlock } from "@/lib/insurance/coverage-hazards";
 import {
   formatMoney,
   formatSize,
@@ -211,7 +212,18 @@ function SelectField({
   );
 }
 
-export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePrefill }) {
+export default function CoverageProfileWizard({
+  prefill,
+  hazards,
+}: {
+  prefill: CoveragePrefill;
+  // County-level FEMA hazard scores, resolved server-side (see
+  // src/lib/insurance/coverage-hazards.ts and its caller,
+  // src/app/coverage-profile/page.tsx) — never fetched from this client
+  // component. source is always "modeled": these are county aggregates,
+  // never a fact about this specific parcel.
+  hazards: CoverageHazardBlock;
+}) {
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState<Phase>("wizard");
   const [error, setError] = useState<string | null>(null);
@@ -524,12 +536,9 @@ export default function CoverageProfileWizard({ prefill }: { prefill: CoveragePr
           estimatedRent: parseNumericField(rentDraft),
           source: prefill.value.source,
         },
-        hazards: {
-          flood: null,
-          wildfire: null,
-          wind: null,
-          source: "modeled",
-        },
+        // Real county-level FEMA hazard scores, resolved server-side and
+        // passed in as a prop — see the `hazards` prop doc comment above.
+        hazards,
       },
       answers: {
         occupancy,

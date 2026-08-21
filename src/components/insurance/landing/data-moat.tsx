@@ -6,9 +6,12 @@
  * property — via buildCoveragePrefill (src/components/insurance/coverage-prefill.ts),
  * the exact same function the coverage-profile wizard uses, so the card
  * shows precisely what the wizard would actually pre-fill. No hazard row:
- * CoveragePrefill has no hazard field (the wizard always submits
- * hazards:{flood:null,wildfire:null,wind:null} — see
- * coverage-profile-wizard.tsx), so showing one here would be fabricated.
+ * CoveragePrefill has no hazard field — county-level FEMA hazard scores are
+ * resolved separately, server-side, in src/app/coverage-profile/page.tsx via
+ * src/lib/insurance/coverage-hazards.ts (an address -> county-FIPS geocode
+ * plus a regional_econ read), not from a listing object alone, so this
+ * showcase card (built from buildCoveragePrefill only) can't reproduce it
+ * without duplicating that round trip. Omitted here rather than faked.
  *
  * Field count: buildCoveragePrefill can populate exactly 6 fields —
  * identity.type, identity.yearBuilt, identity.beds, identity.baths,
