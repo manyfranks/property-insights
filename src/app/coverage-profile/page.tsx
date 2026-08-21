@@ -34,6 +34,7 @@ import { isLive } from "@/config/insurance-rollout";
 import { getListingBySlug } from "@/lib/kv/listings";
 import { slugify } from "@/lib/utils";
 import { buildCoveragePrefill } from "@/components/insurance/coverage-prefill";
+import { getCoverageHazards } from "@/lib/insurance/coverage-hazards";
 import { CoverageExcludedNotice } from "@/components/insurance/coverage-excluded-notice";
 import { CoverageNotLiveNotice } from "@/components/insurance/coverage-not-live-notice";
 import CoverageProfileWizard from "@/components/insurance/coverage-profile-wizard";
@@ -151,9 +152,20 @@ export default async function CoverageProfilePage({
     listing,
   });
 
+  // County-level FEMA hazard scores (src/lib/insurance/coverage-hazards.ts)
+  // — fetched server-side here, never from client code. Fails soft to
+  // all-null internally (geocode miss, DB down, CA address), so this never
+  // blocks the page from rendering.
+  const hazards = await getCoverageHazards({
+    country: effectiveCountry,
+    address,
+    city: listing?.city ?? null,
+    region: effectiveRegion,
+  });
+
   return (
     <main className="max-w-2xl mx-auto px-6 py-8 sm:py-10">
-      <CoverageProfileWizard prefill={prefill} />
+      <CoverageProfileWizard prefill={prefill} hazards={hazards} />
     </main>
   );
 }

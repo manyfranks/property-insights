@@ -205,7 +205,11 @@ function fieldAnswers(
     if (key !== "source") add(`property.value.${key}`, value, originFor(property.value.source), "EVIDENCE", `coverage-profile:value:${property.value.source}`);
   }
   for (const [key, value] of Object.entries(property.hazards)) {
-    if (key !== "source") add(`property.hazards.${key}`, value, originFor(property.hazards.source), "EVIDENCE", `coverage-profile:hazards:${property.hazards.source}`);
+    // Provenance names the dataset, not just the confidence class. These are
+    // FEMA National Risk Index scores for the property's COUNTY — a regional
+    // aggregate, never a property-level assessment. A downstream broker reading
+    // this submission must be able to tell those apart; "modeled" alone cannot.
+    if (key !== "source") add(`property.hazards.${key}`, value, originFor(property.hazards.source), "EVIDENCE", `coverage-profile:hazards:county-fema-nri:${property.hazards.source}`);
   }
   add("insurance.occupancy", answers.occupancy, "USER", "ATTESTATION", "coverage-profile:user");
   add("insurance.unit_count", answers.unitCount, "USER", "ATTESTATION", "coverage-profile:user");
