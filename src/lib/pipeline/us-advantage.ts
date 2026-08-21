@@ -18,10 +18,10 @@
  * (src/lib/db/regional-econ.ts). That is enough to build five signals with
  * no US analogue in the CA product:
  *
- *   1. computeEquityTenureSignal — hold period + implied equity from sale
- *      history, corroborated against county HPI. Structural distress/flip/
- *      flexibility detection that replaces the keyword signals RentCast
- *      can't supply. (If/when a paid RentCast tier adds MLS remarks, the
+ *   1. computeEquityTenureSignal — recorded hold period + price change from
+ *      sale history, corroborated against county HPI. Asking-price records
+ *      can support structural seller signals; AVM-only records remain neutral
+ *      value-history context. (If/when a paid RentCast tier adds MLS remarks, the
  *      keyword signals in signals.ts/scoring.ts would simply start firing
  *      again on their own — nothing here needs to change.)
  *   2. triangulateValuation — 3-4 independent value anchors (tax-assessed,
@@ -72,7 +72,8 @@ export type EquityTenureTier =
   | "loss_sale_distress"
   | "short_hold_flip"
   | "long_tenure_high_equity"
-  | "moderate_hold";
+  | "moderate_hold"
+  | "recorded_value_history";
 
 export interface EquityTenureSignal {
   tier: EquityTenureTier;
@@ -83,10 +84,9 @@ export interface EquityTenureSignal {
   lastSalePrice: number;
   currentValueEstimate: number;
   currentValueKind: "asking" | "avm_estimate";
-  /** (currentValueEstimate - lastSalePrice) / lastSalePrice. A PROXY for
-   * appreciation/equity change — it does NOT net out any mortgage balance
-   * or paydown, which RentCast's free tier doesn't expose. Disclosed as
-   * such wherever rendered. */
+  /** (currentValueEstimate - lastSalePrice) / lastSalePrice. This is price
+   * change only; it does not establish ownership, mortgage balance, equity,
+   * distress, or intent. Disclosed as such wherever rendered. */
   impliedAppreciationPct: number;
   /** lastSalePrice grown forward at the county's annualized HPI rate over
    * holdYears — an independent "should be worth about this" corroboration
@@ -142,6 +142,21 @@ function money(n: number): string {
   return `$${Math.round(n).toLocaleString()}`;
 }
 
+function avmSaleHistoryNarrative(
+  holdYears: number,
+  lastSalePrice: number,
+  modeledValue: number,
+  changePct: number
+): string {
+  const signedChange = `${changePct >= 0 ? "+" : ""}${(changePct * 100).toFixed(0)}%`;
+  return (
+    `The last recorded sale was ${holdYears.toFixed(1)}yr ago at ${money(lastSalePrice)}. ` +
+    `RentCast's modeled value estimate is ${money(modeledValue)}, a ${signedChange} change from that recorded sale. ` +
+    `This recorded-sale-to-modeled-value comparison does not identify or infer a current seller, negotiation ` +
+    `leverage, mortgage balance, equity, distress, or intent.`
+  );
+}
+
 /**
  * Computes the seller equity/tenure signal from RentCast's sale history.
  * Returns null when there's no usable sale history (no lastSaleDate/
@@ -150,8 +165,10 @@ function money(n: number): string {
  * for the ~free-tier addresses where RentCast has no transaction on file.
  *
  * `currentValueKind` disambiguates the narrative: "asking" when there's a
- * live listing price, "avm_estimate" for off-market properties where the
- * AVM value stands in for what the property would likely transact at.
+ * live listing price, "avm_estimate" for off-market properties where only a
+ * modeled comparison is available. The latter describes sale-history-to-AVM
+ * change and makes no seller, leverage, mortgage, equity, distress, or intent
+ * inference.
  */
 export function computeEquityTenureSignal(
   record: RentCastPropertyRecord | null,
@@ -181,7 +198,27 @@ export function computeEquityTenureSignal(
     }
   }
 
-  const refWord = currentValueKind === "asking" ? "asking" : "estimated value";
+  // An AVM is not an owner, seller, mortgage, equity, distress, or intent
+  // signal. Return a structurally neutral record before the asking-price
+  // classification so API/debug/future consumers cannot recover those
+  // semantics from a presentation-masked tier, label, score, or strength.
+  if (currentValueKind === "avm_estimate") {
+    return {
+      tier: "recorded_value_history",
+      label: "Recorded Value History",
+      holdYears,
+      lastSaleDate: record.lastSaleDate,
+      lastSalePrice,
+      currentValueEstimate,
+      currentValueKind,
+      impliedAppreciationPct,
+      hpiImpliedValue,
+      hpiCorroboration,
+      motivationStrength: "none",
+      scorePoints: 0,
+      narrative: avmSaleHistoryNarrative(holdYears, lastSalePrice, currentValueEstimate, impliedAppreciationPct),
+    };
+  }
 
   let tier: EquityTenureTier;
   let label: string;
@@ -195,7 +232,7 @@ export function computeEquityTenureSignal(
     motivationStrength = "high";
     scorePoints = 20;
     narrative =
-      `Bought ${holdYears.toFixed(1)}yr ago for ${money(lastSalePrice)}; the ${refWord} of ` +
+      `Bought ${holdYears.toFixed(1)}yr ago for ${money(lastSalePrice)}; the asking price of ` +
       `${money(currentValueEstimate)} is below that purchase price — a structural sign of a seller under ` +
       `financial pressure, not just listing language.`;
   } else if (holdYears <= FLIP_MAX_HOLD_YEARS && currentValueEstimate >= lastSalePrice * FLIP_MIN_MARKUP_RATIO) {
@@ -204,7 +241,7 @@ export function computeEquityTenureSignal(
     motivationStrength = "moderate";
     scorePoints = 10;
     narrative =
-      `Last sold ${holdYears.toFixed(1)}yr ago for ${money(lastSalePrice)}, now ${refWord === "asking" ? "asking" : "valued at"} ` +
+      `Last sold ${holdYears.toFixed(1)}yr ago for ${money(lastSalePrice)}, now asking ` +
       `${money(currentValueEstimate)} (+${(impliedAppreciationPct * 100).toFixed(0)}%). This is a short-hold resale ` +
       `pattern; the records do not establish renovation work, seller intent, or investment ownership.`;
   } else if (holdYears >= LONG_TENURE_MIN_HOLD_YEARS && impliedAppreciationPct >= LONG_TENURE_MIN_APPRECIATION) {
@@ -258,10 +295,14 @@ export function applyEquitySignalToScore(score: ScoreResult, equitySignal: Equit
   };
 }
 
-/** Chip label for the signals list — null for the neutral "moderate_hold"
- * tier (nothing worth surfacing as a signal chip) or missing sale history. */
+/** Chip label for the signals list — null for neutral hold/value-history
+ * records (nothing worth surfacing as a seller signal) or missing history. */
 export function equitySignalLabel(equitySignal: EquityTenureSignal | null): string | null {
-  if (!equitySignal || equitySignal.tier === "moderate_hold") return null;
+  if (
+    !equitySignal ||
+    equitySignal.tier === "moderate_hold" ||
+    equitySignal.tier === "recorded_value_history"
+  ) return null;
   return equitySignal.label;
 }
 

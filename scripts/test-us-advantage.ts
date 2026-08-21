@@ -44,6 +44,45 @@ function approx(a: number, b: number, tol = 0.01): boolean {
   return Math.abs(a - b) <= tol;
 }
 
+function assertAvmNarrativeSafety(
+  label: string,
+  signal: ReturnType<typeof computeEquityTenureSignal>,
+  expectedChange: string
+) {
+  assert(`${label}: returns a signal`, signal !== null);
+  if (!signal) return;
+
+  assert(`${label}: retains avm_estimate provenance`, signal.currentValueKind === "avm_estimate");
+  assert(`${label}: uses neutral value-history tier`, signal.tier === "recorded_value_history", signal.tier);
+  assert(`${label}: uses neutral value-history label`, signal.label === "Recorded Value History", signal.label);
+  assert(`${label}: carries no motivation strength`, signal.motivationStrength === "none", signal.motivationStrength);
+  assert(`${label}: contributes no score points`, signal.scorePoints === 0, String(signal.scorePoints));
+  assert(`${label}: emits no seller-signal chip`, equitySignalLabel(signal) === null, String(equitySignalLabel(signal)));
+  assert(`${label}: describes the last recorded sale`, signal.narrative.includes("last recorded sale"), signal.narrative);
+  assert(`${label}: labels the comparison value as modeled`, signal.narrative.includes("modeled value estimate"), signal.narrative);
+  assert(`${label}: describes the sale-to-model change`, signal.narrative.includes(expectedChange), signal.narrative);
+  assert(
+    `${label}: explicitly disclaims seller and leverage inference`,
+    signal.narrative.includes(
+      "does not identify or infer a current seller, negotiation leverage, mortgage balance, equity, distress, or intent"
+    ),
+    signal.narrative
+  );
+
+  const unsafeClaims = [
+    "seller under financial pressure",
+    "gives this seller room to negotiate",
+    "without going underwater",
+    "No structural distress",
+    "short-hold resale pattern",
+  ];
+  assert(
+    `${label}: contains no affirmative seller/equity/distress claim`,
+    unsafeClaims.every((claim) => !signal.narrative.includes(claim)),
+    signal.narrative
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Fixture helper — a minimal-but-realistic RentCastPropertyRecord. Shapes
 // match src/lib/rentcast.ts's mapPropertyRecord() output (normalized public
@@ -107,6 +146,7 @@ console.log("\n═══ Equity/Tenure signal ═══\n");
     assert("long-tenure: motivationStrength moderate", sig.motivationStrength === "moderate");
     assert("long-tenure: scorePoints 6", sig.scorePoints === 6, String(sig.scorePoints));
     assert("long-tenure: label chip surfaces", equitySignalLabel(sig) === "Long-Tenure Equity");
+    assert("long-tenure asking: preserves seller leverage narrative", sig.narrative.includes("gives this seller room to negotiate"));
   }
 }
 
@@ -125,6 +165,7 @@ console.log("\n═══ Equity/Tenure signal ═══\n");
       String(sig.impliedAppreciationPct)
     );
     assert("loss-sale: narrative mentions purchase price", sig.narrative.includes("$450,000"));
+    assert("loss-sale asking: preserves seller-pressure narrative", sig.narrative.includes("seller under financial pressure"));
   }
 }
 
@@ -159,6 +200,45 @@ console.log("\n═══ Equity/Tenure signal ═══\n");
 {
   const sig = computeEquityTenureSignal(null, 400_000, "avm_estimate", 0.1, NOW);
   assert("null record: returns null", sig === null);
+}
+
+// --- Off-market AVM narratives are historical/model comparisons only ---
+{
+  const lossSale = computeEquityTenureSignal(
+    fixtureRecord({ lastSaleDate: isoYearsAgo(2, NOW), lastSalePrice: 450_000 }),
+    400_000,
+    "avm_estimate",
+    0.05,
+    NOW
+  );
+  assertAvmNarrativeSafety("off-market loss-sale tier", lossSale, "-11% change");
+
+  const shortHold = computeEquityTenureSignal(
+    fixtureRecord({ lastSaleDate: isoYearsAgo(0.75, NOW), lastSalePrice: 300_000 }),
+    375_000,
+    "avm_estimate",
+    0.05,
+    NOW
+  );
+  assertAvmNarrativeSafety("off-market short-hold tier", shortHold, "+25% change");
+
+  const longTenure = computeEquityTenureSignal(
+    fixtureRecord({ lastSaleDate: isoYearsAgo(15, NOW), lastSalePrice: 200_000 }),
+    420_000,
+    "avm_estimate",
+    0.25,
+    NOW
+  );
+  assertAvmNarrativeSafety("off-market long-tenure tier", longTenure, "+110% change");
+
+  const moderateHold = computeEquityTenureSignal(
+    fixtureRecord({ lastSaleDate: isoYearsAgo(6, NOW), lastSalePrice: 350_000 }),
+    370_000,
+    "avm_estimate",
+    0.05,
+    NOW
+  );
+  assertAvmNarrativeSafety("off-market moderate-hold tier", moderateHold, "+6% change");
 }
 
 // --- Moderate hold — no signal chip, no score points, but not null ---
@@ -462,7 +542,9 @@ console.log("\n═══ buildUsAdvantageBundle (integration) ═══\n");
   });
 
   assert("off-market: equity signal uses avm_estimate kind", bundle.equitySignal?.currentValueKind === "avm_estimate");
-  assert("off-market: equity tier is long-tenure high-equity", bundle.equitySignal?.tier === "long_tenure_high_equity");
+  assert("off-market: equity tier is neutral recorded value history", bundle.equitySignal?.tier === "recorded_value_history");
+  assert("off-market: equity signal cannot change score", bundle.equitySignal?.scorePoints === 0);
+  assert("off-market: equity signal has no motivation strength", bundle.equitySignal?.motivationStrength === "none");
   assert("off-market: investor yield null (no rent)", bundle.investorYield === null);
   assert("off-market: risk momentum unknown (no market panel)", bundle.riskMomentum.momentum === "unknown");
   assert("off-market: over-assessment does not trigger (avm above assessed)", bundle.overAssessment.triggered === false);

@@ -144,7 +144,7 @@ export function deterministicUsNarrative(context: UsNarrativeContext): string {
     );
   }
 
-  if (equitySignal && equitySignal.tier !== "moderate_hold") {
+  if (equitySignal && equitySignal.currentValueKind === "asking" && equitySignal.tier !== "moderate_hold") {
     parts.push(equitySignal.narrative);
   }
 

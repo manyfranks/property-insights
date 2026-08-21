@@ -18,7 +18,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AssessmentJourneyFocus, AssessmentJourneyPanel } from "../src/components/assessment-journey";
 import CanadaRentalScreen from "../src/components/canada-rental-screen";
 import RentalOperatingScenario from "../src/components/rental-operating-scenario";
-import { RentalScreen as UsRentalScreen } from "../src/components/us-assessment-result";
+import UsAssessmentResult, {
+  EquityTenureCard,
+  RentalScreen as UsRentalScreen,
+  type UsFallbackResult,
+  type UsOffMarketResult,
+} from "../src/components/us-assessment-result";
 import { deriveCaRentalJourneyStatus } from "../src/lib/property-intelligence/journey";
 import { classifyProperty } from "../src/lib/property-intelligence/classification";
 import { evaluatePropertyCapabilities } from "../src/lib/property-intelligence/capabilities";
@@ -29,6 +34,7 @@ import {
   type EvidenceScope,
   type EvidenceSource,
 } from "../src/lib/property-intelligence/evidence";
+import type { EquityTenureSignal } from "../src/lib/pipeline/us-advantage";
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -116,6 +122,7 @@ test("excluded class (vacant land): AssessmentJourneyPanel withholds the calcula
   assert.match(markup, /Residential rental analysis/, "withheld-report notice must explain the exclusion");
   assert.match(markup, /vacant land/, "withheld-report notice must name the excluded class");
   assert.match(markup, /Report withheld for this focus/, "the amber withheld-report section must render in place of the calculator");
+  assert.equal((markup.match(/<h1/g) ?? []).length, 0, "CA land keeps the generic withheld panel");
 });
 
 test("clean residential without CMHC: CanadaRentalScreen renders with the no-benchmark copy", () => {
@@ -226,6 +233,284 @@ test("US supported rental evidence composes the scenario while a regional fallba
   );
   assert.doesNotMatch(fallback, /data-p5-editable-scenario-basis/);
   assert.match(fallback, /HUD Fair Market Rent/);
+});
+
+function fallbackResult(
+  propertyDataUnavailableReason: UsFallbackResult["propertyDataUnavailableReason"]
+): UsFallbackResult {
+  const resolved = resolveAssessmentSubject({
+    rawInput: "2 15th St NW, Washington, DC 20024",
+    normalizedAddress: "2 15th St NW, Washington, DC 20024",
+  });
+  const classification = classifyProperty({ subject: resolved, evidence: evidence([]) });
+  const capabilities = evaluatePropertyCapabilities({
+    subject: resolved,
+    classification,
+    facts: { countyMarketContext: true },
+  });
+  return {
+    ok: true,
+    country: "US",
+    address: "2 15th St NW",
+    city: "Washington",
+    state: "DC",
+    countyName: "District of Columbia",
+    countyFips: "11001",
+    assessment: {
+      totalValue: 715_000,
+      landValue: 0,
+      buildingValue: 0,
+      assessmentYear: "2024",
+      found: true,
+      source: "area_median",
+      evidenceClass: "modeled",
+    },
+    assessmentSubject: resolved,
+    propertyClassification: classification,
+    propertyCapabilities: capabilities,
+    assessmentGoal: "rental_investment",
+    assessmentId: null,
+    marketPanel: null,
+    emailSent: false,
+    offerAvailable: false,
+    offerUnavailableReason: "no_listing_data",
+    propertyDataUnavailableReason,
+  };
+}
+
+function confirmedExploreSubjectGapResult(): UsFallbackResult {
+  const base = fallbackResult("property_identity_not_found");
+  const available = (explanation: string) => ({
+    available: true as const,
+    reason: "available" as const,
+    evidence: [],
+    explanation,
+  });
+  return {
+    ...base,
+    address: "100 Broadway E, Seattle, WA",
+    city: "Seattle",
+    state: "WA",
+    countyName: "King County",
+    countyFips: "53033",
+    assessmentSubject: {
+      ...base.assessmentSubject,
+      scope: "unknown",
+      selectedBy: "user_confirmation",
+      requiresClarification: false,
+    },
+    propertyCapabilities: {
+      ...base.propertyCapabilities,
+      // Represents capabilities computed for the pre-confirmation building.
+      // The explicit explore-address confirmation deliberately changes the
+      // subject to unknown without refetching or reusing those values.
+      subjectScope: "building",
+      items: {
+        ...base.propertyCapabilities.items,
+        addressSaleValuation: available("Whole-building value fixture"),
+        addressRentEstimate: available("Single-unit rent fixture"),
+        grossYieldScreen: available("Mismatched yield fixture"),
+      },
+    },
+  };
+}
+
+test("confirmed US explore-address preserves its contained unresolved result and regional context", () => {
+  const result = confirmedExploreSubjectGapResult();
+  const safeChild = <UsAssessmentResult data={result} activeGoal="rental_investment" />;
+
+  const genericMarkup = renderToStaticMarkup(
+    <AssessmentJourneyPanel
+      enabled
+      initialGoal="rental_investment"
+      country="US"
+      subjectScope={result.assessmentSubject.scope}
+      capabilities={result.propertyCapabilities}
+      gateUnsupported
+      focusPlacement="embedded"
+    >
+      {safeChild}
+    </AssessmentJourneyPanel>
+  );
+  assert.doesNotMatch(genericMarkup, /<h1/, "pre-fix generic gating removes the safe result identity");
+
+  const containedMarkup = renderToStaticMarkup(
+    <AssessmentJourneyPanel
+      enabled
+      initialGoal="rental_investment"
+      country="US"
+      subjectScope={result.assessmentSubject.scope}
+      capabilities={result.propertyCapabilities}
+      gateUnsupported
+      focusPlacement="embedded"
+      preserveContainedSubjectGapResult
+    >
+      {safeChild}
+    </AssessmentJourneyPanel>
+  );
+
+  assert.equal((containedMarkup.match(/<h1/g) ?? []).length, 1, "exactly one property identity remains");
+  assert.match(containedMarkup, /100 Broadway E, Seattle, WA/);
+  assert.match(containedMarkup, /Exact property required/);
+  assert.match(containedMarkup, /Regional context only/);
+  assert.match(containedMarkup, /withheld the returned value and rent/);
+  assert.ok(
+    containedMarkup.indexOf("<h1") < containedMarkup.indexOf('data-p4-journey-panel="true"'),
+    "property identity must precede the supplemental focus control"
+  );
+  assert.ok(
+    containedMarkup.indexOf('data-p4-journey-panel="true"') < containedMarkup.indexOf("Exact property required"),
+    "focus control must precede the contained unresolved-subject explanation"
+  );
+  assert.doesNotMatch(containedMarkup, /data-p5-editable-scenario-basis/);
+  assert.doesNotMatch(containedMarkup, /Gross rental yield|Recommended Offer|Estimated Offer/);
+  assert.doesNotMatch(containedMarkup, /Continue your rental analysis|Act on this analysis|Sponsored/);
+});
+
+test("US identity fallback preserves county disclosure but withholds every property-oriented action", () => {
+  const markup = renderToStaticMarkup(
+    <UsAssessmentResult
+      data={fallbackResult("property_identity_not_found")}
+      activeGoal="rental_investment"
+    />
+  );
+
+  assert.match(markup, /Property identity could not be confirmed/);
+  assert.match(markup, /Property-oriented actions are withheld until an exact property identity is confirmed/);
+  assert.match(markup, /data-property-actions-withheld="identity_not_confirmed"/);
+  assert.match(markup, /County Median Home Value/);
+  assert.match(markup, /not property-specific/);
+  assert.doesNotMatch(markup, /Track this home(?:&apos;|&#x27;|')s value and rent/);
+  assert.doesNotMatch(markup, /Act on this analysis/);
+  assert.doesNotMatch(markup, /Continue your rental analysis/);
+});
+
+test("US transient provider fallback retains existing partner-action composition", () => {
+  const markup = renderToStaticMarkup(
+    <UsAssessmentResult
+      data={fallbackResult("provider_error")}
+      activeGoal="rental_investment"
+    />
+  );
+
+  assert.match(markup, /Property and listing lookup is temporarily unavailable/);
+  assert.match(markup, /Act on this analysis/);
+  assert.match(markup, /Track this home(?:&apos;|&#x27;|')s value and rent/);
+});
+
+function neutralAvmHistorySignal(): EquityTenureSignal {
+  return {
+    tier: "recorded_value_history",
+    label: "Recorded Value History",
+    holdYears: 18.2,
+    lastSaleDate: "2008-06-01",
+    lastSalePrice: 290_000,
+    currentValueEstimate: 614_000,
+    currentValueKind: "avm_estimate",
+    impliedAppreciationPct: 1.117,
+    hpiImpliedValue: 750_000,
+    hpiCorroboration: "below_hpi_trend",
+    motivationStrength: "none",
+    scorePoints: 0,
+    narrative: "The last recorded sale was 18.2yr ago at $290,000. RentCast's modeled value estimate is $614,000, a +112% change from that recorded sale. This recorded-sale-to-modeled-value comparison does not identify or infer a current seller, negotiation leverage, mortgage balance, equity, distress, or intent.",
+  };
+}
+
+test("off-market value history never presents modeled AVM change as seller leverage", () => {
+  const signal = neutralAvmHistorySignal();
+  const offMarket = renderToStaticMarkup(<EquityTenureCard equitySignal={signal} variant="off_market" />);
+  const listed = renderToStaticMarkup(<EquityTenureCard equitySignal={signal} />);
+
+  assert.match(offMarket, /Recorded Sale &amp; Modeled Value/);
+  assert.match(offMarket, /Recorded Value History/);
+  assert.match(offMarket, /Modeled change/);
+  assert.doesNotMatch(offMarket, /Seller Equity|room to negotiate/);
+  assert.match(offMarket, /not a statement about ownership, equity, or willingness to transact/);
+  assert.doesNotMatch(listed, /Seller Equity &amp; Tenure/, "AVM provenance is a defensive off-market discriminator");
+});
+
+test("complete US off-market result keeps AVM history neutral across the production composition", () => {
+  const resolved = subject({
+    rawInput: "112 Aldrich Rd, Peru, VT",
+    normalizedAddress: "112 Aldrich Rd, Peru, VT",
+    propertyRecord: { address: "112 Aldrich Rd, Peru, VT", propertyType: "Single Family" },
+  });
+  const classification = classifyProperty({
+    subject: resolved,
+    evidence: evidence([{ value: "Single Family", scope: "provider_record" }]),
+  });
+  const capabilities = evaluatePropertyCapabilities({
+    subject: resolved,
+    classification,
+    facts: {
+      addressSaleValue: { available: true, scope: "building" },
+      addressRentEstimate: { available: true, scope: "building" },
+      activeListing: false,
+      countyMarketContext: true,
+    },
+  });
+  const result: UsOffMarketResult = {
+    ok: true,
+    country: "US",
+    address: "112 Aldrich Rd, Peru, VT",
+    city: "Peru",
+    state: "VT",
+    countyName: "Bennington County",
+    countyFips: "50003",
+    assessment: {
+      totalValue: 614_000,
+      landValue: 0,
+      buildingValue: 0,
+      assessmentYear: "2026",
+      found: true,
+      source: "avm",
+      evidenceClass: "modeled",
+    },
+    assessmentSubject: resolved,
+    propertyClassification: classification,
+    propertyCapabilities: capabilities,
+    assessmentGoal: "buy_home",
+    assessmentId: null,
+    marketPanel: null,
+    emailSent: false,
+    offerAvailable: false,
+    offerUnavailableReason: "not_listed",
+    offerUnavailableMessage: "No active listing matched the resolved property.",
+    avm: { value: 614_000, rangeLow: 580_000, rangeHigh: 650_000 },
+    rent: { value: 3_420, rangeLow: 3_100, rangeHigh: 3_700 },
+    equitySignal: neutralAvmHistorySignal(),
+    triangulation: {
+      anchors: [{ label: "RentCast AVM", value: 614_000, kind: "avm" }],
+      excludedAnchors: [],
+      triangulatedValue: 614_000,
+      spreadPct: null,
+      confidence: "insufficient",
+      agreementNote: "Only one valuation anchor available for this address — no triangulation possible.",
+    },
+    investorYield: null,
+    riskMomentum: {
+      momentum: "unknown",
+      hpiTrend5y: null,
+      vacancyRate: null,
+      vacancyElevated: false,
+      topPerils: [],
+      note: "No notable risk or momentum signals from county data for this area.",
+    },
+    overAssessment: {
+      triggered: false,
+      taxAssessedValue: null,
+      marketReference: 614_000,
+      deltaPct: null,
+      note: null,
+    },
+  };
+  const markup = renderToStaticMarkup(<UsAssessmentResult data={result} activeGoal="buy_home" />);
+
+  assert.match(markup, /Recorded Sale &amp; Modeled Value/);
+  assert.match(markup, /RentCast(?:&apos;|&#x27;|')s modeled value estimate/);
+  assert.match(markup, /No active listing matched the resolved property/);
+  assert.doesNotMatch(markup, /Seller Equity|Loss-Sale Distress|Long-Tenure Equity|room to negotiate/);
+  assert.doesNotMatch(markup, /seller under financial pressure|structural distress/);
 });
 
 test("supported result renders address and primary offer before a collapsed focus control", () => {

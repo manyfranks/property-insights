@@ -337,6 +337,7 @@ export default function AssessmentProgress({
           onGoalChange={handleGoalChange}
           gateUnsupported
           focusPlacement="embedded"
+          preserveContainedSubjectGapResult
         >
           <UsAssessmentResult
             data={result}
