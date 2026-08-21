@@ -1245,6 +1245,21 @@ export const REVENUE_CRITICAL_IDS: string[] = [
  * enabled + affiliateReady, verify its env URL actually resolved. Call once
  * server-side (property/result page render) — cheap, synchronous, no I/O.
  */
+/**
+ * Vendor ids already reported this process. `assertAffiliateHealth()` runs on
+ * every server render, so a single misconfigured vendor previously emitted one
+ * identical line per page — a production build logged hundreds of them and
+ * buried the real error. The defect still needs to be loud once; it does not
+ * need to be loud repeatedly.
+ */
+const reportedHealthDefects = new Set<string>();
+
+function reportHealthDefect(key: string, message: string): void {
+  if (reportedHealthDefects.has(key)) return;
+  reportedHealthDefects.add(key);
+  console.error(message);
+}
+
 export function assertAffiliateHealth(): void {
   if (process.env.NODE_ENV !== "production") return;
 
@@ -1256,7 +1271,8 @@ export function assertAffiliateHealth(): void {
     const configured = ENV_URL_MAP[id];
 
     if (!configured) {
-      console.error(
+      reportHealthDefect(
+        `${id}:missing`,
         `[affiliate-health] Revenue-critical vendor "${id}" is enabled+affiliateReady but its env URL ` +
           `(${envName}) is missing — falling back to ${vendor.url}.`
       );
@@ -1267,7 +1283,8 @@ export function assertAffiliateHealth(): void {
     // resolution now fails safe to the vendor's plain, undisclosed fallback.
     // Ratehub shipped with `?ref=YOUR_ID` for months undetected.
     if (PLACEHOLDER_URL_PATTERN.test(configured)) {
-      console.error(
+      reportHealthDefect(
+        `${id}:placeholder`,
         `[affiliate-health] Revenue-critical vendor "${id}" has a PLACEHOLDER affiliate URL in ${envName} ` +
           `(${configured}) — using the plain non-affiliate fallback until the real tracking link is configured.`
       );
