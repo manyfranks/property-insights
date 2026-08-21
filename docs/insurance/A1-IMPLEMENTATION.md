@@ -1,7 +1,11 @@
 # Iteration A1 implementation record
 
-Status: implemented on `codex/insurance-a1-case-submission`; production
-migration and public exposure are intentionally not performed.
+Status: implemented, migrated, and activated in production on 2026-08-16/17.
+Case record and the capability-protected status portal are enabled. Quote,
+bind, claim-intake, historical backfill, consent replacement, and public
+withdrawal remain disabled. The dated migration/activation evidence below is
+authoritative; the original pre-production wording is retained only in git
+history.
 
 ## Vertical slice
 
@@ -64,7 +68,7 @@ replay conflicts, command-level create/update/finalize execution against
 scratch Postgres, migration idempotency/checksum drift, immutable consent and
 submissions, TypeScript, lint, build, and the existing journey E2E suite.
 
-HITL required before any production change:
+HITL required before the original A1 production activation:
 
 - approve the strings in `A1-STATUS-COPY-REVIEW.md`;
 - approve and run the production migration with backup/PITR and release-owner
@@ -73,6 +77,10 @@ HITL required before any production change:
 - enable the public portal only after copy review and a production smoke test;
 - keep consent v1 frozen; and
 - keep public withdrawal and historical-PII backfill disabled pending counsel.
+
+Those pre-activation HITL gates were completed only as recorded in the two
+production sections below. They do not approve later consent, delivery,
+quote/bind, claims, or backfill work.
 
 ## Production migration record — 2026-08-16 (America/Vancouver)
 
@@ -125,3 +133,29 @@ HITL required before any production change:
   These rows pollute funnel counts until removed.
 - Still deliberately OFF: quote/bind/claim-intake flags, historical backfill,
   public consent withdrawal (counsel), consent v1 replacement (counsel).
+
+## Open production truth and next-phase gates — 2026-08-20
+
+These items are not closed by the successful A1 canary:
+
+- **KPI contamination:** 4 legacy-only coverage profiles plus 2 A1 canary
+  cases/profiles remain in production. Delete them under an approved cleanup
+  record or explicitly exclude them from every funnel query. Until then,
+  coverage-profile/case totals are not customer KPIs.
+- **Recovery evidence:** Neon PITR was assumed at migration time. Provider
+  console confirmation and an isolated restore exercise have not been recorded.
+  Do not describe backup/recovery as verified.
+- **Counsel gates:** consent v1 stays frozen. Replacement wording, a public
+  withdrawal command/UI, historical-PII backfill, APOLLO reliance expansion,
+  and compensation characterization remain pending counsel/partner review.
+- **Dependency/auth closure:** Sprint 25 closed on 2026-08-21. Direct production
+  dependencies report zero advisories; 8/8 authorization regressions, 143/143
+  Property Intelligence fixtures, 2,688 journey cells, TypeScript, production
+  build, insurance kernel/A1 checks, browser E2E (14 passed, one intentional
+  live-fixture skip), and 11/11 production smoke checks passed. The review fixed
+  cross-owner coverage-profile handoff linkage by enforcing owner identity in
+  the update predicate.
+- **A2 ordering:** do not start the durable delivery spine until Sprint 25 and
+  the P5 curated live-acceptance matrix both close. A2 remains deterministic
+  simulation only; no real provider, quote, bind, policy, payment, or claim
+  authority follows from A1.

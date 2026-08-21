@@ -11,15 +11,19 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getStripe, stripeConfigured } from "@/lib/billing";
 import { BASE_URL } from "@/lib/seo";
+import { authenticatedUserId } from "@/lib/security/authorization";
 
 export async function POST() {
-  if (!stripeConfigured()) {
-    return NextResponse.json({ error: "Billing is not configured" }, { status: 503 });
-  }
-
-  const { userId } = await auth();
+  const { userId: authUserId } = await auth();
+  const userId = authenticatedUserId(authUserId);
   if (!userId) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  }
+
+  // Authenticate before exposing billing configuration or touching Stripe.
+  // This remains authoritative if middleware protection regresses.
+  if (!stripeConfigured()) {
+    return NextResponse.json({ error: "Billing is not configured" }, { status: 503 });
   }
 
   let email: string | undefined;

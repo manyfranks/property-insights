@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { dbAvailable, sql } from "@/lib/db";
 import {
   validateCoverageProfileInput,
@@ -500,6 +500,29 @@ interface CaseStatusRow {
   status: CaseStatusView["status"] | "WITHDRAWN";
   submission_version: number | null;
   updated_at: string | Date;
+  access_token_hash: string;
+  access_token_revoked_at: string | Date | null;
+  access_token_expires_at: string | Date;
+}
+
+export function caseCapabilityAllowsAccess(input: {
+  presentedTokenHash: string;
+  storedTokenHash: string;
+  revokedAt: string | Date | null;
+  expiresAt: string | Date;
+  status: CaseStatusRow["status"];
+  now?: Date;
+}): boolean {
+  const presented = Buffer.from(input.presentedTokenHash, "hex");
+  const stored = Buffer.from(input.storedTokenHash, "hex");
+  const hashMatches = presented.length === stored.length && timingSafeEqual(presented, stored);
+  const expiresAt = new Date(input.expiresAt).getTime();
+  const now = (input.now ?? new Date()).getTime();
+  return hashMatches &&
+    input.revokedAt == null &&
+    Number.isFinite(expiresAt) &&
+    expiresAt > now &&
+    input.status !== "WITHDRAWN";
 }
 
 export async function readCaseStatusByAccessToken(accessToken: string): Promise<CaseStatusView | null> {
@@ -507,18 +530,29 @@ export async function readCaseStatusByAccessToken(accessToken: string): Promise<
   const tokenHash = hashAccessToken(accessToken);
   const db = sql();
   const rows = (await db`
-    SELECT c.id, c.status, MAX(s.version)::int AS submission_version, c.updated_at
+    SELECT c.id, c.status, MAX(s.version)::int AS submission_version, c.updated_at,
+      c.access_token_hash, c.access_token_revoked_at, c.access_token_expires_at
     FROM insurance_cases c
     LEFT JOIN insurance_submissions s ON s.case_id = c.id
     WHERE c.access_token_hash = ${tokenHash}
       AND c.access_token_revoked_at IS NULL
       AND c.access_token_expires_at > NOW()
       AND c.status <> 'WITHDRAWN'
-    GROUP BY c.id
+    GROUP BY c.id, c.access_token_hash, c.access_token_revoked_at, c.access_token_expires_at
     LIMIT 1
   `) as CaseStatusRow[];
   const row = rows[0];
-  if (!row || row.status === "WITHDRAWN") return null;
+  if (
+    !row ||
+    !caseCapabilityAllowsAccess({
+      presentedTokenHash: tokenHash,
+      storedTokenHash: row.access_token_hash,
+      revokedAt: row.access_token_revoked_at,
+      expiresAt: row.access_token_expires_at,
+      status: row.status,
+    }) ||
+    row.status === "WITHDRAWN"
+  ) return null;
   return {
     caseId: row.id,
     status: row.status,

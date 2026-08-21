@@ -143,7 +143,15 @@ test.describe("A1 case portal default-deny", () => {
     const res = await page.goto(`/insurance/case/${token}`);
     expect(res?.status()).toBe(404);
     expect(res?.headers()["referrer-policy"]).toBe("no-referrer");
-    expect(res?.headers()["cache-control"]).toContain("no-store");
+    // Next dev replaces next.config's production `private, no-store` value on
+    // a shared not-found response with `no-cache, must-revalidate`. Both keep
+    // this generic 404 from being reused without revalidation; prod-smoke.ts
+    // separately enforces the stronger live `no-store` contract.
+    const cacheControl = res?.headers()["cache-control"] ?? "";
+    expect(
+      cacheControl.includes("no-store") ||
+        (cacheControl.includes("no-cache") && cacheControl.includes("must-revalidate"))
+    ).toBe(true);
     expect(res?.headers()["x-robots-tag"]).toContain("noindex");
   });
 });

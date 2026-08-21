@@ -1,8 +1,21 @@
 # 24 — P5 Operating Scenario Sprint
 
-_Sequenced 2026-08-14 after the Canadian rental hierarchy passed locally. US
-live composition waits for the RentCast credit reset; the math and Canadian
-surface do not require a provider call._
+_Sequenced 2026-08-14 after the Canadian rental hierarchy passed locally.
+Reconciled 2026-08-20: Canadian and US composition are implemented; curated
+live cross-geo acceptance, owner-scoped persistence, and KPI gates remain open._
+
+## Current status
+
+- The operating-scenario math, Canadian composition, US composition, and
+  capability/scope containment are implemented.
+- The combined Property Intelligence fixture suite passed 143/143 across 11
+  suites at the 2026-08-21 Sprint 25 close. That is contract evidence, not proof of
+  the remaining live asset matrix.
+- The 30-day re-baseline contained 2 recorded rental selections and 9 rental
+  result views (3 supported, 2 limited, 4 unavailable). The sample is too
+  small to close the KPI gate or justify expanding private persistence.
+- Sprint 25 dependency/auth security closure passed on 2026-08-21. Insurance A2
+  begins only after this sprint's curated live acceptance also closes.
 
 ## Outcome
 
@@ -13,9 +26,10 @@ supplemental expansion.
 
 ## Slice A — shared math and Canadian composition
 
-**Implemented locally 2026-08-14; desktop browser acceptance passed.** The
-surface stores inputs only in component state and makes no provider or
-persistence call.
+**Implemented 2026-08-14.** Desktop browser acceptance passed for the recorded
+Cosgrove and mapped-CMHC examples. Narrow/mobile and unmapped-CMHC curated live
+acceptance remain open. The surface stores inputs only in component state and
+makes no provider or persistence call.
 
 - Add a country-neutral operating-scenario contract for user-supplied vacancy,
   maintenance, management, taxes, insurance, utilities, and other costs.
@@ -31,6 +45,9 @@ persistence call.
 
 ## Slice B — private persistence
 
+**Not implemented. Deferred until the live matrix passes and usage evidence
+supports collecting additional private assumptions.**
+
 - Persist assumptions only to the authenticated, owner-scoped assessment—not
   the shared listing, Clerk profile, URL, or analytics.
 - Define bounded numeric fields, deletion behavior, restore semantics, and
@@ -41,10 +58,11 @@ persistence call.
 ## Slice C — US composition and acceptance
 
 **Implemented 2026-08-14 behind the existing rental-journey route; live
-provider acceptance remains queued for the credit reset.**
+provider acceptance remains open.** Provider capacity is an operational
+prerequisite for the test run, not an acceptance substitute or scheduling
+milestone.
 
-- Reuse the same scenario contract beneath supported US rental results after
-  credits reset.
+- Reuse the same scenario contract beneath supported US rental results.
 - A RentCast rent AVM may prefill a clearly modeled starting value but remains
   editable; HUD FMR never becomes the property rent input.
 - Test one listed, one off-market, one regional fallback, and one unit/building
@@ -66,7 +84,7 @@ Implementation boundaries:
   mortgage payment, and cash flow with zero provider calls.
 - [ ] Canadian desktop/mobile layout passes with and without CMHC context.
 - [ ] Owner-scoped persistence migration and privacy tests pass.
-- [ ] US listed/off-market/fallback composition passes after credits reset.
+- [ ] US listed/off-market/fallback composition passes curated live acceptance.
 - [x] No output labels a user assumption or regional benchmark as a property
   fact, cash-flow guarantee, or cap-rate projection with missing costs.
 
@@ -88,3 +106,32 @@ Implementation boundaries:
   basis; missing rent starts blank; HUD-only fallback and unit/building scope
   mismatch render no operating calculator. Live provider acceptance remains
   intentionally pending.
+
+## Remaining curated acceptance matrix
+
+Run after the Sprint 25 deployment/validation and record the exact URL, timestamp,
+subject scope, capability reasons, provider-call count, desktop/mobile result,
+and any console/server error:
+
+| Case | Required proof | Status |
+|---|---|---|
+| CA residential, mapped CMHC | Regional benchmark remains separate; scenario stays local; desktop and narrow/mobile render cleanly | Desktop recorded; narrow/mobile open |
+| CA residential, no mapped CMHC | User-rent scenario remains usable without inventing a benchmark | Open |
+| CA land/commercial/institutional exclusion | Residential calculator, offer narrative, and incompatible partner actions stay withheld | Automated fixtures pass; curated live replay open |
+| US active listing | Asking-price basis and address rent remain correctly sourced and editable only in the scenario | Open |
+| US off-market property | AVM/value and address-rent provenance remain distinct | Open |
+| US county/regional fallback | No operating calculator appears without supported property-level evidence | Automated fixture passes; live replay open |
+| US unit/building mismatch | No unit rent is divided by a whole-building value, or vice versa | Automated fixture passes; live replay open |
+
+For every applicable case, switching focus and editing assumptions must produce
+zero assessment/provider refetches. A pass requires no scope substitution, no
+property-level overclaim, no unsupported CTA, and no misleading saved-state
+language.
+
+## Sequencing decision
+
+1. Deploy the closed Sprint 25 changes, then run and record the curated matrix above.
+2. Hold Slice B persistence and P6 until the matrix passes and the telemetry
+   sample can support a product decision.
+3. Begin Insurance A2 only after the live matrix closes; A2 remains synthetic and
+   does not expand the public quote/bind boundary.

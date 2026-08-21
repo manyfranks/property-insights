@@ -76,6 +76,7 @@ import {
 import { resolveVendor, regionFullName } from "@/components/insurance/resolve-vendor";
 import { assertIdempotencyKey } from "@/lib/insurance/domain/submission";
 import { coverageProfileConsentTextV1 } from "@/lib/insurance/domain/consent-v1";
+import { privacyResolvedOwnerId } from "@/lib/security/authorization";
 
 const VALID_COUNTRIES: Country[] = ["US", "CA"];
 const VALID_LINES: InsuranceLine[] = ["homeowner", "landlord", "tenant", "strata", "commercial"];
@@ -204,7 +205,7 @@ export async function POST(req: Request) {
   // signed-in account once opted out, matching partner-connect exactly.
   const clientOptOut = body.optOut === true;
   const isOptedOut = clientOptOut || isOptedOutRequest(req);
-  const userId = isOptedOut ? null : authUserId;
+  const userId = privacyResolvedOwnerId(authUserId, isOptedOut);
 
   const input: CreateCoverageProfileInput = {
     userId,

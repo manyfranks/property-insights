@@ -8,12 +8,14 @@ import {
   updateUserAssessmentView,
 } from "@/lib/db/user-assessments";
 import { parseAssessmentGoal, parseSubjectScope } from "@/lib/property-intelligence/journey";
+import { authenticatedUserId } from "@/lib/security/authorization";
 
 async function ownedRequest(req: Request): Promise<{
   userId: string;
   id: string;
 } | NextResponse> {
-  const { userId } = await auth();
+  const { userId: authUserId } = await auth();
+  const userId = authenticatedUserId(authUserId);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const id = new URL(req.url).searchParams.get("id") ?? "";
   if (!isAssessmentStateId(id)) return NextResponse.json({ error: "Invalid assessment ID" }, { status: 400 });

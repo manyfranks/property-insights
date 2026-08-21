@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Next 16.3+ otherwise writes framework-generated AGENTS.md/CLAUDE.md files
+  // into the repository whenever the dev server starts. Project instructions
+  // are maintained by the team, not generated as a runtime side effect.
+  agentRules: false,
   // Lets e2e/playwright.config.ts run its "stage-landing"/"stage-intake" dev
   // servers against their own .next output — Next's dev server takes an
   // flock-style lock at `<distDir>/dev/lock` (node_modules/next/dist/server/

@@ -12,12 +12,14 @@ import { NextResponse } from "next/server";
 import { trackEvent } from "@/lib/db/user-events";
 import { getPostHogClient } from "@/lib/posthog-server";
 import { isOptedOutRequest } from "@/lib/privacy";
+import { authenticatedUserId } from "@/lib/security/authorization";
 
 const MAX_CITIES = 20;
 const CITY_RE = /^[a-zA-Z\s\-'.]+$/; // letters, spaces, hyphens, apostrophes, periods
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
+  const { userId: authUserId } = await auth();
+  const userId = authenticatedUserId(authUserId);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

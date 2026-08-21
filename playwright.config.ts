@@ -109,9 +109,13 @@ export default defineConfig({
   // own port, per the comment above. .env.local's DB/KV vars load
   // automatically (Next always reads .env.local); only NEXT_PUBLIC_INSURANCE_STAGE
   // and NEXT_DIST_DIR are set explicitly here, per stage.
+  // A non-secret dummy PostHog project token keeps instrumentation-client.ts's
+  // development fail-loud guard from aborting hydration. Requests remain on
+  // the local /ingest proxy and the suite never treats analytics delivery as
+  // an assertion or production event.
   webServer: [
     {
-      command: `NEXT_PUBLIC_INSURANCE_STAGE=landing NEXT_DIST_DIR=.next-e2e-landing PORT=${LANDING_PORT} npx next dev -p ${LANDING_PORT}`,
+      command: `NEXT_PUBLIC_INSURANCE_STAGE=landing NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN=phc_e2e_dummy NEXT_DIST_DIR=.next-e2e-landing PORT=${LANDING_PORT} npx next dev -p ${LANDING_PORT}`,
       url: `http://localhost:${LANDING_PORT}/insurance`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,
@@ -119,7 +123,7 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      command: `NEXT_PUBLIC_INSURANCE_STAGE=intake NEXT_DIST_DIR=.next-e2e-intake PORT=${INTAKE_PORT} npx next dev -p ${INTAKE_PORT}`,
+      command: `NEXT_PUBLIC_INSURANCE_STAGE=intake NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN=phc_e2e_dummy NEXT_DIST_DIR=.next-e2e-intake PORT=${INTAKE_PORT} npx next dev -p ${INTAKE_PORT}`,
       url: `http://localhost:${INTAKE_PORT}/insurance`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,
