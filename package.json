@@ -18,6 +18,7 @@
     "insurance:backfill:dry-run": "tsx scripts/backfill-insurance-cases.ts",
     "smoke:prod": "tsx scripts/prod-smoke.ts",
     "test:sitemap-lastmod": "tsx scripts/test-sitemap-lastmod.ts",
+    "test:obie-mapping": "tsx scripts/test-obie-prefill-mapping.ts",
     "test:regional-econ-stamping": "node --import tsx scripts/test-regional-econ-stamping.ts",
     "security:audit": "node scripts/check-production-advisories.mjs",
     "build": "next build",
