@@ -81,23 +81,45 @@ export interface RentToPriceRankings {
  * Returns an empty result (not null) when the DB isn't configured, so
  * callers can render an empty-state table instead of a hard 500.
  */
-export async function getRentToPriceRankings(): Promise<RentToPriceRankings> {
-  if (!dbAvailable()) {
-    return { counties: [], passCount: 0, fmrYears: [], homeValueYears: [] };
-  }
+/**
+ * Fetches the three ranking metrics, optionally scoped to a set of county
+ * FIPS codes.
+ *
+ * Scoping matters at build time: `/us/rankings/rent-to-price/[state]`
+ * prerenders 51 pages, and an unscoped scan sorted ~9.5k rows per page. Run
+ * across Next's parallel static-generation workers that exhausted Neon's
+ * sort memory ("out of memory ... TupleSort main") and failed the build.
+ * A state-scoped filter cuts each query to roughly one state's counties.
+ */
+async function fetchMetricRows(fipsFilter: string[] | null): Promise<Row[]> {
   const db = sql();
-
-  // Pull the latest fmr_2br and median_home_value row per county in one
-  // scan, plus median_gross_rent as a secondary (optional) column. Filtered
-  // to geo_level='county' (US counties only — this table also holds CA CMA
-  // rows under a disjoint geo_fips prefix, see db/regional-econ.ts).
-  const rows = (await db`
+  if (fipsFilter) {
+    if (fipsFilter.length === 0) return [];
+    return (await db`
+      SELECT geo_fips, metric, year, value
+      FROM regional_econ
+      WHERE geo_level = 'county'
+        AND metric IN ('fmr_2br', 'median_home_value', 'median_gross_rent')
+        AND geo_fips = ANY(${fipsFilter})
+      ORDER BY geo_fips, metric, year DESC
+    `) as Row[];
+  }
+  return (await db`
     SELECT geo_fips, metric, year, value
     FROM regional_econ
     WHERE geo_level = 'county'
       AND metric IN ('fmr_2br', 'median_home_value', 'median_gross_rent')
     ORDER BY geo_fips, metric, year DESC
   `) as Row[];
+}
+
+export async function getRentToPriceRankings(
+  fipsFilter?: string[]
+): Promise<RentToPriceRankings> {
+  if (!dbAvailable()) {
+    return { counties: [], passCount: 0, fmrYears: [], homeValueYears: [] };
+  }
+  const rows = await fetchMetricRows(fipsFilter ?? null);
 
   // geo_fips -> metric -> latest {year, value}
   const byCounty = new Map<string, Map<string, { year: number; value: number }>>();
@@ -159,19 +181,12 @@ export async function getRentToPriceRankings(): Promise<RentToPriceRankings> {
   };
 }
 
-/** Same ranking, filtered to a single state (USPS code, e.g. "TX"). Used by
- * /us/rankings/rent-to-price/[state]. Re-derives from the full national scan
- * rather than a WHERE clause on state, since UsCounty.state isn't a column
- * on regional_econ — the join only exists in US_COUNTIES. */
+/** Same ranking, scoped to one state. `UsCounty.state` isn't a column on
+ * regional_econ, so the state -> FIPS join happens in US_COUNTIES and the
+ * resulting FIPS list is pushed down into the query as a filter. */
 export async function getRentToPriceRankingsByState(
   stateSlug: string
 ): Promise<RentToPriceRankings> {
-  const national = await getRentToPriceRankings();
-  const counties = national.counties.filter((c) => c.county.stateSlug === stateSlug);
-  return {
-    counties,
-    passCount: counties.filter((c) => c.passesOnePercentRule).length,
-    fmrYears: national.fmrYears,
-    homeValueYears: national.homeValueYears,
-  };
+  const fips = US_COUNTIES.filter((c) => c.stateSlug === stateSlug).map((c) => c.fips);
+  return getRentToPriceRankings(fips);
 }

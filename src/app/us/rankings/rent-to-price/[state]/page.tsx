@@ -11,8 +11,24 @@ import RankingsTable, { type RentToPriceRow } from "../rankings-table";
 // Same annual-release cadence rationale as the national page.
 export const revalidate = 86400;
 
+/**
+ * Prerender only states that actually have ranking rows.
+ *
+ * HUD publishes Fair Market Rent for New England by town rather than by
+ * county, so the six New England states have median home values but no
+ * `fmr_2br` — their ranking is legitimately empty. Prerendering them spent
+ * build-time queries to produce empty tables. States omitted here still
+ * render on demand via ISR if visited.
+ */
 export async function generateStaticParams() {
-  return getAllStatesWithCounties().map((s) => ({ state: s.stateSlug }));
+  const states = getAllStatesWithCounties();
+  const populated = await Promise.all(
+    states.map(async (s) => {
+      const { counties } = await getRentToPriceRankingsByState(s.stateSlug);
+      return counties.length > 0 ? { state: s.stateSlug } : null;
+    })
+  );
+  return populated.filter((p): p is { state: string } => p !== null);
 }
 
 export async function generateMetadata({
