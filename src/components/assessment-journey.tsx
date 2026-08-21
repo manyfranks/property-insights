@@ -71,6 +71,16 @@ interface AssessmentJourneyContextValue {
 
 const AssessmentJourneyContext = createContext<AssessmentJourneyContextValue | null>(null);
 
+/**
+ * Lets supplemental modules follow the currently selected assessment view
+ * instead of freezing their defaults to the server-rendered URL goal. The
+ * context is intentionally read-only here; AssessmentJourneyPanel remains the
+ * sole owner of switching, persistence, URL state, and telemetry.
+ */
+export function useAssessmentJourneyGoal(): AssessmentGoal | null {
+  return useContext(AssessmentJourneyContext)?.goal ?? null;
+}
+
 type JourneyEventData = Record<string, string | number | boolean>;
 
 function trackJourneyEvent(type: JourneyEventType, data: JourneyEventData): void {

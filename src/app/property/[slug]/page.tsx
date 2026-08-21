@@ -33,7 +33,7 @@ import type { UsCompSupport } from "@/lib/pipeline/us-assess";
 import { AssessmentJourneyPanel } from "@/components/assessment-journey";
 import CanadaRentalScreen from "@/components/canada-rental-screen";
 import InsuranceModule from "@/components/insurance/insurance-module";
-import { lineForGoal } from "@/components/insurance/goal-line-map";
+import JourneyInsuranceModule from "@/components/insurance/journey-insurance-module";
 import PropertyJourneyHandoff from "@/components/property-journey-handoff";
 import {
   deriveCaRentalJourneyStatus,
@@ -916,7 +916,8 @@ export default async function PropertyPage({
           showResidentialPartnerActions like every partner action (land-listing
           containment policy, plan 22). */}
       {showResidentialPartnerActions && <div className="mb-6">
-        <InsuranceModule
+        <JourneyInsuranceModule
+          fallbackGoal={assessmentGoal}
           country="CA"
           region={listing.province}
           address={listing.address}
@@ -926,7 +927,6 @@ export default async function PropertyPage({
           yearBuilt={listing.yearBuilt}
           estimatedValue={assessment?.totalValue ?? listing.price}
           estimatedRent={caRent?.monthlyRent}
-          initialLine={lineForGoal(assessmentGoal)}
         />
       </div>}
 

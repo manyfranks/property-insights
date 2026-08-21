@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { insuranceSelectionForJourney } from "../src/components/insurance/goal-line-map";
 import type { PropertyCapabilities } from "../src/lib/property-intelligence/capabilities";
 import { precomputedOfferAnchorType } from "../src/lib/offer-model";
 import {
@@ -333,6 +335,84 @@ const cases: Array<[string, () => void]> = [
       purchasePrice: 1_200_000,
       modeledMonthlyRent: 2_000,
     }), null);
+  }],
+  ["listed and off-market starting values remain scenario inputs without mutating evidence", () => {
+    const caps = capabilities({ addressSaleValuation: true, addressRentEstimate: true });
+    const listedEvidence = { askingPrice: 725_000, modeledRent: 3_400 };
+    const offMarketEvidence = { modeledValue: 690_000, modeledRent: 3_250 };
+    const listedBasis = buildRentalOperatingScenarioBasis({
+      goal: "rental_investment", subject: subject(), capabilities: caps,
+      purchasePrice: listedEvidence.askingPrice, modeledMonthlyRent: listedEvidence.modeledRent,
+    });
+    const offMarketBasis = buildRentalOperatingScenarioBasis({
+      goal: "rental_investment", subject: subject({ selectedBy: "provider_match" }), capabilities: caps,
+      purchasePrice: offMarketEvidence.modeledValue, modeledMonthlyRent: offMarketEvidence.modeledRent,
+    });
+    assert.equal(listedBasis?.purchasePrice, 725_000);
+    assert.equal(offMarketBasis?.purchasePrice, 690_000);
+    assert.deepEqual(listedEvidence, { askingPrice: 725_000, modeledRent: 3_400 });
+    assert.deepEqual(offMarketEvidence, { modeledValue: 690_000, modeledRent: 3_250 });
+  }],
+  ["editing scenario assumptions is referentially local and never mutates fetched evidence", () => {
+    const fetchedEvidence = Object.freeze({ price: 600_000, monthlyRent: 3_000 });
+    const first = buildOperatingScenario({
+      purchasePrice: fetchedEvidence.price, monthlyRent: fetchedEvidence.monthlyRent, vacancyRatePct: 5,
+      monthlyPropertyTaxes: 500, monthlyInsurance: 150, monthlyMaintenance: 300,
+      monthlyManagement: 250, monthlyUtilities: 0, monthlyOtherCosts: 50,
+    });
+    const edited = buildOperatingScenario({
+      purchasePrice: 575_000, monthlyRent: 3_250, vacancyRatePct: 4,
+      monthlyPropertyTaxes: 500, monthlyInsurance: 150, monthlyMaintenance: 300,
+      monthlyManagement: 250, monthlyUtilities: 0, monthlyOtherCosts: 50,
+    });
+    assert.ok(first);
+    assert.ok(edited);
+    assert.notEqual(first.capRatePct, edited.capRatePct);
+    assert.deepEqual(fetchedEvidence, { price: 600_000, monthlyRent: 3_000 });
+  }],
+  ["focus switching and scenario edits cannot re-enter assessment or provider lookup paths", () => {
+    const journeySource = readFileSync("src/components/assessment-journey.tsx", "utf8");
+    const progressSource = readFileSync("src/components/assessment-progress.tsx", "utf8");
+    const scenarioSource = readFileSync("src/components/rental-operating-scenario.tsx", "utf8");
+    const canadaScreenSource = readFileSync("src/components/canada-rental-screen.tsx", "utf8");
+    const usResultSource = readFileSync("src/components/us-assessment-result.tsx", "utf8");
+    assert.doesNotMatch(journeySource, /["`]\/api\/assess(?:["`?])|RentCast|\/properties|\/listings\/sale/);
+    assert.match(journeySource, /fetch\("\/api\/track"/);
+    assert.match(journeySource, /fetch\(`\/api\/assessment-state\?id=/);
+    assert.doesNotMatch(scenarioSource, /fetch\s*\(/);
+    assert.doesNotMatch(canadaScreenSource, /fetch\s*\(/);
+    assert.doesNotMatch(usResultSource, /fetch\s*\(/);
+    const goalHandler = progressSource.match(
+      /function handleGoalChange[\s\S]*?\n  }\n\n  function handleSubjectConfirmation/
+    )?.[0];
+    assert.ok(goalHandler, "handleGoalChange must remain inspectable by the no-refetch fixture");
+    assert.doesNotMatch(goalHandler, /fetch|retryCount|setAssessmentStarted|setUsResult/);
+    const assessmentEffectDependencies = progressSource.match(
+      /\[address, assessmentStarted, captureAllowed, isLoaded, isSignedIn, journeyEnabled, placeId, propertyResultPath, restoredAssessment, retryCount\]/
+    );
+    assert.ok(assessmentEffectDependencies, "assessment effect dependencies changed; reverify no-refetch");
+    assert.doesNotMatch(assessmentEffectDependencies[0], /selectedGoal/);
+  }],
+  ["insurance selection follows the explicit assessment journey", () => {
+    assert.deepEqual(insuranceSelectionForJourney("rental_investment"), {
+      key: "rental_investment", initialLine: "landlord",
+    });
+    assert.deepEqual(insuranceSelectionForJourney("buy_home"), {
+      key: "buy_home", initialLine: "homeowner",
+    });
+    assert.deepEqual(insuranceSelectionForJourney("explore"), {
+      key: "explore", initialLine: undefined,
+    });
+    const canadaInsuranceSource = readFileSync(
+      "src/components/insurance/journey-insurance-module.tsx", "utf8"
+    );
+    const usResultSource = readFileSync("src/components/us-assessment-result.tsx", "utf8");
+    assert.match(canadaInsuranceSource, /key=\{selection\.key\}/);
+    assert.equal(
+      (usResultSource.match(/key=\{insuranceSelection\.key\}/g) ?? []).length,
+      2,
+      "listed and off-market US insurance modules must remount with the explicit journey"
+    );
   }],
 ];
 
