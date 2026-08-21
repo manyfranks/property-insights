@@ -26,7 +26,12 @@ import type {
   Country,
   SurfaceKey,
 } from "@/config/affiliate-vendors";
-import { getVendorsForRegion, getVendorsForSurface, type Vertical } from "@/config/affiliate-vendors";
+import {
+  affiliateVendorPresentation,
+  getVendorsForRegion,
+  getVendorsForSurface,
+  type Vertical,
+} from "@/config/affiliate-vendors";
 import {
   FTC_DISCLOSURE,
   resolveUrl,
@@ -96,9 +101,14 @@ export default function PartnerCta({
 
   if (vendors.length === 0) return null;
 
-  const hero = { vendor: heroVendor, resolved: resolveUrl(heroVendor.id, source, optedOut) };
+  const hero = {
+    vendor: heroVendor,
+    presentation: affiliateVendorPresentation(heroVendor, mode),
+    resolved: resolveUrl(heroVendor.id, source, optedOut),
+  };
   const pills = pillVendors.map((vendor) => ({
     vendor,
+    presentation: affiliateVendorPresentation(vendor, mode),
     resolved: resolveUrl(vendor.id, source, optedOut),
   }));
 
@@ -114,7 +124,7 @@ export default function PartnerCta({
             ref={heroImpressionRef}
             href={hero.resolved.url}
             target="_blank"
-            rel="noopener noreferrer sponsored"
+            rel={hero.resolved.isAffiliate ? "noopener noreferrer sponsored" : "noopener noreferrer"}
             onClick={() =>
               trackClick({
                 vendorId: hero.vendor.id,
@@ -133,7 +143,7 @@ export default function PartnerCta({
             <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-cta-accent" aria-hidden="true" />
             <div className="flex items-start justify-between gap-2 mb-1">
               <div className="text-base font-semibold text-foreground group-hover:underline">
-                {hero.vendor.ctaLabel ?? hero.vendor.name}
+                {hero.presentation.ctaLabel}
               </div>
               {hero.resolved.isAffiliate && (
                 <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted/70">
@@ -142,19 +152,19 @@ export default function PartnerCta({
               )}
             </div>
             <p className="text-sm text-muted leading-relaxed mb-2">
-              {hero.vendor.offerText ?? hero.vendor.description ?? hero.vendor.name}
+              {hero.presentation.offerText}
             </p>
             <span className="text-xs text-muted">{hero.vendor.name} &rarr;</span>
           </a>
 
           {/* Pill CTAs — up to 2, same visual language as before */}
-          {pills.map(({ vendor, resolved }, i) => (
+          {pills.map(({ vendor, presentation, resolved }, i) => (
             <a
               key={vendor.id}
               ref={i === 0 ? pill0ImpressionRef : pill1ImpressionRef}
               href={resolved.url}
               target="_blank"
-              rel="noopener noreferrer sponsored"
+              rel={resolved.isAffiliate ? "noopener noreferrer sponsored" : "noopener noreferrer"}
               onClick={() =>
                 trackClick({
                   vendorId: vendor.id,
@@ -173,7 +183,7 @@ export default function PartnerCta({
               <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-cta-accent" aria-hidden="true" />
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="text-sm font-semibold text-foreground group-hover:underline">
-                  {vendor.ctaLabel ?? vendor.name}
+                  {presentation.ctaLabel}
                 </div>
                 {resolved.isAffiliate && (
                   <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted/70">
@@ -182,7 +192,7 @@ export default function PartnerCta({
                 )}
               </div>
               <p className="text-xs text-muted leading-relaxed mb-2">
-                {vendor.description ?? vendor.name}
+                {presentation.description}
               </p>
               <span className="text-xs text-muted">{vendor.name} &rarr;</span>
             </a>

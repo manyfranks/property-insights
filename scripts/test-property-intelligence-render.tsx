@@ -175,6 +175,28 @@ test("US operating scenario exposes editable modeled inputs inside the supplemen
   assert.match(markup, /grid-cols-1 sm:grid-cols-3/, "scenario basis must collapse to one column at narrow widths");
 });
 
+test("US off-market scenario labels the value AVM separately from the modeled rent AVM", () => {
+  const markup = renderToStaticMarkup(
+    <UsRentalScreen
+      model={{
+        availability: "supported",
+        addressRent: {
+          value: 3_100, rangeLow: 2_900, rangeHigh: 3_300,
+          label: "Address-level rent estimate",
+          source: "RentCast rent AVM · modeled, not a signed lease",
+        },
+        regionalRent: null,
+        yield: { grossYieldPct: 0.062, rentToPriceRatio: 0.00517, onePercentRuleMet: false },
+      }}
+      operatingBasis={{ purchasePrice: 600_000, monthlyRent: 3_100, rentBasis: "modeled_address_rent" }}
+      priceSource="RentCast AVM modeled value"
+    />
+  );
+  assert.match(markup, /RentCast AVM modeled value · editable assumption/);
+  assert.match(markup, /Prefilled from RentCast rent AVM · modeled, not a signed lease/);
+  assert.equal((markup.match(/data-p5-editable-scenario-basis/g) ?? []).length, 1);
+});
+
 test("US supported rental evidence composes the scenario while a regional fallback does not", () => {
   const supported = renderToStaticMarkup(
     <UsRentalScreen

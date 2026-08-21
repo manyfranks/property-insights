@@ -574,7 +574,8 @@ next sequence is deployment, live acceptance, then new platform work:
    narrow/mobile widths, then one US listed result, one off-market result, one
    county fallback, and one unit/building mismatch. Confirm edits and view
    switches do not refetch and excluded classes withhold residential modules
-   and partner actions.
+   and partner actions. Execute and record the gate with
+   `25-P5-LIVE-ACCEPTANCE-SPRINT.md`.
 2. **Insurance A2.** Start only after the P5 live matrix closes; Sprint 25 is
    already closed. Keep A2 synthetic and
    provider-neutral under the existing server-side execution boundary.

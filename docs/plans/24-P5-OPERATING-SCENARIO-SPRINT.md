@@ -83,7 +83,9 @@ Implementation boundaries:
 - [x] Pure math fixtures cover blank vs zero, invalid rates, NOI/cap rate,
   mortgage payment, and cash flow with zero provider calls.
 - [ ] Canadian desktop/mobile layout passes with and without CMHC context.
-- [ ] Owner-scoped persistence migration and privacy tests pass.
+- [ ] Owner-scoped persistence migration and privacy tests pass. This remains a
+  P5 phase gate but is explicitly outside the live-acceptance sprint; it does
+  not block closing the matrix or beginning synthetic-only Insurance A2.
 - [ ] US listed/off-market/fallback composition passes curated live acceptance.
 - [x] No output labels a user assumption or regional benchmark as a property
   fact, cash-flow guarantee, or cap-rate projection with missing costs.
@@ -108,6 +110,9 @@ Implementation boundaries:
   intentionally pending.
 
 ## Remaining curated acceptance matrix
+
+Execution and closure evidence now follow
+`25-P5-LIVE-ACCEPTANCE-SPRINT.md`; the table below remains the scope summary.
 
 Run after the Sprint 25 deployment/validation and record the exact URL, timestamp,
 subject scope, capability reasons, provider-call count, desktop/mobile result,

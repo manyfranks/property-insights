@@ -209,6 +209,34 @@ export interface AffiliateVendor {
   envKey?: string;
 }
 
+export interface AffiliateVendorPresentation {
+  ctaLabel: string;
+  description: string;
+  shortCta: string;
+  offerText: string;
+}
+
+/** Resolve journey-specific language without changing vendor eligibility. */
+export function affiliateVendorPresentation(
+  vendor: AffiliateVendor,
+  mode: AudienceMode
+): AffiliateVendorPresentation {
+  if (mode === "investor" && vendor.vertical === "insurance" && vendor.lines?.includes("landlord")) {
+    return {
+      ctaLabel: "Explore landlord insurance",
+      description: `${vendor.name} coverage options for a rental property`,
+      shortCta: "Rental coverage",
+      offerText: "Explore coverage for your rental property",
+    };
+  }
+  return {
+    ctaLabel: vendor.ctaLabel ?? vendor.name,
+    description: vendor.description ?? vendor.name,
+    shortCta: vendor.shortCta ?? "Learn more",
+    offerText: vendor.offerText ?? vendor.description ?? vendor.name,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -1146,6 +1174,9 @@ export interface ResolvedAffiliateUrl {
   isAffiliate: boolean;
 }
 
+/** Values that look like unreplaced setup placeholders rather than real links. */
+const PLACEHOLDER_URL_PATTERN = /YOUR_ID|YOUR_AFF|REPLACE_ME|CHANGEME|XXXX|example\.com/i;
+
 /**
  * Resolves the outbound URL for a vendor: the env-configured affiliate URL
  * when present, otherwise the vendor's plain fallback `url`. Appends
@@ -1176,7 +1207,10 @@ export function getAffiliateUrl(
   const envUrl = ENV_URL_MAP[id];
   const trackingId = subId ?? source;
 
-  if (envUrl) {
+  // Placeholders are operational defects, not compensated links. Fall back
+  // without Sponsored/compensation presentation; the health guard below
+  // continues to report the bad production configuration.
+  if (envUrl && !PLACEHOLDER_URL_PATTERN.test(envUrl)) {
     return {
       url: trackingId ? appendSubId(envUrl, trackingId) : envUrl,
       isAffiliate: true,
@@ -1206,9 +1240,6 @@ export const REVENUE_CRITICAL_IDS: string[] = [
   "dealmachine",
 ];
 
-/** Values that look like unreplaced setup placeholders rather than real links. */
-const PLACEHOLDER_URL_PATTERN = /YOUR_ID|YOUR_AFF|REPLACE_ME|CHANGEME|XXXX|example\.com/i;
-
 /**
  * Prod-only check: for every revenue-critical vendor that is currently
  * enabled + affiliateReady, verify its env URL actually resolved. Call once
@@ -1232,13 +1263,13 @@ export function assertAffiliateHealth(): void {
       continue;
     }
 
-    // A placeholder URL is worse than a missing one: the CTA still renders a
-    // "Sponsored" tag and the partner-compensation disclosure, but the link can never
-    // attribute. Ratehub shipped with `?ref=YOUR_ID` for months undetected.
+    // Placeholder configuration is still an operational defect even though
+    // resolution now fails safe to the vendor's plain, undisclosed fallback.
+    // Ratehub shipped with `?ref=YOUR_ID` for months undetected.
     if (PLACEHOLDER_URL_PATTERN.test(configured)) {
       console.error(
         `[affiliate-health] Revenue-critical vendor "${id}" has a PLACEHOLDER affiliate URL in ${envName} ` +
-          `(${configured}) — clicks are disclosed as compensated but cannot be attributed. Replace with the real tracking link.`
+          `(${configured}) — using the plain non-affiliate fallback until the real tracking link is configured.`
       );
     }
   }

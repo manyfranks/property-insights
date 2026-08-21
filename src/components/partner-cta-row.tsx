@@ -20,7 +20,11 @@ import type {
   Country,
   SurfaceKey,
 } from "@/config/affiliate-vendors";
-import { getVendorsForRegion, getVendorsForSurface } from "@/config/affiliate-vendors";
+import {
+  affiliateVendorPresentation,
+  getVendorsForRegion,
+  getVendorsForSurface,
+} from "@/config/affiliate-vendors";
 import {
   FTC_DISCLOSURE,
   resolveUrl,
@@ -73,6 +77,7 @@ export default function PartnerCtaRow({
 
   const units = vendors.map((vendor) => ({
     vendor,
+    presentation: affiliateVendorPresentation(vendor, mode),
     resolved: resolveUrl(vendor.id, source, optedOut),
   }));
 
@@ -81,7 +86,7 @@ export default function PartnerCtaRow({
   return (
     <div className="space-y-2">
       <div className="flex flex-col sm:flex-row gap-3">
-        {units.map(({ vendor, resolved }, i) => (
+        {units.map(({ vendor, presentation, resolved }, i) => (
           <div
             key={vendor.id}
             ref={i === 0 ? unit0ImpressionRef : unit1ImpressionRef}
@@ -93,11 +98,11 @@ export default function PartnerCtaRow({
                 <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted/70">Sponsored</span>
               )}
             </div>
-            <p className="text-xs text-muted leading-relaxed mb-3">{vendor.description ?? vendor.name}</p>
+            <p className="text-xs text-muted leading-relaxed mb-3">{presentation.description}</p>
             <a
               href={resolved.url}
               target="_blank"
-              rel="noopener noreferrer sponsored"
+              rel={resolved.isAffiliate ? "noopener noreferrer sponsored" : "noopener noreferrer"}
               onClick={() =>
                 trackClick({
                   vendorId: vendor.id,
@@ -113,7 +118,7 @@ export default function PartnerCtaRow({
               }
               className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-cta-accent hover:bg-cta-accent-hover rounded-lg px-3 py-1.5 transition-colors"
             >
-              {vendor.shortCta ?? "Learn more"} &rarr;
+              {presentation.shortCta} &rarr;
             </a>
           </div>
         ))}

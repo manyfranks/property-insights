@@ -671,6 +671,8 @@ async function handleUSAssessment({
     bundle
       ? `record=${!!bundle.record} avm=${!!bundle.avm} rent=${!!bundle.rent} listing=${!!bundle.activeListing} ` +
         `cacheHits=${bundle.meta.cacheHits} liveCalls=${bundle.meta.liveCalls} quotaExhausted=${bundle.meta.quotaExhausted}` +
+        ` propertyLookup=${bundle.meta.propertyLookup ?? "unknown"}` +
+        ` listingLookup=${bundle.meta.listingLookup ?? "unknown"}` +
         ` resolution=${bundle.meta.addressResolution ?? "unknown"}` +
         (bundle.meta.canonicalAddress ? ` canonical=${bundle.meta.canonicalAddress}` : "") +
         (bundle.meta.errors.length ? ` errors=${bundle.meta.errors.join("; ")}` : "")

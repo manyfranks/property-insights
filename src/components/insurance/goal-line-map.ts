@@ -20,3 +20,17 @@ export function lineForGoal(goal: AssessmentGoal | null | undefined): InsuranceL
   if (!goal) return undefined;
   return GOAL_TO_LINE[goal];
 }
+
+/**
+ * A journey-aware insurance chooser must remount when the assessment focus
+ * changes; otherwise its local line state remains frozen to the first goal.
+ */
+export function insuranceSelectionForJourney(goal: AssessmentGoal | null | undefined): {
+  key: AssessmentGoal | "default";
+  initialLine: InsuranceLine | undefined;
+} {
+  return {
+    key: goal ?? "default",
+    initialLine: lineForGoal(goal),
+  };
+}

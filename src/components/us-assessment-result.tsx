@@ -24,7 +24,7 @@ import { fmt, pct } from "@/lib/utils";
 import PartnerCta from "@/components/partner-cta";
 import PartnerCtaRow from "@/components/partner-cta-row";
 import InsuranceModule from "@/components/insurance/insurance-module";
-import { lineForGoal } from "@/components/insurance/goal-line-map";
+import { insuranceSelectionForJourney } from "@/components/insurance/goal-line-map";
 import ExpandableSection from "@/components/expandable-section";
 import TierBadge from "@/components/tier-badge";
 import { AssessmentJourneyFocus } from "@/components/assessment-journey";
@@ -832,6 +832,7 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
     anchorDecision,
   } = data;
   const audience = assessmentAudience(activeGoal);
+  const insuranceSelection = insuranceSelectionForJourney(activeGoal);
   const rentalScreen = buildRentalScreenModel({
     goal: activeGoal,
     capabilities: data.propertyCapabilities,
@@ -1163,6 +1164,7 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
       {/* Insurance module (Insurance Path Stage 2, Screen 1) */}
       <div className="mb-6">
         <InsuranceModule
+          key={insuranceSelection.key}
           country="US"
           region={data.state}
           address={data.address}
@@ -1173,7 +1175,7 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
           yearBuilt={listing.yearBuilt}
           estimatedValue={assessment?.totalValue ?? listing.price}
           estimatedRent={investorYield?.monthlyRent}
-          initialLine={lineForGoal(activeGoal)}
+          initialLine={insuranceSelection.initialLine}
         />
       </div>
 
@@ -1195,6 +1197,7 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
   const { assessment, avm, rent, marketPanel, equitySignal, triangulation, investorYield, riskMomentum, overAssessment } =
     data;
   const audience = assessmentAudience(activeGoal);
+  const insuranceSelection = insuranceSelectionForJourney(activeGoal);
   const rentalScreen = buildRentalScreenModel({
     goal: activeGoal,
     capabilities: data.propertyCapabilities,
@@ -1379,6 +1382,7 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
       {/* Insurance module (Insurance Path Stage 2, Screen 1) */}
       <div className="mb-6">
         <InsuranceModule
+          key={insuranceSelection.key}
           country="US"
           region={data.state}
           address={data.address}
@@ -1387,7 +1391,7 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
           surface={audience.surface}
           estimatedValue={assessment?.totalValue}
           estimatedRent={rent?.value}
-          initialLine={lineForGoal(activeGoal)}
+          initialLine={insuranceSelection.initialLine}
         />
       </div>
 
