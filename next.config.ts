@@ -20,6 +20,24 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Next's per-route opengraph-image handlers return image/png, but
+        // Google discovers them from each page's og:image meta, crawls them,
+        // and then files them under "Crawled - currently not indexed" —
+        // correctly, since they are images, not pages.
+        //
+        // Harmless in itself, but it buries real signal. The 2026-08-23
+        // coverage validation export was 42 URLs of which 37 (88%) were these,
+        // leaving exactly 4 genuine content pages hidden underneath. The
+        // notification read as a site-wide quality problem; it was not one.
+        //
+        // noindex rather than a robots.txt Disallow deliberately: social
+        // crawlers (Facebook, LinkedIn) honour robots.txt, so disallowing
+        // would break link previews. noindex still permits the fetch that
+        // previews need, while keeping these out of the page index.
+        source: "/:path*/opengraph-image",
+        headers: [{ key: "X-Robots-Tag", value: "noindex" }],
+      },
+      {
         source: "/insurance/case/:path*",
         headers: [
           { key: "Referrer-Policy", value: "no-referrer" },
