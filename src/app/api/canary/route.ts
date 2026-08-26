@@ -114,11 +114,36 @@ function errDetail(err: unknown): string {
   return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
 }
 
+/**
+ * SHAPE AND REACHABILITY ONLY — this check does not, and must not be read
+ * to, assess provider health.
+ *
+ * It is the original canary, and its `listings.length === 0` gate is the
+ * exact test that stayed green through the 2026-08 frozen-feed outage while
+ * the pipeline deleted 409+ published property URLs: the failure leaked a
+ * small non-zero number of listings past citiesMatch(), and "a few" is not
+ * zero. Volume and scope are now answered by checkZoocasaBaseline() and
+ * checkZoocasaFeedFingerprint(); this one only answers "did the endpoint
+ * respond with rows shaped like Listings".
+ *
+ * It is kept because that is a genuinely different question — a shape
+ * regression in Zoocasa's payload would break parsing in ways the other two
+ * detectors cannot see — but its `detail` string says so out loud in both
+ * outcomes. Observed on the first production run after the fix deployed:
+ * this check reported ok while the fingerprint detector was correctly
+ * failing on all three city pairs, and "zoocasaSearch: ok" next to a live
+ * total outage is precisely how a monitor gets learned as noise.
+ */
 async function checkZoocasaSearch(): Promise<CheckResult> {
+  const SCOPE_NOTE =
+    "shape/reachability only — NOT a volume or scope signal, see zoocasaBaseline + zoocasaFingerprint";
   try {
     const listings = await searchListings("Victoria", "BC", { type: "house", beds: 3 });
     if (listings.length === 0) {
-      return { ok: false, detail: "searchListings(\"Victoria\", \"BC\") returned 0 listings" };
+      return {
+        ok: false,
+        detail: `searchListings("Victoria", "BC") returned 0 listings — nothing to shape-check (${SCOPE_NOTE})`,
+      };
     }
     const bad = listings.find(
       (l) =>
@@ -132,9 +157,9 @@ async function checkZoocasaSearch(): Promise<CheckResult> {
         Number.isNaN(l.dom)
     );
     if (bad) {
-      return { ok: false, detail: `malformed listing in response: address="${bad.address}"` };
+      return { ok: false, detail: `malformed listing in response: address="${bad.address}" (${SCOPE_NOTE})` };
     }
-    return { ok: true, detail: `${listings.length} listings, shape OK` };
+    return { ok: true, detail: `${listings.length} listings, shape OK — ${SCOPE_NOTE}` };
   } catch (err) {
     return { ok: false, detail: errDetail(err) };
   }
