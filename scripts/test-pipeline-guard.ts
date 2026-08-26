@@ -111,11 +111,14 @@ global.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Response(JSON.stringify({ result: ["0", []] }), { status: 200 });
   }
 
-  // POST /pipeline — array of commands, batched.
+  // POST /pipeline — array of commands, batched. Upstash answers with one
+  // result per submitted command, in order; this fake used to answer a bare
+  // {"result":"OK"} envelope, which kvPipeline now (correctly) rejects as a
+  // body it cannot read per-command outcomes out of.
   if (method === "POST" && path === "/pipeline") {
     const commands = JSON.parse(String(init?.body ?? "[]")) as string[][];
-    for (const cmd of commands) runCommand(cmd);
-    return new Response(JSON.stringify({ result: "OK" }), { status: 200 });
+    const results = commands.map((cmd) => ({ result: runCommand(cmd) }));
+    return new Response(JSON.stringify(results), { status: 200 });
   }
 
   // POST / (bare) — single command as a JSON array body, e.g.

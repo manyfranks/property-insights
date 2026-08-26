@@ -21,13 +21,15 @@
  *   listings:meta        → { count, updatedAt, cities }
  *
  * PRELOADED_LISTINGS (src/lib/data/listings.ts) is a *dev seed*, not an
- * outage mask. It is served only when KV is not configured at all — i.e.
- * local dev with no credentials, where there is no live store to be stale
- * relative to. When KV *is* configured and a read fails, this module reports
- * that failure (loudly, and as a distinct state) instead of quietly handing
- * back a 250-row March 2026 snapshot that shares almost nothing with the
- * ~2,300 listings actually in the store. See getAllListings /
- * getListingBySlug below for why that distinction is load-bearing.
+ * outage mask. Two separate conditions now have to hold before it is
+ * served: KV must be unconfigured, AND the process must be able to prove it
+ * is not a production deployment (see the [seed-gate] block below). When KV
+ * *is* configured and a read fails — or when credentials are missing
+ * somewhere the seed is not permitted — this module reports that failure
+ * (loudly, and as a distinct state) instead of quietly handing back a
+ * 250-row March 2026 snapshot that shares almost nothing with the ~2,300
+ * listings actually in the store. See getAllListings / getListingBySlug
+ * below for why that distinction is load-bearing.
  */
 
 import { Listing } from "../types";
@@ -48,6 +50,97 @@ function kvToken(): string | null {
 
 function kvAvailable(): boolean {
   return !!(kvUrl() && kvToken());
+}
+
+// ---------------------------------------------------------------------------
+// [seed-gate] When may the static dev seed stand in for the real store?
+//
+// kvAvailable() answers "are credentials present", which is a different
+// question from "is it safe to serve a March 2026 snapshot here". A
+// production deploy whose KV credentials were omitted, rotated, or scoped to
+// the wrong database fails kvAvailable() in exactly the same way a laptop
+// with no .env.local does, and the old code answered both by returning
+// PRELOADED_LISTINGS as a perfectly healthy `ok`. That is this branch's own
+// headline failure — stale pages plus false 404s — reachable through a
+// config regression instead of a code one: 250 rows served as live data,
+// every real property URL resolving to `absent` (404) out of
+// getListingBySlug because the seed overlaps the live store almost nowhere,
+// and nothing anywhere saying the system is degraded.
+//
+// So the seed is opt-in by environment, and the test is written to fail
+// SAFE: it must positively recognize a non-production context before
+// allowing the seed, and refuses anything it does not recognize. Note this
+// is the opposite polarity from isProductionDeployment() in
+// src/config/insurance-kernel/execution-mode.ts, which treats unknown tiers
+// AS production. Both rules resolve the unknown case the same way — behave
+// as though this is production — they just start from opposite defaults,
+// because that one asks "may I do the live thing" and this one asks "may I
+// do the fake thing".
+//
+// The rule, in order:
+//
+//   1. LISTINGS_ALLOW_STATIC_SEED=1 — explicit operator opt-in, honoured
+//      anywhere, always with a warning. Deliberately mirrors the
+//      SITEMAP_ALLOW_STATIC_SEED escape hatch scripts/generate-sitemap.ts
+//      already uses: one convention, one string to grep for.
+//   2. VERCEL_ENV, when set, is authoritative. Vercel sets
+//      NODE_ENV=production on preview builds too, so NODE_ENV alone cannot
+//      tell a preview from production. Only "development" (`vercel dev`)
+//      permits the seed. "preview" does NOT: a preview deployment is a real
+//      deployment that real people and crawlers reach, and a preview
+//      quietly serving the seed is how a wrong belief about the store gets
+//      promoted to production. Any other tier value is unrecognized and
+//      therefore refused.
+//   3. With no VERCEL_ENV, only NODE_ENV="development" (`next dev`) or
+//      "test" permits it. An unset/empty NODE_ENV is REFUSED — that is a
+//      bare `node`/`tsx` process, which is as likely to be an ops script
+//      pointed at production as it is a laptop. The ones that legitimately
+//      want the seed have rule 1.
+//
+// A refusal is not a crash: it resolves the same `unavailable` state a KV
+// outage does, so every consumer's existing degraded path (503 + Retry-After
+// on the render surfaces, abort-before-write on the cron paths) applies
+// unchanged. The one thing that no longer happens is silent success.
+// ---------------------------------------------------------------------------
+
+function staticSeedGate(): { allowed: boolean; why: string } {
+  if (process.env.LISTINGS_ALLOW_STATIC_SEED === "1") {
+    return { allowed: true, why: "LISTINGS_ALLOW_STATIC_SEED=1 is set explicitly" };
+  }
+
+  const tier = process.env.VERCEL_ENV;
+  if (tier) {
+    if (tier === "development") return { allowed: true, why: 'VERCEL_ENV="development"' };
+    return {
+      allowed: false,
+      why: `VERCEL_ENV="${tier}" is a deployed environment (only "development" may serve the seed)`,
+    };
+  }
+
+  const nodeEnv = process.env.NODE_ENV;
+  if (nodeEnv === "development" || nodeEnv === "test") {
+    return { allowed: true, why: `NODE_ENV="${nodeEnv}" with no VERCEL_ENV` };
+  }
+
+  return {
+    allowed: false,
+    why:
+      `NODE_ENV=${nodeEnv ? `"${nodeEnv}"` : "(unset)"} with no VERCEL_ENV — not a recognized ` +
+      `non-production environment`,
+  };
+}
+
+/**
+ * The single `unavailable` reason used everywhere a refused seed turns into
+ * a degraded read, so the log line, the health stamp and the reason a route
+ * surfaces to a caller all say the same thing.
+ */
+function seedRefusedReason(why: string): string {
+  return (
+    `KV_REST_API_URL/KV_REST_API_TOKEN are not configured, and the static dev seed is not permitted ` +
+    `here (${why}). Set the KV credentials, or set LISTINGS_ALLOW_STATIC_SEED=1 to knowingly serve the ` +
+    `250-row March 2026 snapshot instead of live data.`
+  );
 }
 
 function kvHeaders(): HeadersInit {
@@ -225,13 +318,15 @@ async function kvDel(key: string): Promise<boolean> {
  * Batch multiple SET commands in a single HTTP request via Upstash pipeline.
  * Dramatically faster than sequential kvSet calls for bulk operations.
  *
- * Throws on failure — see the [kv-write-silence] block above. Two distinct
+ * Throws on failure — see the [kv-write-silence] block above. Three distinct
  * failures are checked, because Upstash reports them differently: a rejected
- * *request* comes back as a non-2xx, but a rejected *command* inside an
- * accepted pipeline comes back as HTTP 200 with `{"error": "..."}` in that
- * command's slot of the result array. The second kind is the one that
- * quietly loses a batch of 50 by-slug keys while the caller counts them as
- * written, so it is checked explicitly rather than trusting `res.ok`.
+ * *request* comes back as a non-2xx; a rejected *command* inside an accepted
+ * pipeline comes back as HTTP 200 with `{"error": "..."}` in that command's
+ * slot of the result array; and a body that is not one-result-per-command at
+ * all means the response is not the thing this function is about to
+ * interpret. All three quietly lose a batch of 50 by-slug keys while the
+ * caller counts them as written, so none of them may be inferred from
+ * `res.ok`.
  */
 async function kvPipeline(commands: [string, ...string[]][]): Promise<void> {
   const url = kvUrl();
@@ -260,21 +355,48 @@ async function kvPipeline(commands: [string, ...string[]][]): Promise<void> {
     throw new KvWriteError(`KV pipeline of ${commands.length} command(s) returned an unparseable body: ${errText(err)}`);
   }
 
-  // Upstash answers a pipeline with an array of per-command results. A fake
-  // or proxied KV may answer with something else entirely; only the array
-  // form carries per-command errors, so anything else is accepted as long as
-  // the HTTP status was OK (the request-level check above already ran).
-  if (Array.isArray(body)) {
-    const failed = body
-      .map((r, i) => ({ i, error: (r as { error?: unknown } | null)?.error }))
-      .filter((r) => r.error != null);
-    if (failed.length > 0) {
-      const sample = failed.slice(0, 3).map((f) => `#${f.i}: ${String(f.error)}`).join("; ");
-      throw new KvWriteError(
-        `KV pipeline: ${failed.length} of ${commands.length} command(s) were rejected — ${sample}` +
-          (failed.length > 3 ? ", ..." : "")
-      );
-    }
+  // Upstash answers a pipeline with exactly one result per submitted
+  // command, in submission order. Anything else means the body is not the
+  // thing the per-command check below is written to read, and this function
+  // has no way to find out which commands landed:
+  //
+  //   - A NON-ARRAY body (an HTML error page from a proxy, a bare
+  //     `{"error": ...}` envelope, a stub that answers `{"result":"OK"}`)
+  //     used to fall straight past the `if (Array.isArray(body))` guard and
+  //     be reported as a fully successful pipeline. That is precisely the
+  //     silent write loss this function was rewritten to stop, surviving in
+  //     the one branch the rewrite did not look at.
+  //   - A SHORT array means commands went unacknowledged. Upstash does not
+  //     say which, so every key in the batch has to be treated as unwritten.
+  //
+  // Both are raised as write failures rather than tolerated, because the
+  // caller (writeAllListings) reports these slugs as written and the store
+  // then disagrees with its own index with nothing in the log to say so.
+  if (!Array.isArray(body)) {
+    throw new KvWriteError(
+      `KV pipeline of ${commands.length} command(s) returned HTTP 200 with a ${
+        body === null ? "null" : typeof body
+      } body instead of a per-command result array — cannot confirm any command was applied.`
+    );
+  }
+
+  if (body.length !== commands.length) {
+    throw new KvWriteError(
+      `KV pipeline submitted ${commands.length} command(s) but got ${body.length} result(s) back — ` +
+        `${commands.length - body.length} command(s) went unacknowledged. Treating the whole batch as ` +
+        `unwritten: there is no way to tell which keys landed.`
+    );
+  }
+
+  const failed = body
+    .map((r, i) => ({ i, error: (r as { error?: unknown } | null)?.error }))
+    .filter((r) => r.error != null);
+  if (failed.length > 0) {
+    const sample = failed.slice(0, 3).map((f) => `#${f.i}: ${String(f.error)}`).join("; ");
+    throw new KvWriteError(
+      `KV pipeline: ${failed.length} of ${commands.length} command(s) were rejected — ${sample}` +
+        (failed.length > 3 ? ", ..." : "")
+    );
   }
 }
 
@@ -718,8 +840,9 @@ export function getListingsStoreHealth(): ListingsStoreHealth {
  * array plus a [kv-degraded] error line plus a health stamp
  * (getListingsStoreHealth) — visibly broken beats quietly wrong. The static
  * seed survives only for the case it was actually written for: KV not
- * configured at all, i.e. local dev, where there is no live store to be
- * stale against.
+ * configured at all AND a provably non-production process (see [seed-gate]
+ * above) — i.e. local dev, where there is no live store to be stale
+ * against. Unconfigured KV anywhere else is `unavailable`, not a seed.
  *
  * Callers that must not act on a guess do not use this function at all —
  * see readListingsStore and getListingBySlug.
@@ -761,9 +884,13 @@ export async function getAllListings(opts?: { keyPrefix?: string }): Promise<Lis
  * the write paths also call it, and a seed served to a writer would be
  * written over the real store):
  *
- *   - KV unconfigured (local dev, no credentials) still yields the static
- *     PRELOADED_LISTINGS seed, loudly, as `ok` — there is no live store to be
- *     stale against, and failing local dev buys nothing.
+ *   - KV unconfigured still yields the static PRELOADED_LISTINGS seed,
+ *     loudly, as `ok` — but only where the [seed-gate] rule can prove this
+ *     is not a production deployment. There is no live store to be stale
+ *     against in local dev, and failing local dev buys nothing; in
+ *     production the same missing credentials are a config regression and
+ *     resolve `unavailable` instead, because 250 stale rows presented as
+ *     healthy live data is the worst outcome available.
  *   - The read is stamped into getListingsStoreHealth, so the out-of-band
  *     disclosure channel keeps working for callers that use it.
  */
@@ -771,12 +898,20 @@ export async function readAllListings(opts?: { keyPrefix?: string }): Promise<Li
   const keyPrefix = opts?.keyPrefix ?? "listings";
 
   if (!kvAvailable()) {
+    const gate = staticSeedGate();
+    if (!gate.allowed) {
+      const reason = seedRefusedReason(gate.why);
+      console.error(`[kv-degraded] ${reason}`);
+      noteStoreRead("unavailable", reason);
+      return { status: "unavailable", reason };
+    }
     const { PRELOADED_LISTINGS } = await import("../data/listings");
     console.warn(
       `[kv-fallback] KV is not configured — serving the ${PRELOADED_LISTINGS.length}-listing static seed ` +
-        `(src/lib/data/listings.ts, a March 2026 snapshot), NOT live data.`
+        `(src/lib/data/listings.ts, a March 2026 snapshot), NOT live data. Permitted here because ` +
+        `${gate.why}.`
     );
-    noteStoreRead("static-seed", "KV_REST_API_URL/KV_REST_API_TOKEN not configured");
+    noteStoreRead("static-seed", `KV_REST_API_URL/KV_REST_API_TOKEN not configured; seed allowed (${gate.why})`);
     return { status: "ok", listings: PRELOADED_LISTINGS };
   }
 
@@ -879,6 +1014,14 @@ function coerceListing(value: unknown): Listing | null {
  * and the chunk write are separate round trips, and purgeStaleSlugKeys can
  * remove one), so a miss there still consults the whole store — but only the
  * whole store's own read status decides between `absent` and `unavailable`.
+ *
+ * Unconfigured KV goes through the same [seed-gate] rule readAllListings
+ * uses, and this is the surface where getting it wrong hurts most: the seed
+ * holds 250 of ~2,300 addresses, so a production deploy missing its
+ * credentials answered `absent` — a 404, the response that asks Google to
+ * delete the URL — for something like 89% of the site. Where the seed is not
+ * permitted this now returns `unavailable`, which the property page renders
+ * as a retryable 503.
  */
 export async function getListingBySlug(
   slug: string,
@@ -887,6 +1030,12 @@ export async function getListingBySlug(
   const keyPrefix = opts?.keyPrefix ?? "listings";
 
   if (!kvAvailable()) {
+    const gate = staticSeedGate();
+    if (!gate.allowed) {
+      const reason = seedRefusedReason(gate.why);
+      console.error(`[kv-degraded] slug lookup "${slug}" refused: ${reason}`);
+      return { status: "unavailable", reason };
+    }
     const { PRELOADED_LISTINGS } = await import("../data/listings");
     const seeded = PRELOADED_LISTINGS.find((l) => slugify(l.address) === slug);
     return seeded ? { status: "found", listing: seeded } : { status: "absent" };
@@ -1214,6 +1363,137 @@ export async function writeAllListings(
   return { written: unique.length, slugs };
 }
 
+// ---------------------------------------------------------------------------
+// [mls-corroboration] The secondary (MLS) upsert match, and why it needs a
+// second opinion before it is allowed to replace a row.
+//
+// listingMlsKey() is province-scoped, and a province spans several issuing
+// boards (BC alone has VREB, REBGV and FVREB). MLS numbers are unique inside
+// a BOARD, not inside a province, so "same province, same digits" is a live
+// collision risk between two unrelated properties — and upsertListing's use
+// of the match is `all[idx] = listing`, which means the collision does not
+// merely mis-link the rows, it destroys one of them. A forked duplicate row
+// is recoverable by a later dedup or a human; an overwritten property is
+// gone, and it is gone from the only copy. The previous code's own comment
+// said this fallback was "never used alone" while the line underneath used
+// it exactly that way.
+//
+// The fallback still has to exist, because the case it was written for is
+// real and narrow: the same property re-scraped with a rewritten address
+// string ("867 Walfred Rd" -> "867 Walfred Road"), a difference
+// listing-identity.ts's norm() deliberately does NOT normalize away (guessing
+// street-type equivalences merges rows on a hunch). So the match is kept and
+// corroborated instead. An MLS candidate is accepted only if it also agrees
+// on:
+//
+//   - the CITY (province already agrees — it is half of the MLS key), and
+//   - the exact multiset of NUMERIC tokens in the address: street number,
+//     unit number, both halves of a range like "105-107", all of them, and
+//   - at least one shared ALPHABETIC address token (in practice the street
+//     name).
+//
+// That corroboration is deliberately asymmetric. The variation it must
+// tolerate lives entirely in the street-TYPE word (Rd/Road, St/Street,
+// Ave/Avenue) plus punctuation and case, none of which touch the digits or
+// the street name — so the legitimate re-scrape still matches. The variation
+// it must exclude is a different property that merely shares MLS digits, and
+// that property would have to sit in the same city AND carry an identical
+// set of address numbers AND share a street-name word before it could reach
+// the overwrite. A dropped or added unit designator ("867 Walfred Rd" vs
+// "Unit 5 - 867 Walfred Rd") changes the digit multiset, so those two rows
+// stay separate — which is the answer the [dup-rows] audit wanted for
+// multi-unit buildings anyway.
+//
+// Every rejection direction ends in "append a new row", never "overwrite
+// something else", and every one of them logs. AMBIGUITY IS ALSO NOT A
+// MATCH: if two or more stored rows corroborate, this returns -1. Two rows
+// that both look like this property means the store already disagrees with
+// itself, and picking one to overwrite would resolve that disagreement by
+// deleting the evidence.
+// ---------------------------------------------------------------------------
+
+/** Casefold + strip diacritics. Mirrors listing-identity.ts's norm() up to
+ *  the point where that function also collapses punctuation to spaces. */
+function foldForMatch(value: string | undefined | null): string {
+  return (value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function matchTokens(value: string | undefined | null): string[] {
+  return foldForMatch(value)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+/**
+ * Do these two rows agree on enough of their address to be the same property
+ * under a different address string? See [mls-corroboration] above for why
+ * these three tests and not others.
+ */
+function addressCorroborates(stored: Listing, incoming: Listing): boolean {
+  if (matchTokens(stored.city).join(" ") !== matchTokens(incoming.city).join(" ")) return false;
+
+  const a = matchTokens(stored.address);
+  const b = matchTokens(incoming.address);
+
+  const digitsA = a.filter((t) => /^[0-9]+$/.test(t)).sort();
+  const digitsB = b.filter((t) => /^[0-9]+$/.test(t)).sort();
+  if (digitsA.length !== digitsB.length || digitsA.some((d, i) => d !== digitsB[i])) return false;
+
+  const wordsB = new Set(b.filter((t) => /[a-z]/.test(t)));
+  return a.some((t) => /[a-z]/.test(t) && wordsB.has(t));
+}
+
+/**
+ * Index of the one stored row this listing may replace on its MLS number, or
+ * -1 when there is no such row, when the only MLS matches are uncorroborated
+ * (a cross-board reuse), or when more than one row corroborates. -1 means the
+ * caller appends.
+ */
+function findCorroboratedMlsMatch(all: Listing[], listing: Listing): number {
+  const mlsKey = listingMlsKey(listing);
+  if (!mlsKey) return -1;
+
+  const candidates: number[] = [];
+  all.forEach((l, i) => {
+    if (listingMlsKey(l) === mlsKey) candidates.push(i);
+  });
+  if (candidates.length === 0) return -1;
+
+  const where = `"${listing.address}" (${listing.city} ${listing.province}, MLS ${listing.mlsNumber})`;
+  const corroborated = candidates.filter((i) => addressCorroborates(all[i], listing));
+
+  if (corroborated.length === 1) {
+    const i = corroborated[0];
+    console.warn(
+      `[listing-upsert] ${where} matched stored row "${all[i].address}" on MLS rather than on address — ` +
+        `same city and the same address numbers, so this is the same property with a rewritten address ` +
+        `string. Updating that row in place.`
+    );
+    return i;
+  }
+
+  if (corroborated.length > 1) {
+    console.error(
+      `[listing-upsert] AMBIGUOUS MLS match for ${where}: ${corroborated.length} stored rows corroborate it ` +
+        `(${corroborated.map((i) => `"${all[i].address}"`).join(", ")}). Refusing to overwrite any of them ` +
+        `and adding this row instead — the store already disagrees with itself here and needs a human.`
+    );
+    return -1;
+  }
+
+  console.warn(
+    `[listing-upsert] MLS ${listing.mlsNumber} is already held by ${candidates.length} stored row(s) ` +
+      `(${candidates.map((i) => `"${all[i].address}" in ${all[i].city}`).join(", ")}) that do NOT corroborate ` +
+      `${where} — a cross-board MLS reuse inside ${listing.province}, a different unit at the same street ` +
+      `number, or a re-listing in another city, but not a row this may replace. Adding a new row; ` +
+      `overwriting one of those would have destroyed a different property.`
+  );
+  return -1;
+}
+
 /**
  * Add or update a single listing in KV.
  * Reads the full list, upserts on the shared listing identity (see the
@@ -1256,24 +1536,18 @@ export async function upsertListing(listing: Listing): Promise<void> {
   //   2. listingMlsKey — province-scoped provider record id. SECONDARY only,
   //      consulted when no primary match exists, so a re-scrape whose
   //      address string moved ("867 Walfred Rd" -> "867 Walfred Road")
-  //      updates its row instead of forking a second one. Never used alone:
-  //      MLS numbers are unique per issuing board, not per province, so a
-  //      cross-board collision would overwrite the wrong property.
+  //      updates its row instead of forking a second one. It is never
+  //      DECISIVE on its own: MLS numbers are unique per issuing board, not
+  //      per province, so an MLS hit must be corroborated by the city and
+  //      the address's numeric tokens before it may replace a row, and an
+  //      ambiguous hit appends rather than overwrites. That rule and its
+  //      reasoning live in findCorroboratedMlsMatch / [mls-corroboration]
+  //      directly above this function.
   const primaryKey = listingKey(listing);
   let idx = all.findIndex((l) => listingKey(l) === primaryKey);
 
   if (idx < 0) {
-    const mlsKey = listingMlsKey(listing);
-    if (mlsKey) {
-      idx = all.findIndex((l) => listingMlsKey(l) === mlsKey);
-      if (idx >= 0) {
-        console.warn(
-          `[listing-upsert] "${listing.address}" (${listing.city} ${listing.province}) matched stored row ` +
-            `"${all[idx].address}" (${all[idx].city} ${all[idx].province}) on MLS ${listing.mlsNumber} rather ` +
-            `than on address — treating it as the same property with a changed address string.`
-        );
-      }
-    }
+    idx = findCorroboratedMlsMatch(all, listing);
   }
 
   if (idx >= 0) {
@@ -1284,7 +1558,10 @@ export async function upsertListing(listing: Listing): Promise<void> {
 
   // Same identity rule as writeAllListings ([dup-rows] above). Note this can
   // only remove provable byte-for-byte copies now, so it is no longer what
-  // keeps a moved address from forking a row — the MLS fallback above is.
+  // keeps a moved address from forking a row — the corroborated MLS fallback
+  // above is. Rows this upsert deliberately appended rather than overwrote
+  // (an uncorroborated or ambiguous MLS hit) differ in at least their address
+  // or city, so this pass cannot quietly collapse them either.
   const { listings: deduped, dropped } = dedupeListingsByIdentity(all);
   if (dropped > 0) {
     console.warn(

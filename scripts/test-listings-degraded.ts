@@ -27,10 +27,17 @@
  *   2. Bulk consumers never publish emptiness from an unreadable store.
  *   3. The prebuild sitemap generator fails the build instead of baking an
  *      empty sitemap into a deployment.
- *   4. Failed kvSet/kvPipeline surface instead of reporting success.
+ *   4. Failed kvSet/kvPipeline surface instead of reporting success —
+ *      including a pipeline whose HTTP 200 body is not one result per
+ *      submitted command.
  *   5. Dedup drops byte-identical rows only — the Newark pair survives.
  *   6. upsertListing does not overwrite a same-address listing in another
  *      city.
+ *   7. The static dev seed is gated by environment: a production process
+ *      with no KV credentials reports `unavailable`, it does not serve the
+ *      March 2026 snapshot as healthy live data.
+ *   8. An MLS number reused across boards inside one province does not let
+ *      upsertListing overwrite a different property.
  *
  * Usage: npx tsx scripts/test-listings-degraded.ts
  */
@@ -60,8 +67,11 @@ const fail = {
   /** All SETs answer HTTP 500. */
   sets: false,
   /** "http": pipeline answers 500. "command": HTTP 200 with a rejected
-   *  command inside — the shape that used to be invisible. */
-  pipeline: null as null | "http" | "command",
+   *  command inside. "non-array": HTTP 200 whose body is a bare
+   *  {"result":"OK"} envelope rather than a per-command array. "short":
+   *  HTTP 200 with fewer results than commands submitted. The last two used
+   *  to fall straight through and be counted as a full success. */
+  pipeline: null as null | "http" | "command" | "non-array" | "short",
 };
 
 function resetFakeKv(): void {
@@ -130,6 +140,16 @@ global.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         { status: 200 }
       );
     }
+    if (fail.pipeline === "non-array") {
+      // What a proxy, a stub, or a changed API surface can hand back: a
+      // well-formed 200 that carries no per-command outcomes at all.
+      return new Response(JSON.stringify({ result: "OK" }), { status: 200 });
+    }
+    if (fail.pipeline === "short") {
+      // Fewer results than commands: some commands went unacknowledged and
+      // Upstash does not say which, so the whole batch is unwritten.
+      return new Response(JSON.stringify(commands.slice(1).map(() => ({ result: "OK" }))), { status: 200 });
+    }
     for (const cmd of commands) runCommand(cmd);
     return new Response(JSON.stringify(commands.map(() => ({ result: "OK" }))), { status: 200 });
   }
@@ -191,6 +211,7 @@ const REPO_ROOT = join(__dirname, "..");
 
 async function main() {
   const kv = await import("../src/lib/kv/listings");
+  const { slugify } = await import("../src/lib/utils");
   const {
     readAllListings,
     requireAllListings,
@@ -204,7 +225,7 @@ async function main() {
   const seed = Array.from({ length: 12 }, (_, i) => makeListing(i));
 
   // =========================================================================
-  console.log("\n[1/6] store reads tell 'empty' apart from 'unreadable'");
+  console.log("\n[1/8] store reads tell 'empty' apart from 'unreadable'");
   // =========================================================================
   {
     resetFakeKv();
@@ -278,7 +299,7 @@ async function main() {
   }
 
   // =========================================================================
-  console.log("\n[2/6] bulk consumers never publish emptiness from an unreadable store");
+  console.log("\n[2/8] bulk consumers never publish emptiness from an unreadable store");
   // =========================================================================
   {
     resetFakeKv();
@@ -398,7 +419,7 @@ async function main() {
   }
 
   // =========================================================================
-  console.log("\n[3/6] the prebuild sitemap generator fails the build, and writes nothing");
+  console.log("\n[3/8] the prebuild sitemap generator fails the build, and writes nothing");
   // =========================================================================
   {
     // This is the worst path in the set: scripts/generate-sitemap.ts runs in
@@ -456,7 +477,7 @@ async function main() {
   }
 
   // =========================================================================
-  console.log("\n[4/6] failed writes surface instead of reporting success");
+  console.log("\n[4/8] failed writes surface instead of reporting success");
   // =========================================================================
   {
     resetFakeKv();
@@ -515,6 +536,48 @@ async function main() {
       pipeCmdErr instanceof Error ? pipeCmdErr.message : ""
     );
 
+    // Both of these are HTTP 200 with a body that is not one result per
+    // submitted command — the branch that used to be treated as a fully
+    // successful pipeline because the per-command scan was wrapped in an
+    // `if (Array.isArray(body))` with no else.
+    fail.pipeline = "non-array";
+    let pipeShapeErr: unknown = null;
+    let pipeShapeResult: unknown = null;
+    try {
+      pipeShapeResult = await writeAllListings(seed, { force: true });
+    } catch (err) {
+      pipeShapeErr = err;
+    }
+    check(
+      "a pipeline answering HTTP 200 with a NON-ARRAY body throws instead of reporting success",
+      pipeShapeErr instanceof Error && pipeShapeResult === null,
+      `err=${String(pipeShapeErr)} result=${JSON.stringify(pipeShapeResult)}`
+    );
+    check(
+      "the non-array failure says it cannot confirm the commands landed",
+      pipeShapeErr instanceof Error && /non-array|object body|cannot confirm/i.test(pipeShapeErr.message),
+      pipeShapeErr instanceof Error ? pipeShapeErr.message : ""
+    );
+
+    fail.pipeline = "short";
+    let pipeShortErr: unknown = null;
+    let pipeShortResult: unknown = null;
+    try {
+      pipeShortResult = await writeAllListings(seed, { force: true });
+    } catch (err) {
+      pipeShortErr = err;
+    }
+    check(
+      "a pipeline returning FEWER results than commands throws instead of reporting success",
+      pipeShortErr instanceof Error && pipeShortResult === null,
+      `err=${String(pipeShortErr)} result=${JSON.stringify(pipeShortResult)}`
+    );
+    check(
+      "the short-body failure names the unacknowledged commands",
+      pipeShortErr instanceof Error && /unacknowledged/.test(pipeShortErr.message),
+      pipeShortErr instanceof Error ? pipeShortErr.message : ""
+    );
+
     fail.pipeline = null;
     const okResult = await writeAllListings(seed, { force: true });
     check(
@@ -525,7 +588,7 @@ async function main() {
   }
 
   // =========================================================================
-  console.log("\n[5/6] dedup drops only provable copies — the Newark pair survives");
+  console.log("\n[5/8] dedup drops only provable copies — the Newark pair survives");
   // =========================================================================
   {
     const newarkA = makeListing(0, {
@@ -594,7 +657,7 @@ async function main() {
   }
 
   // =========================================================================
-  console.log("\n[6/6] upsertListing matches on identity, not on the bare address");
+  console.log("\n[6/8] upsertListing matches on identity, not on the bare address");
   // =========================================================================
   {
     resetFakeKv();
@@ -652,6 +715,249 @@ async function main() {
       "and the row now carries the new address",
       victoriaRows[0]?.address === "123 Main Street",
       victoriaRows[0]?.address
+    );
+  }
+
+  // =========================================================================
+  console.log("\n[7/8] the static dev seed is gated by environment, and fails safe");
+  // =========================================================================
+  {
+    // kv/listings.ts reads every one of these lazily, per call, so flipping
+    // them here really does re-decide the gate. Restored in the finally.
+    const env = process.env as Record<string, string | undefined>;
+    const savedUrl = env.KV_REST_API_URL;
+    const savedToken = env.KV_REST_API_TOKEN;
+    const savedNodeEnv = env.NODE_ENV;
+    const savedVercelEnv = env.VERCEL_ENV;
+    const savedOptIn = env.LISTINGS_ALLOW_STATIC_SEED;
+
+    /** Put the process in "KV credentials are missing" + the named tier. */
+    function setEnv(nodeEnv: string | undefined, vercelEnv: string | undefined, optIn?: string): void {
+      delete env.KV_REST_API_URL;
+      delete env.KV_REST_API_TOKEN;
+      if (nodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = nodeEnv;
+      if (vercelEnv === undefined) delete env.VERCEL_ENV;
+      else env.VERCEL_ENV = vercelEnv;
+      if (optIn === undefined) delete env.LISTINGS_ALLOW_STATIC_SEED;
+      else env.LISTINGS_ALLOW_STATIC_SEED = optIn;
+    }
+
+    try {
+      const { PRELOADED_LISTINGS } = await import("../src/lib/data/listings");
+      const seedSlug = slugify(PRELOADED_LISTINGS[0].address);
+
+      // The finding: a production deploy with an omitted/rotated/mis-scoped
+      // credential used to resolve the 250-row March snapshot as `ok`.
+      setEnv("production", undefined);
+      const prodRead = await readAllListings();
+      check(
+        "production + no KV credentials reads 'unavailable', NOT the static seed as ok",
+        prodRead.status === "unavailable",
+        `status=${prodRead.status}${prodRead.status === "ok" ? ` count=${prodRead.listings.length}` : ""}`
+      );
+      check(
+        "the reason names the missing credentials and the escape hatch",
+        prodRead.status === "unavailable" &&
+          /KV_REST_API_URL/.test(prodRead.reason) &&
+          /LISTINGS_ALLOW_STATIC_SEED/.test(prodRead.reason),
+        prodRead.status === "unavailable" ? prodRead.reason : ""
+      );
+      check(
+        "the health stamp says unavailable, not static-seed",
+        kv.getListingsStoreHealth().source === "unavailable",
+        kv.getListingsStoreHealth().source
+      );
+
+      const prodLookup = await kv.getListingBySlug(seedSlug);
+      check(
+        "getListingBySlug returns 'unavailable' (a 503) rather than a seeded 'found' or a bare 404",
+        prodLookup.status === "unavailable",
+        prodLookup.status
+      );
+
+      let prodThrew: unknown = null;
+      try {
+        await requireAllListings({ context: "seed gate" });
+      } catch (err) {
+        prodThrew = err;
+      }
+      check(
+        "requireAllListings throws for a refused seed, exactly as for a dead KV",
+        prodThrew instanceof ListingsStoreUnavailableError,
+        String(prodThrew)
+      );
+      check("getAllListings returns [] for a refused seed", (await getAllListings()).length === 0);
+
+      // A preview deployment is a real deployment: people and crawlers reach
+      // it, and Vercel leaves NODE_ENV=production on it, so NODE_ENV alone
+      // cannot tell it apart from production.
+      setEnv("production", "preview");
+      check(
+        "VERCEL_ENV=preview refuses the seed (a preview is a real deployment)",
+        (await readAllListings()).status === "unavailable"
+      );
+
+      // Fail-safe: an environment the rule does not recognize must refuse.
+      setEnv(undefined, undefined);
+      check(
+        "an unset NODE_ENV with no VERCEL_ENV refuses the seed (unknown fails safe)",
+        (await readAllListings()).status === "unavailable"
+      );
+      setEnv("development", "some-future-tier");
+      check(
+        "an unrecognized VERCEL_ENV refuses the seed even with NODE_ENV=development",
+        (await readAllListings()).status === "unavailable"
+      );
+
+      // ...and local dev still works, which is the whole point of the seed.
+      setEnv("development", undefined);
+      const devRead = await readAllListings();
+      check(
+        "NODE_ENV=development still serves the static seed as ok",
+        devRead.status === "ok" && devRead.listings.length === PRELOADED_LISTINGS.length,
+        `status=${devRead.status}`
+      );
+      check(
+        "and the health stamp discloses it as static-seed, not kv",
+        kv.getListingsStoreHealth().source === "static-seed" && kv.getListingsStoreHealth().degraded,
+        JSON.stringify(kv.getListingsStoreHealth())
+      );
+      check(
+        "getListingBySlug resolves a seeded slug in dev",
+        (await kv.getListingBySlug(seedSlug)).status === "found"
+      );
+
+      setEnv("development", "development");
+      check(
+        'VERCEL_ENV="development" (vercel dev) serves the seed',
+        (await readAllListings()).status === "ok"
+      );
+
+      // The documented escape hatch, matching SITEMAP_ALLOW_STATIC_SEED.
+      setEnv("production", "production", "1");
+      const optedIn = await readAllListings();
+      check(
+        "LISTINGS_ALLOW_STATIC_SEED=1 serves the seed even in production (explicit, disclosed opt-in)",
+        optedIn.status === "ok",
+        optedIn.status
+      );
+      check(
+        "and it is still stamped as static-seed, never as kv",
+        kv.getListingsStoreHealth().source === "static-seed",
+        kv.getListingsStoreHealth().source
+      );
+    } finally {
+      env.KV_REST_API_URL = savedUrl;
+      env.KV_REST_API_TOKEN = savedToken;
+      if (savedNodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = savedNodeEnv;
+      if (savedVercelEnv === undefined) delete env.VERCEL_ENV;
+      else env.VERCEL_ENV = savedVercelEnv;
+      if (savedOptIn === undefined) delete env.LISTINGS_ALLOW_STATIC_SEED;
+      else env.LISTINGS_ALLOW_STATIC_SEED = savedOptIn;
+    }
+  }
+
+  // =========================================================================
+  console.log("\n[8/8] a cross-board MLS collision never overwrites another property");
+  // =========================================================================
+  {
+    // MLS numbers are unique per issuing BOARD; a province spans several
+    // (BC: VREB, REBGV, FVREB). upsertListing's MLS fallback used to accept
+    // the first province+MLS hit and assign over it, which is data loss.
+    resetFakeKv();
+    const vreb = makeListing(0, {
+      address: "1 Fort St",
+      city: "Victoria",
+      province: "BC",
+      mlsNumber: "900123",
+      price: 500000,
+    });
+    const filler = Array.from({ length: 8 }, (_, i) => makeListing(50 + i, { city: "Victoria", province: "BC" }));
+    await writeAllListings([vreb, ...filler], { force: true });
+
+    const rebgv = makeListing(1, {
+      address: "88 Hastings St",
+      city: "Vancouver",
+      province: "BC",
+      mlsNumber: "900123",
+      price: 1250000,
+    });
+    await upsertListing(rebgv);
+
+    const afterCollision = await requireAllListings();
+    check(
+      "the Victoria row survives a same-province, different-board MLS collision",
+      afterCollision.some((l) => l.address === "1 Fort St" && l.city === "Victoria" && l.price === 500000),
+      JSON.stringify(afterCollision.filter((l) => l.mlsNumber === "900123").map((l) => `${l.address}/${l.city}`))
+    );
+    check(
+      "the colliding Vancouver row is ADDED alongside it, not written over it",
+      afterCollision.filter((l) => l.mlsNumber === "900123").length === 2,
+      String(afterCollision.filter((l) => l.mlsNumber === "900123").length)
+    );
+
+    // Same city, same MLS digits, different street number: corroboration
+    // must reject this too — a board collision does not have to cross a
+    // city line to destroy a row.
+    const elm = makeListing(2, { address: "12 Elm St", city: "Victoria", province: "BC", mlsNumber: "900777" });
+    await upsertListing(elm);
+    const yates = makeListing(3, {
+      address: "980 Yates St",
+      city: "Victoria",
+      province: "BC",
+      mlsNumber: "900777",
+      price: 777777,
+    });
+    await upsertListing(yates);
+    const afterSameCity = await requireAllListings();
+    check(
+      "a same-city MLS collision with different address numbers keeps both rows",
+      afterSameCity.filter((l) => l.mlsNumber === "900777").length === 2,
+      JSON.stringify(afterSameCity.filter((l) => l.mlsNumber === "900777").map((l) => l.address))
+    );
+
+    // A dropped/added unit designator changes the digit multiset, so these
+    // are two rows, not one overwrite — the multi-unit case [dup-rows] cares
+    // about.
+    const walfred = makeListing(4, { address: "867 Walfred Rd", city: "Victoria", province: "BC", mlsNumber: "900888" });
+    await upsertListing(walfred);
+    await upsertListing(
+      makeListing(5, { address: "Unit 5 - 867 Walfred Rd", city: "Victoria", province: "BC", mlsNumber: "900888", price: 321000 })
+    );
+    const afterUnit = await requireAllListings();
+    check(
+      "a unit designator appearing on the same street number keeps both rows",
+      afterUnit.filter((l) => l.mlsNumber === "900888").length === 2,
+      JSON.stringify(afterUnit.filter((l) => l.mlsNumber === "900888").map((l) => l.address))
+    );
+
+    // The legitimate case the fallback exists for still works.
+    await upsertListing({ ...walfred, address: "867 Walfred Road", price: 654321 } as Listing);
+    const afterRename = await requireAllListings();
+    const walfredRows = afterRename.filter((l) => l.mlsNumber === "900888" && !/unit/i.test(l.address));
+    check(
+      "a street-type rewrite on the same number in the same city still updates in place",
+      walfredRows.length === 1 && walfredRows[0].address === "867 Walfred Road" && walfredRows[0].price === 654321,
+      JSON.stringify(walfredRows.map((l) => `${l.address}@${l.price}`))
+    );
+
+    // Two stored rows that both corroborate: ambiguous, so nothing may be
+    // overwritten on a guess.
+    resetFakeKv();
+    const ambigA = makeListing(6, { address: "12 Oak Rd", city: "Kelowna", province: "BC", mlsNumber: "901111", price: 100000 });
+    const ambigB = makeListing(7, { address: "12 Oak Road", city: "Kelowna", province: "BC", mlsNumber: "901111", price: 200000 });
+    await writeAllListings([ambigA, ambigB, ...filler], { force: true });
+    await upsertListing(
+      makeListing(8, { address: "12 Oak Drive", city: "Kelowna", province: "BC", mlsNumber: "901111", price: 300000 })
+    );
+    const afterAmbig = await requireAllListings();
+    const oakPrices = afterAmbig.filter((l) => l.mlsNumber === "901111").map((l) => l.price).sort((a, b) => a - b);
+    check(
+      "an ambiguous MLS match (two corroborating rows) adds a row rather than overwriting either",
+      oakPrices.length === 3 && oakPrices[0] === 100000 && oakPrices[1] === 200000,
+      JSON.stringify(oakPrices)
     );
   }
 
