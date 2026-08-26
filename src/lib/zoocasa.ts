@@ -846,7 +846,19 @@ function siblingsFor(city: string): string[] {
  * — this is Zoocasa server-side behavior, not something a request-shape
  * change on our end can fix. See searchListings()/fetchSoldListings() below.
  */
-function citiesMatch(returnedCity: string, requestedCity: string): boolean {
+/**
+ * Exported for src/app/api/canary/route.ts. The canary reports how far a
+ * city search's raw results drift from the requested city; computing that
+ * with an exact string comparison OVERSTATES it badly, because the sibling
+ * acceptance below is correct behaviour — measured live during the 2026-08
+ * frozen-feed outage, exact matching read Vancouver at 85% mismatch where
+ * the real, sibling-aware figure was 56%, and Toronto at 93% vs 78%. A
+ * monitor that reports inflated numbers on healthy data gets muted, and a
+ * muted monitor is how that outage ran for weeks. The alternative — the
+ * canary keeping its own copy of CITY_SIBLINGS — is a table that silently
+ * drifts from this one, so the function is shared instead.
+ */
+export function citiesMatch(returnedCity: string, requestedCity: string): boolean {
   const r = returnedCity.trim().toLowerCase();
   const q = requestedCity.trim().toLowerCase();
   if (!r || !q) return false;

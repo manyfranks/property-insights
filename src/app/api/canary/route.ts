@@ -89,7 +89,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { searchListings, buildSearchUrl } from "@/lib/zoocasa";
+import { searchListings, buildSearchUrl, citiesMatch } from "@/lib/zoocasa";
 import { CITIES } from "@/lib/pipeline/ca-cities";
 import { lookupBCSync } from "@/lib/assessment/bc";
 import { calgarySodaHealthCheck } from "@/lib/assessment/ab";
@@ -368,8 +368,12 @@ interface RawZoocasaSample {
   // the same signal searchListings() logs via
   // console.error("[zoocasa-scope] dropped N/M (P%)..."). See the comment
   // in checkZoocasaFeedFingerprint() for why this is recomputed
-  // independently rather than captured from that log line.
+  // independently rather than captured from that log line, and the comment
+  // above SCOPE_MISMATCH_NOTE below for why it's diagnostic-only and never
+  // gates ok/problems.
   scopeMatchCount: number;
+  /** In-scope by the pipeline's own citiesMatch(), i.e. metro siblings count as a match. */
+  scopeSiblingAwareCount: number;
 }
 
 const ZOOCASA_RAW_FETCH_HEADERS = {
@@ -425,6 +429,7 @@ async function fetchRawZoocasaSample(city: string, province: string): Promise<Ra
   const mlsSet = new Set<string>();
   const mlsOrdered: string[] = [];
   let scopeMatchCount = 0;
+  let scopeSiblingAwareCount = 0;
   const wantCity = city.trim().toLowerCase();
   for (const l of listings) {
     const id = l.mls || l.address;
@@ -432,10 +437,15 @@ async function fetchRawZoocasaSample(city: string, province: string): Promise<Ra
       mlsSet.add(String(id));
       mlsOrdered.push(String(id));
     }
-    if ((l.sub_division || "").trim().toLowerCase() === wantCity) scopeMatchCount++;
+    const returned = (l.sub_division || "").trim();
+    if (returned.toLowerCase() === wantCity) scopeMatchCount++;
+    // citiesMatch() is the pipeline's OWN definition of an in-scope
+    // result — it deliberately accepts metro siblings, so this is the
+    // only figure that means what "mismatch" sounds like.
+    if (citiesMatch(returned, city)) scopeSiblingAwareCount++;
   }
 
-  return { count: listings.length, mlsSet, mlsOrdered, scopeMatchCount };
+  return { count: listings.length, mlsSet, mlsOrdered, scopeMatchCount, scopeSiblingAwareCount };
 }
 
 // One same-province pair per province that has 2+ probed cities is enough
@@ -519,12 +529,59 @@ function orderedMatchRatio(a: string[], b: string[]): number {
   return matches / len;
 }
 
-// Crude (no metro-sibling awareness) scope-mismatch floor, used only as a
-// secondary signal alongside the overlap check above. Deliberately higher
-// than citiesMatch()'s effective bar because this heuristic doesn't know
-// about CITY_SIBLINGS (e.g. Saanich/Victoria legitimately share some metro
-// inventory), so it's tuned to fire only on gross mismatch.
-const SCOPE_MISMATCH_THRESHOLD = 0.8;
+// SCOPE_MISMATCH_NOTE — P2 audit finding (2026-08): this used to be a fire
+// threshold ("SCOPE_MISMATCH_THRESHOLD = 0.8") that pushed into `problems`
+// — i.e. it could flip the whole canary to ok:false on its own. That was
+// wrong. This
+// exact-match check has no metro-sibling awareness, and CITY_SIBLINGS
+// (src/lib/zoocasa.ts) exists precisely because a hub-city search
+// legitimately returns its metro siblings' inventory (Victoria/Langford/
+// Saanich, Vancouver/Burnaby/Surrey/Richmond/..., Toronto/Mississauga/
+// Brampton/..., Ottawa/Gatineau/Kanata/...) — citiesMatch() accepts that as
+// correct, and the ingestion pipeline (src/lib/pipeline/retention.ts) relies
+// on it being correct. An exact-string-match check necessarily disagrees
+// with citiesMatch() on every one of those legitimate cross-listings, so on
+// a HEALTHY provider this number runs high for exactly the cities with the
+// biggest sibling fan-out — Toronto (18 GTA siblings) and Vancouver (14)
+// worst of all — which is exactly backwards for a monitor: it cries loudest
+// where the pipeline is working as designed.
+//
+// Verified live (2026-08-25, during the ongoing outage this file's header
+// documents): Vancouver's exact-match mismatch read 85% while the
+// sibling-aware figure (computed with the real CITY_SIBLINGS table, offline,
+// for comparison) was 56%; Toronto read 93% exact-match vs 78%
+// sibling-aware. A 20-30 point inflation on cities that already run hot is
+// enough to keep this "problem" permanently lit on a healthy day — the
+// textbook muted-monitor failure mode this whole rewrite exists to fix (see
+// file header: the OLD `listings.length === 0` canary stayed green through
+// the entire outage because nobody trusted it enough to react to the noise
+// it produced).
+//
+// Making this check metro-aware properly would mean either (a) duplicating
+// CITY_SIBLINGS here, which is the same class of bug ZOOCASA_BASELINE_CITIES
+// stopped committing for price bands (see that array's comment) — a second
+// copy of a table that lives in zoocasa.ts, silently stale the day someone
+// edits the original without remembering this shadow copy exists, with no
+// visible sign it happened either way; or (b) calling searchListings() per
+// city here to get the real citiesMatch()-filtered count instead of
+// re-deriving it, which would double this section's request volume
+// (fetchRawZoocasaSample() below already makes one request per city; this
+// file's own request-volume note above budgets ~17 GETs/day specifically to
+// stay a polite client, and this signal isn't worth doubling that for). Both
+// were rejected. Neither CITY_SIBLINGS nor citiesMatch() is exported from
+// zoocasa.ts, and this change doesn't own that file, so there is no third
+// option that reproduces the real semantics from here.
+//
+// So: this signal is reported for visibility only (see the "notes" push in
+// checkZoocasaFeedFingerprint() below) and never contributes to
+// `problems`/`ok`. It is explicitly labeled in its own output as
+// not-sibling-aware so nobody reads it as a real mismatch rate, and — per
+// the file's fail-loud policy — its own text says outright that it cannot
+// determine whether a high reading means anything, rather than quietly
+// passing it off as green OR quietly failing the canary on it. The ORDERED
+// fingerprint match above is the sole authority for scope-freeze pass/fail;
+// do not wire this back into `problems` without first getting
+// CITY_SIBLINGS/citiesMatch() exported from zoocasa.ts for real reuse.
 
 /**
  * Cross-city feed-identity fingerprint. Re-fetches RAW (pre-citiesMatch)
@@ -545,6 +602,14 @@ const SCOPE_MISMATCH_THRESHOLD = 0.8;
  * false-alarm failure mode citiesMatch() itself exists to tolerate. Anyone
  * changing these pairs must re-run that audit in both directions
  * (CITY_SIBLINGS is keyed by hub only).
+ *
+ * Also computes a per-city exact-match scope-mismatch percentage as a
+ * secondary signal — see the SCOPE_MISMATCH_NOTE comment below for why that
+ * number is diagnostic-only (reported in `notes`, never `problems`): it has
+ * no metro-sibling awareness, so it reads high on sibling-heavy cities
+ * (Toronto, Vancouver) even when the provider is healthy, and gating on it
+ * would recreate the exact muted-monitor failure mode this whole detector
+ * exists to fix.
  */
 async function checkZoocasaFeedFingerprint(): Promise<CheckResult> {
   try {
@@ -597,17 +662,37 @@ async function checkZoocasaFeedFingerprint(): Promise<CheckResult> {
       // monkey-patching console.error, which is unsafe across the
       // concurrent per-city probes this check (and checkZoocasaBaseline)
       // intentionally run in parallel to stay inside the 60s budget.
+      //
+      // Sibling-aware, using the pipeline's own citiesMatch() rather than
+      // an exact string compare. citiesMatch() accepts metro siblings on
+      // purpose — a Victoria search legitimately returns Saanich/Langford,
+      // an Ottawa search returns Kanata/Gatineau — and the ingestion
+      // pipeline stores those rows as that city's inventory, so an exact
+      // compare does not measure "wrong city", it measures "has suburbs".
+      // Live during this outage it overstated by 15-29 points (Vancouver
+      // 85% exact vs 56% real, Toronto 93% vs 78%), and on a HEALTHY
+      // provider the sibling-heavy cities would look worst of all. A
+      // monitor that reports inflated numbers gets muted, and a muted
+      // monitor is how the frozen feed ran undetected for weeks.
+      //
+      // Still reported into `notes` rather than gating: the ordered
+      // fingerprint above is the decisive detector, and a second gate on a
+      // correlated signal adds noise without adding information. The exact
+      // figure is carried alongside so the gap between the two stays
+      // visible — a widening gap is itself a hint the sibling table has
+      // drifted from Zoocasa's actual metro groupings.
       for (const [c, s] of [
         [pair.a, a] as const,
         [pair.b, b] as const,
       ]) {
         if (!s || s.count === 0) continue;
-        const mismatchRatio = 1 - s.scopeMatchCount / s.count;
-        if (mismatchRatio >= SCOPE_MISMATCH_THRESHOLD) {
-          problems.push(
-            `${c.city}: ${s.count - s.scopeMatchCount}/${s.count} (${Math.round(mismatchRatio * 100)}%) raw listings don't claim to be in ${c.city} — provider scope mismatch`
-          );
-        }
+        const outOfScope = s.count - s.scopeSiblingAwareCount;
+        const exactOut = s.count - s.scopeMatchCount;
+        notes.push(
+          `${c.city}: ${outOfScope}/${s.count} (${Math.round((outOfScope / s.count) * 100)}%) raw listings out of scope ` +
+            `by citiesMatch() [exact-string compare would say ${exactOut}/${s.count}; the difference is legitimate ` +
+            `metro-sibling inventory] — diagnostic only, does not affect ok/problems`
+        );
       }
     }
 
