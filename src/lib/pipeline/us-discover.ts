@@ -69,7 +69,7 @@ import { buildUsListing } from "./us-assess";
 import { enrichUSCityListings } from "./us-enrich";
 import { scoreV2 } from "../scoring";
 import { getAcsCountyMedian, getCountyMedianDom, CountyMedianDom } from "../db/regional-econ";
-import { getAllListings, writeAllListings, getMetaValue, setMetaValue } from "../kv/listings";
+import { readListingsStore, writeAllListings, getMetaValue, setMetaValue } from "../kv/listings";
 import { USDiscoverCityConfig, getActiveUSDiscoverCities, activateNextQueuedMetro } from "../data/city-metadata";
 import { Listing, ScoreResult, RelativeDom, RelativeDomBand } from "../types";
 
@@ -613,6 +613,42 @@ export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
   const allNew: Listing[] = [];
   const reserve = quotaReserve();
 
+  // -------------------------------------------------------------------------
+  // [pipeline-guard] Pre-flight: can this run read the store it is going to
+  // overwrite? Everything below ends in one merge-write of
+  // `[...kept, ...deduped]`, where `kept` is every stored row this sweep did
+  // NOT re-fetch — the ~2,300 CA rows included. So the read that produces
+  // `kept` is the single point where a transient KV failure turns this cron
+  // into a mass deletion of listings it never even looked at.
+  //
+  // This used to go through getAllListings(), which flattens an unreadable
+  // store to `[]` and reports the degradation only through the process-global
+  // getListingsStoreHealth() stamp — mutable state a concurrent request on
+  // the same warm lambda can overwrite between the read and the check. Same
+  // reasoning as src/app/api/pipeline/refresh/route.ts's Phase 2 abort, which
+  // is where this pattern is written up in full: readListingsStore() returns
+  // the store's real state on the stack, with no dev-seed path and no shared
+  // mutable stamp, so it cannot lose the distinction.
+  //
+  // writeAllListings()'s floor guard would very probably catch the resulting
+  // payload (a ~60-row US batch against a ~2,300-row store is far under its
+  // 40% ratio) — but that is a backstop catching a bug, and by the time it
+  // fires this run has already spent its RentCast quota, which is 50
+  // successful requests for the entire MONTH, on a payload that gets thrown
+  // away. So the check runs here, before the first sweep, and it throws:
+  // this executes inside a cron whose log is the only place a human ever
+  // sees it, and the caller (pipeline/refresh/route.ts) already catches and
+  // records a US-discover failure without letting it undo the CA run.
+  // -------------------------------------------------------------------------
+  const preflight = await readListingsStore();
+  if (preflight.status === "unavailable") {
+    throw new Error(
+      `[pipeline-guard] US Discover aborted before any RentCast spend: the listings store is unreadable ` +
+        `(${preflight.reason}). This run's write merges new US rows onto every stored row it did not ` +
+        `re-fetch, so building that payload from a store it cannot read would drop the entire CA set too.`
+    );
+  }
+
   const activeCities = await getActiveUSDiscoverCities();
 
   for (const cfg of activeCities) {
@@ -681,7 +717,21 @@ export async function refreshUSDiscover(): Promise<USDiscoverRefreshResult> {
   }
 
   if (allNew.length > 0) {
-    const existing = await getAllListings();
+    // Re-read rather than reusing the pre-flight snapshot: the sweeps above
+    // can take minutes, and this is the array that will be written back over
+    // the store, so it has to reflect the store as it is now. Same typed read
+    // and same refusal — the pre-flight above saves the quota, this one is
+    // what actually protects the write.
+    const storeRead = await readListingsStore();
+    if (storeRead.status === "unavailable") {
+      throw new Error(
+        `[pipeline-guard] US Discover merge-write aborted: the listings store became unreadable ` +
+          `(${storeRead.reason}) after ${allNew.length} new listing(s) were fetched. Writing now would ` +
+          `replace every stored listing with just this run's US rows. The fetched rows are dropped; the ` +
+          `next cycle re-fetches them (last-refresh was stamped per city, so budget the re-sweep).`
+      );
+    }
+    const existing = storeRead.status === "ok" ? storeRead.listings : [];
     // Normalized keys collapse abbreviation variants ("Tx Hwy"/"Texas Hwy")
     // and dedupe the new batch against itself (city sweeps can return the
     // same property twice under different address spellings).

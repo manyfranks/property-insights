@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { buildCityMetadata } from "@/lib/data/city-metadata";
-import { getAllListings } from "@/lib/kv/listings";
+import { readAllListings } from "@/lib/kv/listings";
 import Link from "next/link";
 import HomeCta from "@/components/home-cta";
 import ProvinceExplorer from "@/components/province-explorer";
@@ -18,7 +18,24 @@ export const metadata: Metadata = {
 };
 
 export default async function Home() {
-  const listings = await getAllListings();
+  // Degraded-mode choice for this surface: a VISIBLE banner, not a 500.
+  //
+  // This page's listing-derived parts are the example analysis card and the
+  // city/province explorer — both secondary to the address search, which is
+  // the primary action and needs no listing set to work (it falls through to
+  // the Places/assess path for any address). Hard-failing the whole homepage
+  // over a degraded read would take down the one thing still functioning.
+  //
+  // What is NOT acceptable is the previous behaviour: getAllListings()
+  // returned [] on an outage and buildCityMetadata([]) produced zero cities,
+  // so the explorer silently rendered as though the site tracked no
+  // properties anywhere. That is the "silently degrades to look fine" case
+  // the house rule ranks worst. So the read is typed, and on `unavailable`
+  // the listing-derived blocks are replaced by an explicit notice that says
+  // what is wrong — degraded, disclosed, and still usable.
+  const store = await readAllListings();
+  const storeUnavailable = store.status === "unavailable";
+  const listings = store.status === "ok" ? store.listings : [];
   const { cities, provinces } = buildCityMetadata(listings);
 
   // Vercel's edge geo headers — same ones src/app/api/geo/route.ts reads.
@@ -58,12 +75,30 @@ export default async function Home() {
         {/* Example output — the visual anchor under the input: shows exactly
             what typing an address yields, instead of explaining it in prose.
             Pulled from the real listings cache and rotated daily — see
-            ExampleAnalysisCard for selection/rotation logic. */}
-        <ExampleAnalysisCard listings={listings} geo={geo} />
+            ExampleAnalysisCard for selection/rotation logic. Replaced by the
+            degraded notice when the store could not be read, rather than
+            rendering an empty explorer that would read as "no coverage". */}
+        {storeUnavailable ? (
+          <div
+            role="status"
+            className="mt-8 rounded-xl border border-border bg-white px-5 py-4 text-left text-sm text-muted"
+          >
+            <p className="font-medium text-foreground">Our listing data is temporarily unreachable.</p>
+            <p className="mt-1.5 leading-relaxed">
+              Browsing by city is unavailable right now — this is an outage on our side, not an empty
+              catalogue. Searching an address above still works: we&apos;ll pull assessments and market
+              data for it directly.
+            </p>
+          </div>
+        ) : (
+          <>
+            <ExampleAnalysisCard listings={listings} geo={geo} />
 
-        <div className="hidden sm:block mt-10">
-          <ProvinceExplorer cities={cities} provinces={provinces} />
-        </div>
+            <div className="hidden sm:block mt-10">
+              <ProvinceExplorer cities={cities} provinces={provinces} />
+            </div>
+          </>
+        )}
       </div>
 
       <div className="w-full max-w-2xl mt-14 sm:mt-24">
@@ -90,9 +125,11 @@ export default async function Home() {
           </li>
         </ol>
 
-        <div className="mt-10 text-center">
-          <HomeCta cities={cities} />
-        </div>
+        {!storeUnavailable && (
+          <div className="mt-10 text-center">
+            <HomeCta cities={cities} />
+          </div>
+        )}
 
         <p className="text-xs text-muted mt-12 text-center">
           Search any address, or request an assessment for any property in Canada or the US.

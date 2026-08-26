@@ -23,9 +23,15 @@ function fmt(n: number): string {
   return "$" + n.toLocaleString();
 }
 
-/** Minimal title-only render that can't itself throw — used both for the
- * "not found" case and as a last-resort fallback if anything upstream
- * (KV fetch, analysis) throws unexpectedly, so this route never 500s. */
+/** Minimal title-only render that can't itself throw — used for the verified
+ * "not found" case and as a last-resort fallback if the analysis step throws
+ * unexpectedly.
+ *
+ * Deliberately NOT used when the listings store is unreadable. Social and
+ * crawler caches hold an OG image for days, so a "Property not found" card
+ * rendered during a KV blip would stay pinned to a live listing long after
+ * the store recovered. A 500 is the honest answer there: the scraper retries
+ * and nothing wrong gets cached. */
 function fallbackImage(message: string) {
   return new ImageResponse(
     (
@@ -55,16 +61,14 @@ export default async function PropertyOgImage({
 }) {
   const { slug } = await params;
 
-  let listing;
-  try {
-    listing = await getListingBySlug(slug);
-  } catch {
-    return fallbackImage("Property Insights");
+  const lookup = await getListingBySlug(slug);
+  if (lookup.status === "unavailable") {
+    throw new Error(`Listings store unavailable for OG image /property/${slug}: ${lookup.reason}`);
   }
-
-  if (!listing) {
+  if (lookup.status === "absent") {
     return fallbackImage("Property not found");
   }
+  const listing = lookup.listing;
 
   let analysis;
   try {

@@ -1,6 +1,6 @@
 import { Listing } from "./types";
 import { CityBounds } from "./data/city-bounds";
-import { getAllListings } from "./kv/listings";
+import { readAllListings } from "./kv/listings";
 
 const API_URL = "https://api2.realtor.ca/Listing.svc/PropertySearch_Post";
 
@@ -163,12 +163,30 @@ export async function searchListingsWithFallback(
     minBeds?: number;
     limit?: number;
   }
-): Promise<{ listings: Listing[]; source: "live" | "cached" }> {
-  // 1. Check for cached listings first — return immediately if available
-  const allListings = await getAllListings();
-  const cached = allListings.filter(
-    (l) => l.city.toLowerCase() === city.toLowerCase() && l.province === province
-  );
+): Promise<{ listings: Listing[]; source: "live" | "cached"; degradedReason?: string }> {
+  // 1. Check for cached listings first — return immediately if available.
+  //
+  // Typed read: `cached.length === 0` used to cover both "nothing cached for
+  // this city" and "the cache could not be read," and the two lead to very
+  // different claims. The live search below is a legitimate fallback for the
+  // second case, but it has to be DISCLOSED rather than presented as a
+  // normal miss — hence the log line and the optional `degradedReason` on
+  // the result, which is additive and leaves the existing shape intact.
+  const store = await readAllListings();
+  const degradedReason = store.status === "unavailable" ? store.reason : undefined;
+  if (degradedReason) {
+    console.error(
+      `[realtor-ca] listings cache unreadable (${degradedReason}) — searching ${city}, ${province} live ` +
+        `instead. This result is not cache-backed.`
+    );
+  }
+
+  const cached =
+    store.status === "ok"
+      ? store.listings.filter(
+          (l) => l.city.toLowerCase() === city.toLowerCase() && l.province === province
+        )
+      : [];
   if (cached.length > 0) {
     return { listings: cached, source: "cached" };
   }
@@ -185,11 +203,18 @@ export async function searchListingsWithFallback(
     clearTimeout(timeout);
 
     if (listings.length > 0) {
-      return { listings, source: "live" };
+      return { listings, source: "live", ...(degradedReason ? { degradedReason } : {}) };
     }
-  } catch {
-    // Live fetch failed or timed out
+  } catch (err) {
+    console.warn(
+      `[realtor-ca] live search for ${city}, ${province} failed or timed out: ` +
+        `${err instanceof Error ? err.message : String(err)}`
+    );
   }
 
-  return { listings: [], source: "cached" };
+  // Nothing from either source. `source: "cached"` here has always been a
+  // slight fiction (nothing was served from cache); when the cache was the
+  // thing that failed, the caller is told so rather than being handed a bare
+  // empty result that reads as "this city has no listings".
+  return { listings: [], source: "cached", ...(degradedReason ? { degradedReason } : {}) };
 }

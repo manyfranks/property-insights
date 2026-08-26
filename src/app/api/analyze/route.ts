@@ -29,12 +29,25 @@ export async function POST(req: NextRequest) {
   // build listings:by-slug:{s} at write time (see kv/listings.ts's
   // writeAllListings/upsertListing), so this is a single cheap KV get
   // instead of a full-array scan.
-  const listing = await getListingBySlug(slugify(address));
+  const lookup = await getListingBySlug(slugify(address));
 
-  if (!listing) {
+  // "We could not read the store" is a different answer from "no such
+  // property," and the client acts on it differently: 503 + Retry-After is
+  // retryable, 404 is final. Collapsing them would also teach anything that
+  // caches this response (and any crawler that reaches it) that a live
+  // property does not exist.
+  if (lookup.status === "unavailable") {
+    console.error(`[listing-store] /api/analyze degraded for "${address}": ${lookup.reason}`);
+    return NextResponse.json(
+      { error: "Listings store temporarily unavailable — please retry." },
+      { status: 503, headers: { "Retry-After": "30" } }
+    );
+  }
+
+  if (lookup.status === "absent") {
     return NextResponse.json({ error: "Property not found" }, { status: 404 });
   }
 
-  const result = await analyzeListingAsync(listing);
+  const result = await analyzeListingAsync(lookup.listing);
   return NextResponse.json(result);
 }

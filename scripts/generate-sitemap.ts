@@ -40,6 +40,35 @@
  * format) — legacy path, still reachable, kept live so nothing that
  * already fetched it 404s or has to be taught about the index.
  *
+ * --- degraded-KV policy (2026-08 audit) ----------------------------------
+ * This script must FAIL THE BUILD rather than write a sitemap from listings
+ * it could not read. The reasoning is different from — and stronger than —
+ * the dynamic /api/sitemap route's:
+ *
+ *   The files written below are STATIC ARTIFACTS baked into the deployment.
+ *   The dynamic route self-heals on the next request once KV recovers; a
+ *   baked public/sitemap-property.xml does not. If KV is unreadable during a
+ *   Vercel build, getAllListings() returns [] (it no longer substitutes the
+ *   static seed — see kv/listings.ts), every property and discover URL
+ *   silently disappears, and the resulting well-formed "we have no property
+ *   pages" assertion is served to Googlebot — which robots.ts points
+ *   directly at sitemap-main.xml — until somebody notices and redeploys.
+ *   Days of that is how indexed URLs get dropped, which is the exact loss
+ *   this whole branch exists to stop.
+ *
+ * A failed deploy is trivially recoverable; a deployed empty sitemap is not.
+ * So the read below uses readAllListings' typed three-state result (NOT
+ * getListingsStoreHealth, which is process-global state and describes
+ * whichever read stamped it last) and exits non-zero on `unavailable`.
+ *
+ * There is also an absolute floor on property URLs (SITEMAP_MIN_PROPERTY_URLS)
+ * for the case KV reads cleanly but returns implausibly few rows — the
+ * build-time analogue of writeAllListings' floor guard. It is absolute
+ * rather than a comparison against the previous public/*.xml because every
+ * one of those files is gitignored (see .gitignore), so on Vercel's fresh
+ * checkout there is nothing to compare against and a relative check would
+ * silently no-op in exactly the environment that matters.
+ *
  * --- lastmod policy (2026-08-19) -----------------------------------------
  * `<lastmod>` used to be `new Date()` (build time) stamped onto every one
  * of the ~11,840 URLs. That is a fabricated signal: it asserts every page
@@ -125,8 +154,19 @@ interface Entry {
 /** One sitemap ceiling per the protocol; every child below sits far under this. */
 const SITEMAP_URL_CEILING = 50_000;
 
+/**
+ * Floor on distinct /property/* URLs — see the degraded-KV policy in the
+ * file header. The live store carries ~2,220 distinct property slugs, so 100
+ * is far below any plausible day-to-day churn while still catching a store
+ * that read "successfully" but came back essentially empty. Override with
+ * SITEMAP_MIN_PROPERTY_URLS when a shrink is intentional (e.g. a deliberate
+ * reset, or a fresh environment that genuinely has no listings yet); set it
+ * to 0 to disable the check.
+ */
+const MIN_PROPERTY_URLS = Number(process.env.SITEMAP_MIN_PROPERTY_URLS ?? 100);
+
 async function main() {
-  const { getAllListings } = await import("../src/lib/kv/listings");
+  const { readAllListings } = await import("../src/lib/kv/listings");
   const { BLOG_POSTS } = await import("../src/lib/blog");
   const { slugify } = await import("../src/lib/utils");
   const { BASE_URL } = await import("../src/lib/seo");
@@ -134,7 +174,41 @@ async function main() {
     "../src/lib/us-counties"
   );
 
-  const listings = await getAllListings();
+  // Unconfigured KV is its own failure here, and it has to be caught before
+  // the read rather than after: readAllListings answers an unconfigured KV
+  // with the 250-row static dev seed as a perfectly healthy `ok` (correct
+  // for local dev — see kv/listings.ts), and 250 URLs would sail past the
+  // floor check below and bake a sitemap asserting that 250 of the ~2,220
+  // property pages exist and the rest do not. A build environment missing
+  // KV credentials is a misconfiguration, not a small store.
+  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+    if (process.env.SITEMAP_ALLOW_STATIC_SEED !== "1") {
+      throw new Error(
+        `refusing to generate a sitemap: KV_REST_API_URL/KV_REST_API_TOKEN are not set, so the listings ` +
+          `read would return the static dev seed (src/lib/data/listings.ts) and this build would publish a ` +
+          `sitemap omitting almost every real property URL. Set the KV credentials, or set ` +
+          `SITEMAP_ALLOW_STATIC_SEED=1 to build a knowingly seed-based sitemap.`
+      );
+    }
+    console.warn(
+      "[sitemap] SITEMAP_ALLOW_STATIC_SEED=1 — generating from the static dev seed, NOT live KV. " +
+        "The property/discover URLs in this build's sitemaps are not the real set."
+    );
+  }
+
+  // Typed three-state read — see the degraded-KV policy in the file header.
+  // `absent` (a verifiably empty store over a healthy connection) is allowed
+  // through to the floor check below, which is where "empty" gets its
+  // verdict; only "we could not read the store" fails here.
+  const storeRead = await readAllListings();
+  if (storeRead.status === "unavailable") {
+    throw new Error(
+      `refusing to generate a sitemap: the listings store could not be read (${storeRead.reason}). ` +
+        `Writing public/sitemap-*.xml from an unread store would bake a sitemap with zero property URLs ` +
+        `into this deployment and serve it to Googlebot until the next deploy. Fix KV and re-run the build.`
+    );
+  }
+  const listings = storeRead.status === "ok" ? storeRead.listings : [];
 
   // Counties with HUD FMR data get a /rent page (fail-soft: no DB at build
   // time → skip rent URLs rather than failing the whole sitemap).
@@ -201,6 +275,18 @@ async function main() {
   const tagSlugs = [...new Set(BLOG_POSTS.flatMap((p) => p.tags.map((t) => slugify(t))))];
   const citySlugs = [...new Set(listings.map((l) => l.city.toLowerCase().replace(/\s+/g, "-")))];
   const propertySlugs = [...new Set(listings.map((l) => slugify(l.address)))];
+
+  // Floor guard — see the degraded-KV policy in the file header. This runs
+  // before any writeFileSync, so a build that trips it leaves whatever
+  // sitemaps already existed untouched rather than half-replacing them.
+  if (MIN_PROPERTY_URLS > 0 && propertySlugs.length < MIN_PROPERTY_URLS) {
+    throw new Error(
+      `refusing to generate a sitemap: only ${propertySlugs.length} distinct property URL(s) from ` +
+        `${listings.length} listing(s), under the ${MIN_PROPERTY_URLS}-URL floor. The store read cleanly, ` +
+        `so this is a real collapse in the data, not an outage — publishing it would tell crawlers the ` +
+        `missing property pages are gone. Set SITEMAP_MIN_PROPERTY_URLS if this shrink is intentional.`
+    );
+  }
 
   // listing.enrichedAt is a real per-listing timestamp (src/lib/types.ts —
   // set by the enrichment pipeline, e.g. src/lib/pipeline/us-enrich.ts).

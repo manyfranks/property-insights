@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAllListings } from "@/lib/kv/listings";
+import { readAllListings } from "@/lib/kv/listings";
 import { analyzeListing } from "@/lib/analyze";
 import { isUSState } from "@/lib/assessment/us";
 import { slugify } from "@/lib/utils";
@@ -25,7 +25,47 @@ export default async function DashboardPage({
   searchParams: Promise<{ city?: string; country?: string }>;
 }) {
   const { city: initialCity, country } = await searchParams;
-  const listings = await getAllListings();
+
+  // Degraded-mode choice for this surface: a VISIBLE, explicit panel instead
+  // of the table, and no 500.
+  //
+  // Every number on this page is derived from the listing array, so an
+  // unreadable store used to render the page's own headline claim — "0
+  // properties analyzed" — as a statement of fact, with an empty table under
+  // it and nothing anywhere saying a read had failed. A visitor cannot tell
+  // that from a product with no data in it. This page is a browse surface
+  // with no crawl-signal role (it carries no per-listing URLs a crawler
+  // would drop) and no primary action that survives without the data, so the
+  // honest rendering is the whole page replaced by a statement of what went
+  // wrong — the "fall back visibly" tier, not a hard error page that says
+  // less.
+  const store = await readAllListings();
+  if (store.status === "unavailable") {
+    console.error(`[dashboard] listings store unreadable: ${store.reason}`);
+    return (
+      <main className="max-w-5xl mx-auto px-6 py-10">
+        <h1 className="text-2xl font-semibold tracking-tight mb-1">Discover</h1>
+        <div
+          role="alert"
+          className="mt-6 rounded-xl border border-border bg-white px-5 py-5 text-sm text-muted"
+        >
+          <p className="font-medium text-foreground">We couldn&apos;t load the listings right now.</p>
+          <p className="mt-2 leading-relaxed">
+            This is a temporary problem reading our own data store — not an empty catalogue. Nothing
+            here has been removed. Please try again in a few minutes.
+          </p>
+          <p className="mt-3 leading-relaxed">
+            In the meantime you can still{" "}
+            <Link href="/" className="text-foreground underline">
+              search a specific address
+            </Link>
+            , which does not depend on this data.
+          </p>
+        </div>
+      </main>
+    );
+  }
+  const listings = store.status === "ok" ? store.listings : [];
 
   // Country filter (CA | US) — DashboardClient's table has a fixed column
   // set with no province/state column (predates the US expansion), and

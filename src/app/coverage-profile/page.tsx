@@ -107,8 +107,23 @@ export default async function CoverageProfilePage({
   // listingId — try the slugified address against tracked listings so a
   // known property still gets full prefill. A miss just means
   // params-only prefill; it is never an error.
+  //
+  // The lookup's three states are NOT interchangeable here. A verified miss
+  // is fine (params-only prefill). An unreadable store is not: the matched
+  // listing's province is what overrides the client-supplied `region` in the
+  // jurisdiction gates below, so degrading a failed read to `null` would
+  // hand the gate back to an unverified query param and could open intake in
+  // an excluded region. That is a compliance decision made on missing data,
+  // which is exactly the silent degrade the old `.catch(() => null)` was
+  // doing — so an unreadable store fails the request instead.
   const lookupSlug = listingId ?? slugify(address);
-  const listing = lookupSlug ? await getListingBySlug(lookupSlug).catch(() => null) : null;
+  const lookup = lookupSlug ? await getListingBySlug(lookupSlug) : null;
+  if (lookup?.status === "unavailable") {
+    throw new Error(
+      `Listings store unavailable while resolving "${lookupSlug}" for /coverage-profile: ${lookup.reason}`
+    );
+  }
+  const listing = lookup?.status === "found" ? lookup.listing : null;
 
   // Jurisdiction gates — a visible notice, not a silent empty flow or a
   // bare 404 (see CoverageExcludedNotice's doc comment). Country/region

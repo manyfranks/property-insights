@@ -234,23 +234,158 @@ assessment path at all (see §8).
 
 ## 3. Data-store guards
 
-### 3.1 KV listings shape validation (`src/lib/kv/listings.ts`)
+### 3.1 KV listings store: read states, write states, identity (`src/lib/kv/listings.ts`)
 
-`getAllListings()` (`listings.ts:111-136`) is the read path every other
-listings function funnels through (`getListingBySlug`, `getListingsByCity`,
-`upsertListing`, `removeListings`). Guards, in order:
+**This section was rewritten 2026-08 after an audit. The previous version
+described `getAllListings()` as falling back to static `PRELOADED_LISTINGS`
+on a failed read, and as "the read path every other listings function funnels
+through." Both statements are now false — do not act on a cached memory of
+them.**
 
-1. `kvAvailable()` false (no `KV_REST_API_URL`/`TOKEN`) → immediately
-   returns static `PRELOADED_LISTINGS` (`listings.ts:112-115`).
-2. **Double-encoding tolerance**: unwraps up to 3 levels of
-   `JSON.parse()` if the stored value is a string-of-a-string
-   (`listings.ts:122-124`) — post-incident hardening; the module comment
-   references a past production outage where a raw REST `SET` stored a
-   JSON-string-of-JSON and took the site down.
-3. **Shape validation**: must be an `Array` where every element has a
-   string `address` field (`listings.ts:125`). Fails either check →
-   `console.error("[kv-shape] ...")` and falls back to static data
-   (`listings.ts:128-130,133-135`).
+#### Read states
+
+Every whole-store read resolves to one of three states, and the distinction
+is load-bearing: collapsing "the store is empty" into "the store could not be
+read" is what turned KV blips into 404s and empty sitemaps.
+
+| State | Means | Produced when |
+|---|---|---|
+| `ok` | These are the listings. | Manifest + chunks (or the legacy `listings:all` blob) read and validated. |
+| `absent` | The store verifiably holds nothing. | `listings:index` AND `listings:all` are both missing, over a healthy connection. |
+| `unavailable` | We do not know what the store holds. | Fetch failure, non-2xx, unparseable value, a chunk the manifest promised that isn't there, a reassembly that isn't `Listing[]`, or a row count that disagrees with the manifest's `total` (torn write). |
+
+Functions, and which of the three they expose:
+
+- **`readListingsStore(opts?)`** — the authoritative typed read. Sharded form
+  first, legacy `listings:all` second, three-state result either way. Every
+  write path size-checks through this (`writeAllListings`' floor guard,
+  `upsertListing`, `removeListings`) so a degraded read can never become a
+  write baseline. Does *not* substitute the static seed — a writer handed a
+  seed would write it over the real store.
+- **`readAllListings(opts?)`** — the render-path version: same three states,
+  plus the static `PRELOADED_LISTINGS` seed (as `ok`, with a `[kv-fallback]`
+  warning) when KV is **not configured at all**, plus a health stamp. **This
+  is what every bulk consumer should call.**
+- **`requireAllListings(opts?)`** — `readAllListings` for surfaces whose only
+  honest degraded behaviour is to fail. Returns rows on `ok`, `[]` on
+  `absent`, throws `ListingsStoreUnavailableError` on `unavailable`.
+- **`getAllListings(opts?)`** — legacy flattening wrapper, `Promise<Listing[]>`.
+  Returns `[]` for both `absent` and `unavailable`; the difference is only in
+  the log. Still used by render-path callers that predate the distinction.
+  **Do not add new bulk consumers to it.**
+- **`getListingBySlug(slug, opts?)`** — three-state `ListingLookup`
+  (`found` / `absent` / `unavailable`). `absent` is the only one a caller may
+  render as a 404.
+
+Guards inside the read, in order:
+
+1. `kvAvailable()` false (no `KV_REST_API_URL`/`TOKEN`) → static
+   `PRELOADED_LISTINGS` from `readAllListings`/`getAllListings` only. This is
+   the local-dev case, where there is no live store to be stale against. A
+   *configured* KV that fails is never masked with the seed.
+2. **Double-encoding tolerance**: `unwrapJson()` unwraps up to 3 string
+   layers (a raw REST `SET` once stored a JSON-string-of-JSON and took the
+   site down).
+3. **Shape validation**: must be an array whose every element has a string
+   `address`. Failure → `[kv-shape]` and `unavailable`, never static data.
+4. **Manifest/chunk cross-check**: `listings:index.total` must equal the row
+   count the chunks reassemble to, or the read is `unavailable` (see "Write
+   states" below).
+
+#### Degraded-mode behaviour, per consumer
+
+Every bulk consumer answers an `unavailable` read explicitly. None of them
+renders an empty result as data.
+
+| Surface | On `unavailable` |
+|---|---|
+| `GET /api/sitemap` | **503** + `Retry-After`, `no-store`, plain-text body. A 5xx makes Google retry; a 200 with no property URLs tells it to drop them. |
+| `scripts/generate-sitemap.ts` (prebuild) | **Fails the build** (non-zero exit), writing nothing. Its output is baked into the deployment and cannot self-heal. Also refuses to run with KV credentials unset (would silently publish the 250-row dev seed) unless `SITEMAP_ALLOW_STATIC_SEED=1`, and enforces a `SITEMAP_MIN_PROPERTY_URLS` (default 100) floor on distinct property URLs. |
+| `GET /api/search` | **503** + `Retry-After`. An empty array is indistinguishable from "no match". |
+| `POST /api/discover` | Falls through to the live Zoocasa search — **disclosed** via `degraded: true` + `degradedReason` in the 200 body. If live also yields nothing: **503**. |
+| `GET /api/insurance/address-lookup` | **502** (pre-existing behaviour, previously unreachable). The empty index is *not* written to the 5-minute cache. |
+| `/discover/[city]` | **Throws → 500.** Previously reached `notFound()`, i.e. a 404 on every indexed discover URL for the duration of an outage. `generateStaticParams` throws too, failing the build. |
+| `/discover/[city]/opengraph-image` | Neutral fallback image + `[discover-og]` log. Never the "City not found" card, which would misreport an outage as a missing city. |
+| `/` (homepage) | Visible degraded notice replacing the example card, province explorer and city CTA. The address search — the primary action — keeps working. |
+| `/dashboard` | Whole page replaced by an explicit "we couldn't load the listings" panel. Previously rendered "0 properties analyzed". |
+| `components/insurance/landing/data-moat.tsx` | The section's existing `kvError` copy ("we couldn't load a sample property"), which was unreachable before. Not the "no tracked listing in this region yet" copy, which is a false coverage claim. |
+| `lib/realtor-ca.ts` `searchListingsWithFallback` | Live search, disclosed via a `[realtor-ca]` log and an optional `degradedReason` on the result. |
+| `/property/[slug]` | Throws → 500 (pre-existing; not changed by this audit). |
+
+`getListingsStoreHealth()` is a **disclosure channel, not a decision
+signal**: it is process-global mutable state, so a concurrent request on the
+same instance can overwrite the stamp between a caller's read and its check.
+Use it for canary/ops reporting; use the typed read for anything that acts
+on the answer.
+
+#### Write states
+
+`kvSet()` and `kvPipeline()` **throw** (`KvWriteError`) on a rejected write —
+including the case Upstash reports as HTTP 200 with a per-command `error`
+slot inside a pipeline result. Previously both returned `false` and every
+caller discarded it, so a half-applied write returned a full success count
+with nothing logged. The throw propagates out of `writeAllListings`,
+`upsertListing` and `setMetaValue` to the cron or request that asked for it.
+
+`kvDel()` still returns a boolean and its failures are still ignored — those
+call sites are documented best-effort hygiene (orphaned trailing chunk keys,
+stale slug keys) and a failed delete cannot corrupt a read.
+
+`writeShardedStorage()` orders its work: **write all chunks → publish the
+manifest → only then delete trailing chunk keys the new manifest no longer
+claims.** The manifest SET is the closest thing this key schema has to a
+commit point. This is not atomic: if a chunk write fails partway, some chunk
+keys hold new rows under an unchanged manifest, which is logged as
+`[kv-torn-write]` and detected on read via the manifest's `total`
+cross-check. A genuinely atomic swap needs generation-scoped chunk keys; that
+is deliberately **not** implemented, because the manifest is read through
+Next's 300s fetch cache, so GC'ing the previous generation would 503 every
+render still holding a cached manifest for up to five minutes after each
+write. The full requirements for landing it are in `ListingsIndex`'s doc
+comment in `kv/listings.ts`.
+
+**Floor guard**: `writeAllListings` refuses any write below
+`FLOOR_GUARD_MIN_RATIO` (40%) of the currently stored count, unless
+`{ force: true }`. An `unavailable` baseline read refuses the write outright.
+
+#### Identity — one shared contract
+
+`src/lib/listing-identity.ts` is the single answer to "are these the same
+property?", used by retention, upsert and dedup. Three functions, three
+different jobs:
+
+- `listingKey()` — normalized address + city + province. **Primary** match
+  key. Cannot merge two distinct properties.
+- `listingMlsKey()` — province-scoped MLS number. **Secondary only.** MLS
+  numbers are unique per issuing *board*, and a province spans several (BC:
+  VREB, REBGV, FVREB), so it may follow a property across an address-string
+  change but must never be matched on alone.
+- `isSameRecord()` — full-record equality. The **only** test allowed to
+  authorize dropping a row.
+
+Applied:
+
+- `upsertListing` matches `listingKey` first, `listingMlsKey` second. It used
+  to match on the bare address string, so a user assessment of "123 Main St,
+  Calgary" could overwrite the stored "123 Main St, Victoria".
+- `dedupeListingsByIdentity` drops a row only when it is provably identical
+  to a survivor. It used to key on province + MLS with an address fallback,
+  either of which can merge two real properties. Of the live store's 93
+  excess rows, 92 are byte-identical copies and one slug
+  (`105-107-broad-st`, Newark NJ) holds two genuinely different properties —
+  exact equality removes all 92 and keeps both Newark rows.
+- `logSlugCollisions` still warns on every write about distinct records that
+  share one `/property/{slug}` URL, since only one of them can own the
+  by-slug key.
+
+**Known defect in the shared contract**: `canonicalize()` in
+`listing-identity.ts` is `JSON.stringify(l, Object.keys(l).sort())`, and
+JSON.stringify treats an array replacer as a property allow-list applied at
+*every* nesting depth — so nested objects (`preAssessment`, `preOffer`)
+serialize as `{}` and two rows differing only inside them compare equal under
+`isSameRecord`. `kv/listings.ts` compensates with a local full-depth
+`deepCanonical` comparison AND-ed with `isSameRecord`, so dedup is safe; the
+underlying contract is not yet fixed. See `deepCanonical`'s doc comment.
 
 `writeAllListings()`/`upsertListing()` always go through this module (never
 a raw REST `SET`) — `reseed-us-discover.ts`'s doc comment explicitly calls
@@ -479,7 +614,12 @@ failure-surfacing mechanism, since there's no external alerting layer (see
 | `[bc-assessment-shape]` | `bc.ts` | BC Assessment REST/scrape response drift |
 | `[soda-shape]` | `ab.ts` | Calgary/Edmonton SODA response drift (non-array, missing `assessed_value`) |
 | `[mb-soda-shape]` | `mb.ts` | Winnipeg SODA response drift |
-| `[kv-shape]` | `kv/listings.ts` | `listings:all` in KV failed shape validation — fell back to static data |
+| `[kv-shape]` | `kv/listings.ts` | A stored value failed shape validation (sharded chunks, `listings:all`, or a by-slug key). The read moves to the next form or reports `unavailable` — it never falls back to static data. |
+| `[kv-degraded]` | `kv/listings.ts` | A whole-store read could not be completed. Any empty page/sitemap/digest from that request is an outage, not data. |
+| `[kv-torn-write]` | `kv/listings.ts` | A chunk write failed partway; the manifest was not updated and the store may be internally inconsistent. Re-run the write. |
+| `[kv-fallback]` | `kv/listings.ts` | KV is not configured at all — the static `PRELOADED_LISTINGS` dev seed is being served. Should never appear in production. |
+| `[dup-rows]` | `kv/listings.ts` | Byte-identical duplicate rows dropped on write, or distinct records sharing one `/property/{slug}` URL. |
+| `[listing-upsert]` | `kv/listings.ts` | An upsert matched a stored row on MLS number rather than address (address string changed). |
 | `[canary]` | `api/canary/route.ts` | Daily health-probe failure summary |
 | `[us-narrative]` | `us-narrative.ts` | LLM call attempt failure, timeout, or truncation warning |
 | `[us-discover]` | `pipeline/refresh/route.ts` | Per-city US Discover refresh result/skip-reason |
@@ -502,7 +642,9 @@ failure-surfacing mechanism, since there's no external alerting layer (see
 |---|---|---|---|
 | US `/api/assess` always returns `offerAvailable:false, no_listing_data` | All rows from `getRentcastQuotaPoolStatus()` | `[assess] rentcast done` log line for `bundle.meta.errors` and `propertyDataUnavailableReason` in the response | Quota exhaustion, provider errors, and clean misses are machine-distinguishable; the UI still degrades safely |
 | US `/api/assess` 500s | Recent deploy touching `route.ts`/`rentcast.ts` | Is `DATABASE_URL` set but Neon unreachable? (`getCountyMarketPanel`/`lookupUS`'s `getAcsCountyMedian` are unguarded — §8) | Not a RentCast issue if the failure is a hard 500 rather than a graceful `no_listing_data` |
-| CA site 500s / listings look wrong | `[kv-shape]` logs | `listings:meta` KV key for `updatedAt` staleness | If KV is unreachable, `getAllListings()` silently serves static `PRELOADED_LISTINGS` — no error, but data is frozen at build time |
+| CA site 500s / listings look wrong | `[kv-degraded]` / `[kv-shape]` / `[kv-torn-write]` logs | `listings:meta` KV key for `updatedAt` staleness | KV unreachable no longer serves static data. `/property/*` and `/discover/*` 500, `/api/sitemap` and `/api/search` 503, the homepage and dashboard show a degraded notice. That is the intended behaviour, not a second bug — see §3.1 |
+| Prebuild fails with "refusing to generate a sitemap" | Are `KV_REST_API_URL`/`KV_REST_API_TOKEN` set in the build env? | Is KV actually reachable from the build? | Deliberate. `scripts/generate-sitemap.ts` writes STATIC files into the deployment; a sitemap generated from an unread store would advertise zero property URLs to Googlebot until the next deploy. Fix KV and rebuild — see §3.1 |
+| A cron reports a KV write error where it used to report success | `[kv-torn-write]` / `KvWriteError` in the logs | `listings:index` vs. actual chunk keys | `kvSet`/`kvPipeline` now throw instead of returning `false` into a caller that discards it. The write genuinely was failing before; only the reporting changed |
 | County pages (`/us/[state]/[county]`) 404ing | Is `DATABASE_URL` set at all? | If set, is Neon actually reachable? | Unset → clean `notFound()`. Set-but-down → unhandled 500, not a 404 — different code path, same user complaint |
 | County pages missing FMR/HPI/FEMA sections | Which ingest script last ran (`ingest-us-hud-fmr.ts` / `ingest-us-fhfa.ts` / `ingest-us-fema.ts`) | `regional_econ` row count for that county/metric | Sections gate on presence per-metric (`hasFmr`/`hasHpi`/`hasFema`), not on panel-level failure |
 | "THE SIGNAL" narrative reads generic/template-like | `[us-narrative]` logs for timeout/attempt-failed lines | `OPENROUTER_API_KEY` set? | Deterministic fallback is working as designed — check whether the LLM path is actually failing or just slow enough to hit the 12s timebox routinely |
