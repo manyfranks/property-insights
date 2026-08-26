@@ -3,8 +3,9 @@
  *
  * Daily cron job that:
  * 1. Searches all cities in parallel
- * 2. Matches existing KV listings, batches freshness checks globally
- * 3. Backfills dead slots with new candidates
+ * 2. Retains every stored listing it owns, refreshing matched ones from search
+ * 3. Freshness-checks them all; only a positive "dead" verdict removes one
+ * 3b. Backfills up to each city's target with new candidates
  * 4. Carries forward user-requested listings (source: "user")
  * 5. Enriches new + re-enriches stale user listings
  * 6. Writes enriched data to KV
@@ -14,45 +15,27 @@
 
 import { NextResponse } from "next/server";
 import { searchListings, fetchDetail, checkFreshness, fetchSoldListings, ZoocasaSoldRaw } from "@/lib/zoocasa";
-import { getAllListings, writeAllListings, purgeStaleSlugKeys } from "@/lib/kv/listings";
+import { readListingsStore, writeAllListings } from "@/lib/kv/listings";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { refreshUSDiscover } from "@/lib/pipeline/us-discover";
 import { slugify } from "@/lib/utils";
 import { Listing } from "@/lib/types";
 import { isUSState } from "@/lib/assessment/us";
+import { CITIES, type CityConfig } from "@/lib/pipeline/ca-cities";
+import { listingKey } from "@/lib/listing-identity";
+import {
+  planRetention,
+  runFreshnessPass,
+  pruneDead,
+  acquisitionAllowance,
+  selectNewListings,
+  selectUserCarryForward,
+  retainedSlugCollisions,
+  type CitySearchOutcome,
+} from "@/lib/pipeline/retention";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
-
-interface CityConfig {
-  city: string;
-  province: string;
-  minPrice: number;
-  maxPrice: number;
-  target: number;
-}
-
-const CITIES: CityConfig[] = [
-  { city: "Victoria", province: "BC", minPrice: 900000, maxPrice: 1300000, target: 25 },
-  { city: "Saanich", province: "BC", minPrice: 900000, maxPrice: 1300000, target: 25 },
-  { city: "Langford", province: "BC", minPrice: 900000, maxPrice: 1300000, target: 25 },
-  { city: "Vancouver", province: "BC", minPrice: 1000000, maxPrice: 1800000, target: 25 },
-  { city: "Surrey", province: "BC", minPrice: 1000000, maxPrice: 1800000, target: 25 },
-  { city: "Calgary", province: "AB", minPrice: 500000, maxPrice: 900000, target: 25 },
-  { city: "Edmonton", province: "AB", minPrice: 500000, maxPrice: 900000, target: 25 },
-  { city: "Toronto", province: "ON", minPrice: 1000000, maxPrice: 1800000, target: 25 },
-  { city: "Hamilton", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 25 },
-  { city: "Ottawa", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 25 },
-  // Added 2026-08 — live coverage probe confirmed real Winnipeg inventory
-  // (19 valid house listings on a clean run; Zoocasa returns province="MB"
-  // correctly). Price band set from that probe's observed range (~$250K-
-  // $670K for 3-bed houses). Note: Winnipeg searches intermittently hit the
-  // documented province-wide-fallback regression (see zoocasa.ts's
-  // citiesMatch doc comment) and return 0 candidates on some requests — the
-  // two-search-variant dedup above plus daily reruns already tolerate this
-  // for other cities, so no special-casing needed here.
-  { city: "Winnipeg", province: "MB", minPrice: 300000, maxPrice: 650000, target: 25 },
-];
 
 // Fields to strip before re-enrichment
 const PRE_FIELDS: (keyof Listing)[] = [
@@ -96,22 +79,74 @@ export async function GET(request: Request) {
   const summary: { city: string; province: string; existing: number; new: number; total: number }[] = [];
 
   try {
-    // Load existing listings from KV
-    const existingListings = await getAllListings();
-    const existingByMls = new Map<string, Listing>();
-    const existingByAddress = new Map<string, Listing>();
-    for (const l of existingListings) {
-      if (l.mlsNumber) existingByMls.set(l.mlsNumber, l);
-      existingByAddress.set(l.address.toLowerCase(), l);
+    // -----------------------------------------------------------------------
+    // [pipeline-guard] Degraded-read abort.
+    //
+    // Every listing in this run's write payload derives from this one read:
+    // Phase 2 seeds retention from it, Phase 5 carries user listings from
+    // it, Phase 8 carries US listings from it. It is therefore the single
+    // place where a silent read failure becomes a mass deletion, and it is
+    // checked before any provider work happens.
+    //
+    // readListingsStore() rather than getAllListings():
+    //
+    //  - getAllListings() flattens all three outcomes into a Listing[] and
+    //    reports degradation out-of-band through getListingsStoreHealth().
+    //    That stamp is process-global mutable state, so on a warm lambda a
+    //    concurrent request can overwrite it between our read and our check
+    //    — in either direction. A guard this load-bearing cannot depend on
+    //    a value another request can move.
+    //  - readAllListings() is race-free but still resolves the local-dev
+    //    static seed as `ok`, which is exactly the 250-row array that must
+    //    never seed a retention decision.
+    //
+    // readListingsStore() has neither property: it returns the store's real
+    // state, with no seed path, and `unavailable` carries its reason.
+    // `absent` means no manifest AND no legacy blob — a genuinely fresh
+    // namespace, which is safe to build on but loud enough to be worth
+    // saying out loud.
+    //
+    // writeAllListings()'s floor guard is the backstop, not the fix: it now
+    // refuses a write it cannot size-check, so this state cannot silently
+    // wipe the store even if this abort were removed. But by then the run
+    // has already spent its Zoocasa search budget, its detail fetches and
+    // its LLM enrichment calls on a payload that gets thrown away. Refuse
+    // here instead — loudly, and before any spend.
+    // -----------------------------------------------------------------------
+    const storeRead = await readListingsStore();
+    if (storeRead.status === "unavailable") {
+      log.push(
+        `[pipeline-guard] ABORT: listings store unreadable (${storeRead.reason}). Refusing to run: ` +
+          `every retention decision below would be made against a store this run cannot see, and ` +
+          `absence from an unreadable store is not evidence a listing is gone.`
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: `listings store unavailable — refresh aborted before any provider work or write`,
+          reason: storeRead.reason,
+          log,
+          totalTimeMs: elapsed(),
+        },
+        { status: 503 }
+      );
     }
+    const existingListings = storeRead.status === "ok" ? storeRead.listings : [];
+    if (storeRead.status === "absent") {
+      log.push(
+        `[pipeline-guard] listings store is genuinely EMPTY (no manifest, no legacy blob) — ` +
+          `treating this as a fresh namespace and seeding from search. If this is production, stop and ` +
+          `investigate before trusting the write.`
+      );
+    }
+
     log.push(`Loaded ${existingListings.length} existing listings (${elapsed()}ms)`);
 
     // -----------------------------------------------------------------------
     // Phase 1: Search ALL cities in parallel
     // -----------------------------------------------------------------------
-    type CitySearchResult = { cfg: CityConfig; candidates: Listing[] };
     const searchResults = await Promise.allSettled(
-      CITIES.map(async (cfg): Promise<CitySearchResult> => {
+      CITIES.map(async (cfg): Promise<CitySearchOutcome<CityConfig>> => {
         const [defaultResults, oldestResults] = await Promise.all([
           searchListings(cfg.city, cfg.province, {
             type: "house", beds: 3, minPrice: cfg.minPrice, maxPrice: cfg.maxPrice,
@@ -133,141 +168,137 @@ export async function GET(request: Request) {
     log.push(`Phase 1 search done (${elapsed()}ms)`);
 
     // -----------------------------------------------------------------------
-    // Phase 2: Match existing, collect freshness queue
-    // -----------------------------------------------------------------------
-    // Per-city buckets for kept and needsDetail
-    interface CityBucket {
-      cfg: CityConfig;
-      kept: Listing[];
-      needsDetail: Listing[];
-    }
-    const cityBuckets: CityBucket[] = [];
-    // Global freshness queue: all kept listings across all cities
-    const freshnessQueue: { listing: Listing; cityIdx: number }[] = [];
-
-    // -----------------------------------------------------------------------
-    // [pipeline-guard] Preserve-on-empty/failed-fetch (Part 2b fix).
+    // Phase 2: Seed retention from STORED listings, then let this run's
+    //          search candidates refresh or extend that set.
     //
-    // ROOT CAUSE (proven 2026-08-09, see also kv/listings.ts's floor guard
-    // and Phase 8 below): previously, a city whose Zoocasa search returned
-    // zero candidates — or whose search promise rejected outright — was
-    // simply `continue`d past with zero listings, discarding EVERY
-    // previously-stored listing for that city even though nothing about
-    // them was actually confirmed dead. There is no code path that
-    // freshness-checks or re-adds a listing that isn't re-matched against
-    // THIS run's candidates, so a single flaky/rate-limited/empty search
-    // (the codebase's own CITIES comment above documents Zoocasa's known
-    // "province-wide-fallback regression... returns 0 candidates on some
-    // requests" as a tolerated, real occurrence) silently zeroed that
-    // city's contribution to `allListings`. Combined with Phase 8's old
-    // full-replace write, this is what took CA from 136 -> 53 listings on
-    // 2026-08-09: most cities returned far below their candidate target
-    // that run. Fix: on empty/failed search, fall back to the existing
-    // cron-sourced listings for that exact city+province, unmodified
-    // (unverified freshness this cycle, but far better than deleting them
-    // outright) — logged loudly so a real, sustained Zoocasa outage is
-    // still visible in the cron's own log output.
+    // The algorithm, the retention invariant it enforces, the identity rule
+    // it keys on and the 2026-08 incidents behind all three now live in
+    // src/lib/pipeline/retention.ts — where they can be driven from fixtures
+    // (scripts/test-listing-retention.ts) instead of only by running this
+    // cron against the live store, which is the one thing nobody may do to
+    // check a retention change. What stays here is the wiring: which stored
+    // rows this pipeline owns, and folding the planner's log lines into this
+    // run's log so a degraded search is still visible in the cron output.
+    //
+    // Ownership: source:"user" rows belong to Phase 5 (own freshness pass),
+    // US rows to Phase 8 (carried unconditionally). Everything else is this
+    // pipeline's to retain — including legacy rows carrying no `source` at
+    // all, which are CA cron listings predating the field.
     // -----------------------------------------------------------------------
-    const preservedListings: Listing[] = [];
+    const retention = planRetention<CityConfig>({
+      cities: CITIES,
+      searchResults,
+      existingListings,
+      isOwned: (l) => l.source !== "user" && !isUSState(l.province),
+    });
+    const { cityBuckets, freshnessQueue } = retention;
+    let orphanRetained = retention.orphanRetained;
+    log.push(...retention.log);
 
-    for (const [resultIdx, result] of searchResults.entries()) {
-      if (result.status === "rejected") {
-        const cfg = CITIES[resultIdx];
-        log.push(`[pipeline-guard] Search failed for ${cfg?.city ?? "unknown"}: ${result.reason} — preserving existing listings`);
-        if (cfg) {
-          const preserved = existingListings.filter(
-            (l) => l.source === "cron" && l.city === cfg.city && l.province === cfg.province
-          );
-          preservedListings.push(...preserved);
-          summary.push({ city: cfg.city, province: cfg.province, existing: preserved.length, new: 0, total: preserved.length });
-        }
-        continue;
+    log.push(
+      `Phase 2 retention: ${freshnessQueue.length} stored listing(s) retained and queued for freshness ` +
+        `(${orphanRetained.length} orphaned), ${cityBuckets.reduce((s, b) => s + b.needsDetail.length, 0)} candidate(s) need detail (${elapsed()}ms)`
+    );
+
+    // -----------------------------------------------------------------------
+    // Phase 3: Batch freshness check ALL retained listings. This is the ONLY
+    //          removal authority in the route, and it removes exactly the
+    //          identities it issued a "dead" verdict for — a namesake at the
+    //          same street address in another city keys differently and is
+    //          untouched. See runFreshnessPass in pipeline/retention.ts.
+    //
+    //          The deadline sits well ahead of Phase 4's 180s detail-fetch
+    //          cutoff and Phase 7's 240s enrich cutoff so a slow provider
+    //          cannot starve the rest of the run. Phase 2 queues the whole
+    //          stored set rather than the candidate-matched slice, so this
+    //          budget is a routine limiter rather than an edge case; every
+    //          row it leaves unchecked stays retained and says so in the log.
+    // -----------------------------------------------------------------------
+    const FRESHNESS_DEADLINE_MS = 150_000;
+    const freshness = await runFreshnessPass({
+      queue: freshnessQueue,
+      elapsed,
+      deadlineMs: FRESHNESS_DEADLINE_MS,
+      maxWorkers: 20,
+      check: (l) => {
+        const slug = l.url?.replace("https://www.zoocasa.com", "").split("/").pop() || "";
+        return checkFreshness(l.address, l.city, l.province, slug || undefined);
+      },
+    });
+    log.push(...freshness.log);
+    const deadKeys = freshness.deadKeys;
+    const uncheckedFreshness = freshness.remaining + freshness.errored;
+
+    if (deadKeys.size > 0) {
+      for (const bucket of cityBuckets) {
+        bucket.kept = pruneDead(bucket.kept, deadKeys);
       }
-      const { cfg, candidates } = result.value;
-      if (candidates.length === 0) {
-        const preserved = existingListings.filter(
-          (l) => l.source === "cron" && l.city === cfg.city && l.province === cfg.province
-        );
-        log.push(`[pipeline-guard] ${cfg.city}: no candidates this run — preserving ${preserved.length} existing listing(s)`);
-        preservedListings.push(...preserved);
-        summary.push({ city: cfg.city, province: cfg.province, existing: preserved.length, new: 0, total: preserved.length });
-        continue;
-      }
-
-      candidates.sort((a, b) => b.dom - a.dom);
-      const kept: Listing[] = [];
-      const needsDetail: Listing[] = [];
-
-      for (const candidate of candidates) {
-        const existingMls = candidate.mlsNumber ? existingByMls.get(candidate.mlsNumber) : null;
-        const existingAddr = existingByAddress.get(candidate.address.toLowerCase());
-        const existing = existingMls || existingAddr;
-
-        if (existing && existing.preNarrative) {
-          kept.push({ ...existing, dom: candidate.dom, source: "cron" });
-        } else {
-          needsDetail.push(candidate);
-        }
-      }
-
-      const cityIdx = cityBuckets.length;
-      cityBuckets.push({ cfg, kept, needsDetail });
-
-      // Add all kept listings to global freshness queue
-      for (const l of kept) {
-        freshnessQueue.push({ listing: l, cityIdx });
-      }
+      orphanRetained = pruneDead(orphanRetained, deadKeys);
     }
 
-    log.push(`Phase 2 match done: ${freshnessQueue.length} kept need freshness, ${cityBuckets.reduce((s, b) => s + b.needsDetail.length, 0)} need detail (${elapsed()}ms)`);
-
-    // -----------------------------------------------------------------------
-    // Phase 3: Batch freshness check ALL kept listings (20 parallel workers)
-    // -----------------------------------------------------------------------
-    const deadAddresses = new Set<string>();
-    if (freshnessQueue.length > 0) {
-      const queue = [...freshnessQueue];
-      async function freshnessWorker() {
-        while (queue.length > 0) {
-          const item = queue.shift();
-          if (!item) break;
-          const l = item.listing;
-          const slug = l.url?.replace("https://www.zoocasa.com", "").split("/").pop() || "";
-          const status = await checkFreshness(l.address, l.city, l.province, slug || undefined);
-          if (status === "dead") deadAddresses.add(l.address);
-        }
-      }
-      const workerCount = Math.min(20, freshnessQueue.length);
-      await Promise.all(Array.from({ length: workerCount }, () => freshnessWorker()));
-
-      if (deadAddresses.size > 0) {
-        for (const bucket of cityBuckets) {
-          bucket.kept = bucket.kept.filter((l) => !deadAddresses.has(l.address));
-        }
-      }
-    }
-
-    log.push(`Phase 3 freshness done: ${deadAddresses.size} dead pruned (${elapsed()}ms)`);
+    log.push(`Phase 3 freshness done: ${freshness.checked} checked, ${deadKeys.size} dead pruned (${elapsed()}ms)`);
 
     // -----------------------------------------------------------------------
     // Phase 4: Detail fetches + assembly per city
     // -----------------------------------------------------------------------
     const allListings: Listing[] = [];
-    const citiesClaimedAddresses = new Set<string>();
+    // Identities (address|city|province) this phase has published. Phase 5
+    // reads it to avoid carrying a user listing a city bucket already
+    // adopted. It is an identity set, not an address set: an address set
+    // let a Victoria listing suppress a Calgary user listing that merely
+    // shared a street address, which is a removal with no verdict behind it.
+    const citiesClaimedKeys = new Set<string>();
+
+    // -------------------------------------------------------------------
+    // [pipeline-guard] Slug identity is NOT property identity, and this is
+    // the seam where the difference bites. listings:by-slug:* is keyed by
+    // slugify(address) alone — no city — so two retained rows that are
+    // provably different properties (different listingKey) can still want
+    // one URL. The pre-fix address-keyed retention Map could not produce
+    // that pair: it silently dropped one of them, which is the deletion-
+    // without-a-verdict this route now exists to prevent.
+    //
+    // Resolution, in the two cases that can arise:
+    //  - RETAINED vs RETAINED: both are kept. Retention outranks index
+    //    tidiness — one row renders the other's snapshot at its URL, which
+    //    is recoverable; deleting a live listing is not. Reported below and
+    //    in the response so it is never silent.
+    //  - RETAINED vs NEW: the retained, already-published row wins and the
+    //    newcomer is skipped (selectNewListings). The set is built once for
+    //    ALL buckets and the orphans, because a Calgary newcomer can
+    //    collide with a Victoria retained row it never meets in its bucket.
+    // -------------------------------------------------------------------
+    const allRetained = [...cityBuckets.flatMap((b) => b.kept), ...orphanRetained];
+    const claimedSlugs = new Set(allRetained.map((l) => slugify(l.address)));
+    const slugCollisions = retainedSlugCollisions(allRetained);
+    if (slugCollisions.length > 0) {
+      const sample = slugCollisions
+        .slice(0, 5)
+        .map((c) => `${c.slug} (${c.identities.length})`)
+        .join(", ");
+      log.push(
+        `[pipeline-guard] ${slugCollisions.length} slug(s) claimed by more than one retained property — ` +
+          `all rows retained, but only the last written owns /property/{slug}: ${sample}` +
+          `${slugCollisions.length > 5 ? ", ..." : ""}`
+      );
+    }
 
     for (const bucket of cityBuckets) {
       const { cfg, kept, needsDetail } = bucket;
 
-      // How many new ones to fill target?
-      const needed = Math.max(0, cfg.target - kept.length);
-      const toFetch = needsDetail.slice(0, Math.min(needed + 5, 30));
+      // cfg.target is an ACQUISITION cap, never a retention cap — it bounds
+      // only how much of `needsDetail` this run may take. See
+      // acquisitionAllowance in pipeline/retention.ts for the eviction bug
+      // that rule replaced.
+      const newAllowance = acquisitionAllowance(cfg.target, kept.length);
+      const toFetch = newAllowance > 0 ? needsDetail.slice(0, Math.min(newAllowance + 5, 30)) : [];
 
       const detailed: Listing[] = [];
 
       // Skip detail fetches if time is very tight
-      if (elapsed() < 180_000) {
+      if (toFetch.length > 0 && elapsed() < 180_000) {
         for (const candidate of toFetch) {
-          if (kept.length + detailed.length >= cfg.target) break;
+          if (detailed.length >= newAllowance) break;
           try {
             const urlPath = candidate.url?.replace("https://www.zoocasa.com", "") || "";
             const slug = urlPath.split("/").pop() || "";
@@ -283,42 +314,48 @@ export async function GET(request: Request) {
             // Skip failed detail fetches
           }
         }
-      } else {
+      } else if (toFetch.length > 0) {
         log.push(`${cfg.city}: skipping detail fetches — time budget (${elapsed()}ms)`);
       }
 
-      // Filter: prefer 1500+ sqft, relax if needed
-      let filtered = detailed.filter((l) => {
-        const sqft = parseInt(l.sqft) || 0;
-        return sqft === 0 || sqft >= 1500;
+      // sqft preference, acquisition cap and the slug guard, in one place —
+      // `claimedSlugs` is the run-wide set built above and is mutated here.
+      const { newListings, slugSkipped } = selectNewListings({
+        kept,
+        detailed,
+        target: cfg.target,
+        claimedSlugs,
       });
-      if (kept.length + filtered.length < cfg.target) {
-        filtered = detailed;
+      if (slugSkipped.length > 0) {
+        log.push(
+          `[pipeline-guard] ${cfg.city}: ${slugSkipped.length} new candidate(s) skipped — their address slug ` +
+            `is already owned by a published listing (${slugSkipped.slice(0, 3).map((l) => slugify(l.address)).join(", ")})`
+        );
       }
 
-      const combined = [...kept, ...filtered];
-      combined.sort((a, b) => b.dom - a.dom);
-      const picked = combined.slice(0, cfg.target);
+      const cityListings = [...kept, ...newListings];
+      cityListings.sort((a, b) => b.dom - a.dom);
 
-      for (const p of picked) {
-        citiesClaimedAddresses.add(p.address.toLowerCase());
+      for (const p of cityListings) {
+        citiesClaimedKeys.add(listingKey(p));
       }
 
-      allListings.push(...picked);
-      const newCount = picked.filter(p => !p.preNarrative).length;
+      allListings.push(...cityListings);
+      const newCount = cityListings.filter(p => !p.preNarrative).length;
       summary.push({
         city: cfg.city, province: cfg.province,
-        existing: picked.length - newCount, new: newCount, total: picked.length,
+        existing: cityListings.length - newCount, new: newCount, total: cityListings.length,
       });
-      log.push(`${cfg.city}: ${picked.length} (${newCount} new)`);
+      log.push(`${cfg.city}: ${cityListings.length} (${kept.length} retained, ${newCount} new)`);
     }
 
-    // [pipeline-guard] Fold in listings preserved above from cities whose
-    // search failed/returned empty this run (see the Phase 2 comment).
-    if (preservedListings.length > 0) {
-      allListings.push(...preservedListings);
-      for (const p of preservedListings) citiesClaimedAddresses.add(p.address.toLowerCase());
-      log.push(`[pipeline-guard] folded in ${preservedListings.length} preserved listing(s) from empty/failed searches`);
+    // [pipeline-guard] Fold in retained listings that belong to no
+    // configured city (see the orphan comment in Phase 2). They have
+    // already been through Phase 3's freshness gate.
+    if (orphanRetained.length > 0) {
+      allListings.push(...orphanRetained);
+      for (const p of orphanRetained) citiesClaimedKeys.add(listingKey(p));
+      log.push(`[pipeline-guard] folded in ${orphanRetained.length} retained listing(s) from unconfigured cities`);
     }
 
     log.push(`Phase 4 detail done: ${allListings.length} CITIES listings (${elapsed()}ms)`);
@@ -326,31 +363,30 @@ export async function GET(request: Request) {
     // -----------------------------------------------------------------------
     // Phase 5: Carry forward user-sourced listings
     // -----------------------------------------------------------------------
-    const userListings = existingListings.filter(
-      (l) => l.source === "user" && !citiesClaimedAddresses.has(l.address.toLowerCase())
-    );
+    // Every user listing no city bucket already adopted. Suppression keys on
+    // property identity and nothing coarser — see selectUserCarryForward.
+    const userListings = selectUserCarryForward(existingListings, citiesClaimedKeys);
 
     if (userListings.length > 0) {
       // Freshness check user listings
-      const userQueue = [...userListings];
-      const userDead = new Set<string>();
+      // Same removal authority and same identity rule as Phase 3, on its own
+      // (unbounded) budget: a "dead" verdict removes the one identity it was
+      // issued for and nothing else.
+      const userFreshness = await runFreshnessPass({
+        queue: userListings,
+        elapsed,
+        deadlineMs: Number.POSITIVE_INFINITY,
+        maxWorkers: 6,
+        check: (l) => {
+          const slug = l.url?.replace("https://www.zoocasa.com", "").split("/").pop() || "";
+          return checkFreshness(l.address, l.city, l.province, slug || undefined);
+        },
+      });
+      log.push(...userFreshness.log);
 
-      async function userFreshnessWorker() {
-        while (userQueue.length > 0) {
-          const item = userQueue.shift();
-          if (!item) break;
-          const slug = item.url?.replace("https://www.zoocasa.com", "").split("/").pop() || "";
-          const status = await checkFreshness(item.address, item.city, item.province, slug || undefined);
-          if (status === "dead") userDead.add(item.address);
-        }
-      }
-
-      const workers = Array.from({ length: Math.min(6, userListings.length) }, () => userFreshnessWorker());
-      await Promise.all(workers);
-
-      const alive = userListings.filter((l) => !userDead.has(l.address));
+      const alive = pruneDead(userListings, userFreshness.deadKeys);
       allListings.push(...alive);
-      log.push(`User listings: ${userListings.length} found, ${userDead.size} dead, ${alive.length} carried forward (${elapsed()}ms)`);
+      log.push(`User listings: ${userListings.length} found, ${userFreshness.deadKeys.size} dead, ${alive.length} carried forward (${elapsed()}ms)`);
     } else {
       log.push("User listings: none to carry forward");
     }
@@ -481,19 +517,76 @@ export async function GET(request: Request) {
     const writeStart = Date.now();
     const nonCaExisting = existingListings.filter((l) => isUSState(l.province));
     const writePayload = [...nonCaExisting, ...allListings];
-    // Slug purge must cover the FULL write payload (CA + preserved non-CA),
-    // not just this run's CA output — otherwise the purge itself deletes
-    // listings:by-slug:* entries for listings we just decided to keep in
-    // listings:all, leaving the two stores inconsistent.
-    const validSlugs = new Set(writePayload.map((l) => slugify(l.address)));
-    const purged = await purgeStaleSlugKeys(validSlugs);
+
+    // -----------------------------------------------------------------------
+    // [pipeline-guard] STALE-SLUG PURGE IS INTENTIONALLY DISABLED HERE.
+    // This is a deliberate omission, not an oversight — do not "restore" it.
+    //
+    // This route used to call purgeStaleSlugKeys(validSlugs) on the line
+    // above, and that call is what converted a recoverable pipeline bug
+    // into 409 permanently-404ing property URLs in 2026-08. Two distinct
+    // problems, both fatal:
+    //
+    //  (a) ORDERING. It ran BEFORE writeAllListings(). If the floor guard
+    //      refused the write (kv/listings.ts returns { refused: true } when
+    //      the new array is under FLOOR_GUARD_MIN_RATIO of the stored
+    //      count — exactly the shape a truncated search produces), or the
+    //      write simply threw, the by-slug keys were already gone. The
+    //      guard that exists to make a bad run a no-op instead made it a
+    //      half-destroyed store: listings:all intact, every dropped
+    //      listing's page 404.
+    //
+    //  (b) PREMISE. Purging at all treats "absent from this run's payload"
+    //      as "should not exist" — the same false inference this whole
+    //      commit exists to remove from Phase 2. Even with the retention
+    //      invariant in place, an automated path that DELETES on every tick
+    //      has no safety margin: one future bug upstream of it becomes
+    //      permanent data loss on the next cron tick, unattended, at 2pm
+    //      UTC. An orphaned by-slug key, by contrast, costs a few KB and
+    //      is recoverable; a deleted one is a deindexed URL and is not.
+    //
+    // KNOWN INTERIM CONSEQUENCE — read this before changing anything here.
+    // listings:by-slug:* is NOT a secondary index. getListingBySlug()
+    // (kv/listings.ts) reads that key FIRST and only falls back to
+    // scanning the sharded chunks if it misses, so an orphaned key is the
+    // PRIMARY read path for /property/[slug], not dead weight. With the
+    // purge disabled, a listing that Phase 3 positively confirms "dead"
+    // leaves listings:all (so it drops out of the sitemap, /discover and
+    // search) while its by-slug key survives — its property page keeps
+    // rendering the last-written snapshot, indefinitely, with no
+    // indication that the listing is off-market. That is undisclosed
+    // staleness and it violates this repo's fail-loud rule.
+    //
+    // It is nonetheless the deliberately chosen interim state: a stale
+    // page for a sold house is recoverable, a 404 on an indexed URL is
+    // not, and the alternative (a targeted delete on a "dead" verdict) is
+    // exactly the automated-DELETE pattern (a) and (b) above rule out.
+    // The real fix is the listing-lifecycle work — persist an
+    // active/inactive/unknown status, keep serving the page, and label it
+    // with its last-verified date — which is tracked separately. Do not
+    // close this gap by re-enabling the purge.
+    //
+    // Purging remains available for supervised, intentional bulk changes:
+    // purgeStaleSlugKeys() is still exported from kv/listings.ts and is
+    // still called by scripts/seed-zoocasa.ts and
+    // scripts/run-city-pipeline.ts, where a human is watching the output.
+    // -----------------------------------------------------------------------
+    log.push("[pipeline-guard] stale-slug purge disabled in this route by design — see Phase 8 comment; purge via scripts/seed-zoocasa.ts or scripts/run-city-pipeline.ts under supervision");
+
     const result = await writeAllListings(writePayload);
     if (result.refused) {
       log.push(`[pipeline-guard] KV write REFUSED: ${result.refusedReason} — listings:all left untouched this run`);
     } else {
       log.push(
-        `KV write: ${result.written} listings (${allListings.length} CA + ${nonCaExisting.length} preserved non-CA), ` +
-          `${result.slugs} slugs, ${purged} purged in ${Date.now() - writeStart}ms (${elapsed()}ms total)`
+        // result.written is the truthful post-dedup count and can be lower
+        // than the submitted total — writeAllListings drops rows it can
+        // prove are the same record (same MLS, or same address+city+
+        // province where no MLS exists). Report both so a growing gap
+        // between them is visible rather than looking like a lost write.
+        `KV write: ${result.written} listings written of ${writePayload.length} submitted ` +
+          `(${allListings.length} CA + ${nonCaExisting.length} preserved non-CA` +
+          `${writePayload.length - result.written > 0 ? `, ${writePayload.length - result.written} duplicate row(s) deduped` : ""}), ` +
+          `${result.slugs} slugs in ${Date.now() - writeStart}ms (${elapsed()}ms total)`
       );
     }
 
@@ -563,6 +656,18 @@ export async function GET(request: Request) {
       byProvince: Object.fromEntries(byProvince),
       bySource,
       cities: summary,
+      // Additive — existing consumers read summary/log/counts only.
+      retention: {
+        storedRetained: freshnessQueue.length,
+        freshnessChecked: freshness.checked,
+        freshnessUnchecked: uncheckedFreshness,
+        deadPruned: deadKeys.size,
+        orphansCarriedForward: orphanRetained.length,
+        // Retained rows that are distinct properties sharing one /property
+        // URL — kept, not collapsed. See the Phase 4 slug-identity block.
+        slugCollisions: slugCollisions.length,
+        slugPurge: "disabled",
+      },
       usDiscover,
       log,
     });
