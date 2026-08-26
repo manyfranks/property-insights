@@ -203,9 +203,10 @@ export async function GET(request: Request) {
     // -----------------------------------------------------------------------
     // Phase 3: Batch freshness check ALL retained listings. This is the ONLY
     //          removal authority in the route, and it removes exactly the
-    //          identities it issued a "dead" verdict for — a namesake at the
-    //          same street address in another city keys differently and is
-    //          untouched. See runFreshnessPass in pipeline/retention.ts.
+    //          ROWS it issued a "dead" verdict for — a namesake at the same
+    //          street address in another city is untouched, and so is a
+    //          second stored row sharing one address|city|province with a
+    //          row that died. See runFreshnessPass in pipeline/retention.ts.
     //
     //          The deadline sits well ahead of Phase 4's 180s detail-fetch
     //          cutoff and Phase 7's 240s enrich cutoff so a slow provider
@@ -226,17 +227,23 @@ export async function GET(request: Request) {
       },
     });
     log.push(...freshness.log);
+    // deadRows is the removal authority (the row objects that got a verdict);
+    // deadKeys is the identity-level summary and is reported, never applied.
+    const deadRows = freshness.deadRows;
     const deadKeys = freshness.deadKeys;
     const uncheckedFreshness = freshness.remaining + freshness.errored;
 
-    if (deadKeys.size > 0) {
+    if (deadRows.size > 0) {
       for (const bucket of cityBuckets) {
-        bucket.kept = pruneDead(bucket.kept, deadKeys);
+        bucket.kept = pruneDead(bucket.kept, deadRows);
       }
-      orphanRetained = pruneDead(orphanRetained, deadKeys);
+      orphanRetained = pruneDead(orphanRetained, deadRows);
     }
 
-    log.push(`Phase 3 freshness done: ${freshness.checked} checked, ${deadKeys.size} dead pruned (${elapsed()}ms)`);
+    log.push(
+      `Phase 3 freshness done: ${freshness.checked} checked, ${deadRows.size} row(s) pruned across ` +
+        `${deadKeys.size} identity(ies) (${elapsed()}ms)`
+    );
 
     // -----------------------------------------------------------------------
     // Phase 4: Detail fetches + assembly per city
@@ -254,9 +261,9 @@ export async function GET(request: Request) {
     // the seam where the difference bites. listings:by-slug:* is keyed by
     // slugify(address) alone — no city — so two retained rows that are
     // provably different properties (different listingKey) can still want
-    // one URL. The pre-fix address-keyed retention Map could not produce
-    // that pair: it silently dropped one of them, which is the deletion-
-    // without-a-verdict this route now exists to prevent.
+    // one URL — as can two distinct rows of ONE identity. Neither pair could
+    // be produced by the Maps this replaced: they silently dropped the loser,
+    // which is the deletion-without-a-verdict this route exists to prevent.
     //
     // Resolution, in the two cases that can arise:
     //  - RETAINED vs RETAINED: both are kept. Retention outranks index
@@ -274,10 +281,10 @@ export async function GET(request: Request) {
     if (slugCollisions.length > 0) {
       const sample = slugCollisions
         .slice(0, 5)
-        .map((c) => `${c.slug} (${c.identities.length})`)
+        .map((c) => `${c.slug} (${c.rows} row(s), ${c.identities.length} identity(ies))`)
         .join(", ");
       log.push(
-        `[pipeline-guard] ${slugCollisions.length} slug(s) claimed by more than one retained property — ` +
+        `[pipeline-guard] ${slugCollisions.length} slug(s) claimed by more than one retained row — ` +
           `all rows retained, but only the last written owns /property/{slug}: ${sample}` +
           `${slugCollisions.length > 5 ? ", ..." : ""}`
       );
@@ -364,8 +371,16 @@ export async function GET(request: Request) {
     // Phase 5: Carry forward user-sourced listings
     // -----------------------------------------------------------------------
     // Every user listing no city bucket already adopted. Suppression keys on
-    // property identity and nothing coarser — see selectUserCarryForward.
-    const userListings = selectUserCarryForward(existingListings, citiesClaimedKeys);
+    // property identity and nothing coarser — and is withheld entirely for an
+    // identity held by more than one distinct stored row, where "this identity
+    // was published" no longer implies "this row was". See
+    // selectUserCarryForward: dropping a row here is a deletion with no
+    // freshness verdict behind it, so it takes an unambiguous claim.
+    const userListings = selectUserCarryForward(
+      existingListings,
+      citiesClaimedKeys,
+      retention.ambiguousIdentities
+    );
 
     if (userListings.length > 0) {
       // Freshness check user listings
@@ -384,9 +399,9 @@ export async function GET(request: Request) {
       });
       log.push(...userFreshness.log);
 
-      const alive = pruneDead(userListings, userFreshness.deadKeys);
+      const alive = pruneDead(userListings, userFreshness.deadRows);
       allListings.push(...alive);
-      log.push(`User listings: ${userListings.length} found, ${userFreshness.deadKeys.size} dead, ${alive.length} carried forward (${elapsed()}ms)`);
+      log.push(`User listings: ${userListings.length} found, ${userFreshness.deadRows.size} dead, ${alive.length} carried forward (${elapsed()}ms)`);
     } else {
       log.push("User listings: none to carry forward");
     }
@@ -661,10 +676,18 @@ export async function GET(request: Request) {
         storedRetained: freshnessQueue.length,
         freshnessChecked: freshness.checked,
         freshnessUnchecked: uncheckedFreshness,
-        deadPruned: deadKeys.size,
+        // Rows actually removed, and the identities they belonged to. These
+        // differ when one row of an ambiguous identity dies and its namesake
+        // lives — the case that used to be a silent drop.
+        deadPruned: deadRows.size,
+        deadIdentities: deadKeys.size,
         orphansCarriedForward: orphanRetained.length,
-        // Retained rows that are distinct properties sharing one /property
-        // URL — kept, not collapsed. See the Phase 4 slug-identity block.
+        // Identities held by more than one distinct stored row. Every one of
+        // those rows is retained; the number is a data-quality signal for the
+        // listing-lifecycle work, not a retention outcome.
+        ambiguousIdentities: retention.ambiguousIdentities.size,
+        // Retained rows sharing one /property URL — kept, not collapsed.
+        // See the Phase 4 slug-identity block.
         slugCollisions: slugCollisions.length,
         slugPurge: "disabled",
       },

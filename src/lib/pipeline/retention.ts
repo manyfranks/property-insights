@@ -20,7 +20,7 @@
  * is a positive "dead" verdict from checkFreshness() (a 404 / missingAddress
  * redirect on the listing's OWN detail page — see zoocasa.ts; every failure
  * mode there returns "unknown", not "dead"), and that verdict removes only
- * the identity it was issued for.
+ * the ROW it was issued for — see "IDENTITY IS NOT A ROW" below.
  *
  * ROOT CAUSE OF THE 409-URL 404 INCIDENT (2026-08, verified against live
  * Zoocasa): the search endpoint /{city}-{prov}-real-estate parses the city
@@ -69,6 +69,39 @@
  * cross-board collision is possible and must never cost a row.
  *
  * -------------------------------------------------------------------------
+ * IDENTITY IS NOT A ROW (2026-08 follow-up audit). Keying on the locality
+ * tuple removed the cross-city merge but left one row-losing case standing:
+ * two DIFFERENT stored rows can share one address|city|province — Newark's
+ * 105-107 Broad St, different MLS, different price — and a Map keyed by
+ * identity kept only the last of them. The dropped row left the write payload
+ * with no dead verdict behind it, which is the deletion this module exists to
+ * refuse, arriving through the front door. Worse, the comment that stood here
+ * called that acceptable and deferred it to "URL disambiguation".
+ *
+ * It was never a URL question. Preserving both rows does not require deciding
+ * which of them owns /property/{slug}: listings:all and the sharded chunks are
+ * ARRAYS and hold both rows fine, and listings:by-slug:{slug} — the one
+ * one-per-slug key — is already last-write-wins today. A shared page is a
+ * display/routing defect for the listing-lifecycle work to fix; a dropped row
+ * is permanent data loss. Those are not the same severity. So an identity now
+ * maps to a GROUP of rows, and every row in the group is retained and written.
+ * The only collapse left is the one the contract authorizes: `isSameRecord`,
+ * byte-equality in every field, where the discarded row provably carried
+ * nothing the survivor lacks.
+ *
+ * A VERDICT ATTACHES TO A ROW. checkFreshness is asked about
+ * (address, city, province, slug-taken-from-that-row's-own-url). For two rows
+ * sharing an identity it therefore cannot distinguish them when their urls
+ * match too — both then get the same verdict, which is the correct answer for
+ * both — but when the urls differ it is genuinely answering about one of them.
+ * So runFreshnessPass records the row OBJECT it checked and pruneDead removes
+ * exactly those objects. Rows travel by reference from the freshness queue
+ * into the write payload, so this is exact; a row that got copied in between
+ * simply survives, which is the safe direction. `deadKeys` (identities with at
+ * least one dead row) is still reported for the log and the response, but it
+ * is NOT a removal authority and must never be made one again.
+ *
+ * -------------------------------------------------------------------------
  * IDENTITY vs SLUG. `listingKey()` answers "same property"; `slugify(address)`
  * answers "same URL". They are different questions with different answers,
  * and conflating them is what produced the audit finding in the first place.
@@ -76,9 +109,10 @@
  * keeps them apart) that want one /property/{slug} URL (slug cannot). Where
  * that conflict is decidable — a NEW acquisition wanting a slug an already-
  * published listing owns — the published row wins and the newcomer is skipped.
- * Where it is not — two already-retained rows sharing a slug — both are kept
- * and the collision is reported, because retention outranks index tidiness:
- * a shared page is recoverable, a deleted row is not.
+ * Where it is not — two already-retained rows sharing a slug, be they two
+ * distinct identities or the two rows of one ambiguous identity — both are
+ * kept and the collision is reported, because retention outranks index
+ * tidiness: a shared page is recoverable, a deleted row is not.
  */
 
 import { Listing } from "../types";
@@ -115,6 +149,13 @@ export interface RetentionPlan<C extends RetentionCityConfig = RetentionCityConf
   orphanRetained: Listing[];
   /** Every retained row, from every bucket plus the orphans. */
   freshnessQueue: Listing[];
+  /**
+   * Identities held by more than one distinct stored row (owned or not).
+   * Every one of those rows is retained; this is here so callers that key
+   * anything on identity know which keys do not name a single row. The route
+   * hands it to `selectUserCarryForward`, whose suppression is a deletion.
+   */
+  ambiguousIdentities: Set<string>;
   /** Lines for the route's `log[]`. Degraded paths announce themselves here. */
   log: string[];
 }
@@ -147,6 +188,36 @@ export function cityBucketKey(city: string, province: string): string {
 }
 
 /**
+ * Group stored rows by primary identity.
+ *
+ * The value is a LIST, not a row. `listingKey` answers "same property", and
+ * two stored rows can answer yes to that and still be different records —
+ * which is why a Map<key, Listing> here was losing one of them. The only rows
+ * this collapses are those `isSameRecord` proves are byte-equal in every
+ * field: the one test in this codebase allowed to authorize dropping a row,
+ * and the only one whose discard provably loses nothing. First occurrence
+ * wins among those, which is a statement about object identity and nothing
+ * else, since they are byte-equal.
+ *
+ * The inner scan is O(group²), against a group size that is 1 for every
+ * identity in the live store and 2 for the one pathological pair on record.
+ */
+function groupByIdentity(rows: Listing[]): Map<string, Listing[]> {
+  const groups = new Map<string, Listing[]>();
+  for (const l of rows) {
+    const key = listingKey(l);
+    const group = groups.get(key);
+    if (!group) {
+      groups.set(key, [l]);
+      continue;
+    }
+    if (group.some((prior) => isSameRecord(prior, l))) continue;
+    group.push(l);
+  }
+  return groups;
+}
+
+/**
  * Phase 2: seed retention from STORED listings, then let this run's search
  * candidates refresh or extend that set.
  */
@@ -157,27 +228,31 @@ export function planRetention<C extends RetentionCityConfig>(
   const log: string[] = [];
 
   // ---------------------------------------------------------------------
-  // Candidate -> stored-row index. Primary is listingKey; the MLS index is
-  // the fallback for a candidate whose address string has been rewritten
-  // since it was stored. An MLS key claimed by two DIFFERENT properties is
-  // withdrawn from the index entirely rather than resolved last-write-wins:
-  // a fallback that can return the wrong property would push this run's
-  // `dom` onto a row it does not describe. Withdrawal costs only the
-  // rename-following, and it is announced.
+  // Every stored row, grouped by the identity it claims. A group, not a row:
+  // see groupByIdentity and the IDENTITY IS NOT A ROW block up top.
+  //
+  // Candidate -> stored-GROUP index. Primary is the identity itself; the MLS
+  // index is the fallback for a candidate whose address string has been
+  // rewritten since it was stored, and it resolves to an identity rather than
+  // to a row because the group is the unit a candidate binds to. An MLS key
+  // claimed by two DIFFERENT identities is withdrawn from the index entirely
+  // rather than resolved last-write-wins: a fallback that can return the wrong
+  // property would push this run's `dom` onto a row it does not describe.
+  // Withdrawal costs only the rename-following, and it is announced.
   // ---------------------------------------------------------------------
-  const existingByKey = new Map<string, Listing>();
-  const existingByMlsKey = new Map<string, Listing>();
+  const existingGroups = groupByIdentity(existingListings);
+  const existingByMlsKey = new Map<string, string>();
   const ambiguousMls = new Set<string>();
   for (const l of existingListings) {
-    existingByKey.set(listingKey(l), l);
     const mlsKey = listingMlsKey(l);
     if (!mlsKey) continue;
+    const key = listingKey(l);
     const prior = existingByMlsKey.get(mlsKey);
-    if (prior && listingKey(prior) !== listingKey(l)) {
+    if (prior !== undefined && prior !== key) {
       ambiguousMls.add(mlsKey);
       continue;
     }
-    existingByMlsKey.set(mlsKey, l);
+    existingByMlsKey.set(mlsKey, key);
   }
   for (const key of ambiguousMls) existingByMlsKey.delete(key);
   if (ambiguousMls.size > 0) {
@@ -189,50 +264,58 @@ export function planRetention<C extends RetentionCityConfig>(
   }
 
   // ---------------------------------------------------------------------
-  // The retention set: one entry per owned property.
+  // The retention set: every owned ROW, filed under the identity it claims.
+  // An identity can hold more than one, and all of them are retained — the
+  // Map<key, Listing> this replaces kept only the last, and the rows it
+  // discarded left the write payload with no dead verdict behind them.
   //
-  // A Map means two owned rows sharing one listingKey collapse to the later
-  // one. For the overwhelming case — the same row read twice — that loses
-  // nothing. It is not free in general: 105-107 Broad St in Newark proves two
-  // genuinely different properties can share an address string within one
-  // city (different MLS, different price). The CA store holds no such pair,
-  // and this is strictly better than the address-only key it replaces, but a
-  // collapse that drops information is still a row leaving the payload with
-  // no verdict behind it, so it is measured with the contract's own strict
-  // test (isSameRecord — the only test allowed to authorize dropping a row)
-  // and announced when it is not provably a duplicate. It is not silently
-  // repaired here: separating such a pair needs a URL-disambiguation design,
-  // which is the listing-lifecycle work, not a retention loop's call to make.
+  // The ownership filter runs after grouping rather than before it so the
+  // grouping (and therefore the ambiguity report below) sees the whole store:
+  // a cron row and a user row can share an identity too, and the route's
+  // Phase 5 suppression keys on identity, so it has to be told.
   // ---------------------------------------------------------------------
-  const retainedStored = new Map<string, Listing>();
-  const ambiguousIdentities: string[] = [];
-  for (const l of existingListings) {
-    if (!isOwned(l)) continue;
-    const key = listingKey(l);
-    const prior = retainedStored.get(key);
-    if (prior && !isSameRecord(prior, l)) ambiguousIdentities.push(key);
-    retainedStored.set(key, l);
+  const retainedGroups = new Map<string, Listing[]>();
+  for (const [key, rows] of existingGroups) {
+    const owned = rows.filter(isOwned);
+    if (owned.length > 0) retainedGroups.set(key, owned);
   }
-  if (ambiguousIdentities.length > 0) {
+
+  // Identities that do not name a single row. Every row involved is kept;
+  // this is a data problem for the listing-lifecycle work, and it is stated in
+  // those terms rather than as a retention decision, because retention no
+  // longer makes one here.
+  const ambiguousIdentities = new Set<string>();
+  let ambiguousRowCount = 0;
+  for (const [key, rows] of existingGroups) {
+    if (rows.length < 2) continue;
+    ambiguousIdentities.add(key);
+    ambiguousRowCount += rows.length;
+  }
+  if (ambiguousIdentities.size > 0) {
     log.push(
-      `[pipeline-guard] ${ambiguousIdentities.length} stored row(s) share an address|city|province with a ` +
-        `DIFFERENT row and are not provably the same record (${[...new Set(ambiguousIdentities)].slice(0, 5).join("; ")}` +
-        `${ambiguousIdentities.length > 5 ? "; ..." : ""}) — retained as one property this run; the earlier ` +
-        `row is not written and needs URL disambiguation, not a retention fix`
+      `[pipeline-guard] ${ambiguousIdentities.size} address|city|province identity(ies) held by ` +
+        `${ambiguousRowCount} distinct stored row(s) that are not provably the same record ` +
+        `(${[...ambiguousIdentities].slice(0, 5).join("; ")}${ambiguousIdentities.size > 5 ? "; ..." : ""}) — ` +
+        `ALL of those rows are retained and written, both/all sharing one /property/{slug} URL until ` +
+        `listing-lifecycle work separates them; a shared page is recoverable, a dropped row is not`
     );
   }
 
-  const storedByCity = new Map<string, Listing[]>();
-  for (const l of retainedStored.values()) {
-    const key = cityBucketKey(l.city, l.province);
-    const bucket = storedByCity.get(key);
-    if (bucket) bucket.push(l);
-    else storedByCity.set(key, [l]);
+  // City index over identities, not rows: every row of a group shares the
+  // group's normalized city and province by construction (they are two thirds
+  // of the key), so a group can never want two buckets.
+  const storedByCity = new Map<string, string[]>();
+  for (const [key, rows] of retainedGroups) {
+    const bucket = cityBucketKey(rows[0].city, rows[0].province);
+    const keysHere = storedByCity.get(bucket);
+    if (keysHere) keysHere.push(key);
+    else storedByCity.set(bucket, [key]);
   }
 
-  // Identities claimed by some city bucket's seed. Anything left in
-  // `retainedStored` afterwards is an orphan (see below) — it must still be
-  // carried forward, never dropped for lack of a matching CityConfig.
+  // Identities claimed by some city bucket's seed. Any identity left in
+  // `retainedGroups` afterwards is an orphan (see below) and every row it
+  // holds must still be carried forward, never dropped for lack of a
+  // matching CityConfig.
   const seededKeys = new Set<string>();
   const cityBuckets: CityBucket<C>[] = [];
   const freshnessQueue: Listing[] = [];
@@ -268,38 +351,62 @@ export function planRetention<C extends RetentionCityConfig>(
     candidates = [...candidates].sort((a, b) => b.dom - a.dom);
 
     // Seed: ALL stored listings for this exact city+province, whether or not
-    // this run's search happened to surface them.
-    const keptByKey = new Map<string, Listing>();
-    for (const stored of storedByCity.get(cityBucketKey(cfg.city, cfg.province)) ?? []) {
-      const key = listingKey(stored);
-      keptByKey.set(key, stored);
+    // this run's search happened to surface them. The value is the whole
+    // identity group — copied, so the refresh below cannot reach back into
+    // `retainedGroups` and mutate the orphan computation's input.
+    const keptByKey = new Map<string, Listing[]>();
+    for (const key of storedByCity.get(cityBucketKey(cfg.city, cfg.province)) ?? []) {
+      keptByKey.set(key, [...(retainedGroups.get(key) ?? [])]);
       seededKeys.add(key);
     }
 
     const needsDetail: Listing[] = [];
+    // Identities a candidate matched but could not be bound to — see below.
+    const unbindableKeys = new Set<string>();
 
     for (const candidate of candidates) {
+      const primaryKey = listingKey(candidate);
       const candidateMlsKey = listingMlsKey(candidate);
-      const existing =
-        existingByKey.get(listingKey(candidate)) ??
-        (candidateMlsKey ? existingByMlsKey.get(candidateMlsKey) : undefined);
+      const key = existingGroups.has(primaryKey)
+        ? primaryKey
+        : candidateMlsKey
+          ? existingByMlsKey.get(candidateMlsKey)
+          : undefined;
+      const group = key === undefined ? undefined : existingGroups.get(key);
 
-      if (!existing) {
+      if (!group || key === undefined) {
         needsDetail.push(candidate);
         continue;
       }
 
-      const key = listingKey(existing);
-      const seeded = keptByKey.get(key);
-      if (seeded) {
-        // Already retained by the seed above; the candidate's only job is to
-        // refresh the volatile field the search row is authoritative for
-        // (days-on-market), exactly as the pre-fix code did.
-        keptByKey.set(key, { ...seeded, dom: candidate.dom, source: "cron" });
+      if (group.length > 1) {
+        // The candidate matched an identity held by several distinct stored
+        // rows, and nothing it carries says WHICH one it is: the search row
+        // shares its address, city and province with all of them, and its MLS
+        // is exactly what makes it a different record from at least one. So
+        // it is bound to none of them. It does not refresh a `dom` — stamping
+        // this run's days-on-market onto the wrong row is a quiet corruption
+        // of a published listing — and it is not acquired as a new listing
+        // either, since publishing a third row at an address that already has
+        // two is not a repair. Every stored row involved stays retained
+        // (their seed above already did that); the candidate is simply
+        // dropped for this run, and says so.
+        unbindableKeys.add(key);
         continue;
       }
 
-      if (retainedStored.has(key)) {
+      const existing = group[0];
+      const seededRows = keptByKey.get(key);
+      if (seededRows && seededRows.length > 0) {
+        // Already retained by the seed above; the candidate's only job is to
+        // refresh the volatile field the search row is authoritative for
+        // (days-on-market), exactly as the pre-fix code did. The group is
+        // unambiguous here, so `seededRows` holds exactly the one row.
+        seededRows[0] = { ...seededRows[0], dom: candidate.dom, source: "cron" };
+        continue;
+      }
+
+      if (retainedGroups.has(key)) {
         // Retained by ANOTHER bucket's seed, or by the orphan set.
         // citiesMatch() deliberately accepts metro siblings (a Hamilton
         // search legitimately returns Burlington rows), so the same stored
@@ -315,15 +422,27 @@ export function planRetention<C extends RetentionCityConfig>(
         // A stored listing this pipeline does NOT own (a source:"user" one)
         // that a city search has now surfaced: adopt it as cron, unchanged
         // from the pre-fix behavior. Phase 5 skips it via the claimed-key set
-        // so it can't also be carried forward.
-        keptByKey.set(key, { ...existing, dom: candidate.dom, source: "cron" });
+        // so it can't also be carried forward. Only reachable for a group of
+        // one — an ambiguous identity never gets here — which is what keeps
+        // that claimed-key suppression from deleting the row it did not adopt.
+        keptByKey.set(key, [{ ...existing, dom: candidate.dom, source: "cron" }]);
         continue;
       }
 
       needsDetail.push(candidate);
     }
 
-    const kept = [...keptByKey.values()];
+    if (unbindableKeys.size > 0) {
+      log.push(
+        `[pipeline-guard] ${cfg.city}, ${cfg.province}: search candidates matched ${unbindableKeys.size} ` +
+          `address|city|province identity(ies) held by more than one distinct stored row ` +
+          `(${[...unbindableKeys].slice(0, 3).join("; ")}${unbindableKeys.size > 3 ? "; ..." : ""}) — bound to ` +
+          `none of them, so no dom was refreshed and nothing new was acquired for those addresses; every ` +
+          `stored row involved is retained`
+      );
+    }
+
+    const kept = [...keptByKey.values()].flat();
     cityBuckets.push({ cfg, kept, needsDetail });
     freshnessQueue.push(...kept);
   }
@@ -340,7 +459,10 @@ export function planRetention<C extends RetentionCityConfig>(
   // so they are collected here, put through the same freshness gate as
   // everything else, and folded into the write payload by the caller.
   // ---------------------------------------------------------------------
-  const orphanRetained = [...retainedStored.values()].filter((l) => !seededKeys.has(listingKey(l)));
+  const orphanRetained: Listing[] = [];
+  for (const [key, rows] of retainedGroups) {
+    if (!seededKeys.has(key)) orphanRetained.push(...rows);
+  }
   if (orphanRetained.length > 0) {
     const orphanCities = [...new Set(orphanRetained.map((l) => `${l.city}, ${l.province}`))].join("; ");
     log.push(
@@ -350,13 +472,26 @@ export function planRetention<C extends RetentionCityConfig>(
     freshnessQueue.push(...orphanRetained);
   }
 
-  return { cityBuckets, orphanRetained, freshnessQueue, log };
+  return { cityBuckets, orphanRetained, freshnessQueue, ambiguousIdentities, log };
 }
 
 export type FreshnessVerdict = "live" | "dead" | "unknown";
 
 export interface FreshnessPassResult {
-  /** listingKey() of every row that came back "dead". Nothing else may remove a row. */
+  /**
+   * The exact ROW OBJECTS a "dead" verdict was issued for. THE removal
+   * authority — nothing else may remove a row, and no key may stand in for
+   * this set. Object identity, because two rows can share an identity and a
+   * verdict belongs to the one that was checked; the queue hands the caller
+   * back the very rows it will prune, so the match is exact.
+   */
+  deadRows: Set<Listing>;
+  /**
+   * listingKey() of every identity holding at least one dead row. REPORTING
+   * ONLY — logs, the response payload, and tests that want to name what died.
+   * It cannot remove anything: for an identity held by two distinct rows it
+   * does not say which one the verdict was about.
+   */
   deadKeys: Set<string>;
   /** Rows that got a verdict of any kind. */
   checked: number;
@@ -390,10 +525,11 @@ export async function runFreshnessPass(opts: {
   deadlineMs: number;
   maxWorkers?: number;
 }): Promise<FreshnessPassResult> {
+  const deadRows = new Set<Listing>();
   const deadKeys = new Set<string>();
   const log: string[] = [];
   if (opts.queue.length === 0) {
-    return { deadKeys, checked: 0, remaining: 0, errored: 0, log };
+    return { deadRows, deadKeys, checked: 0, remaining: 0, errored: 0, log };
   }
 
   const queue = [...opts.queue];
@@ -417,7 +553,10 @@ export async function runFreshnessPass(opts: {
         continue;
       }
       checked++;
-      if (status === "dead") deadKeys.add(listingKey(l));
+      if (status === "dead") {
+        deadRows.add(l);
+        deadKeys.add(listingKey(l));
+      }
     }
   }
 
@@ -438,16 +577,27 @@ export async function runFreshnessPass(opts: {
     );
   }
 
-  return { deadKeys, checked, remaining, errored, log };
+  return { deadRows, deadKeys, checked, remaining, errored, log };
 }
 
 /**
- * Drop exactly the identities a "dead" verdict was issued for. A namesake in
- * another city keys differently and is untouched — that is the whole point.
+ * Drop exactly the ROWS a "dead" verdict was issued for, and nothing else.
+ *
+ * Matching is by object identity, not by key. A key cannot do this job: two
+ * distinct stored rows can share one address|city|province (see IDENTITY IS
+ * NOT A ROW), and a key-filter handed one of their verdicts would delete both
+ * — the second with no verdict of its own, which is the whole class of bug
+ * this module refuses. A namesake in another city is untouched for the same
+ * reason it always was, only now the reason is stronger than its key.
+ *
+ * `deadRows` holds the very objects runFreshnessPass checked, and the queue is
+ * built from the same arrays the caller prunes, so the match is exact. If a
+ * row is somehow copied in between it will not match and will survive — that
+ * is the safe direction of the two, and it is the direction this fails in.
  */
-export function pruneDead(listings: Listing[], deadKeys: Set<string>): Listing[] {
-  if (deadKeys.size === 0) return listings;
-  return listings.filter((l) => !deadKeys.has(listingKey(l)));
+export function pruneDead(listings: Listing[], deadRows: ReadonlySet<Listing>): Listing[] {
+  if (deadRows.size === 0) return listings;
+  return listings.filter((l) => !deadRows.has(l));
 }
 
 /**
@@ -529,41 +679,75 @@ export function selectNewListings(opts: {
  * of being wrong is a deletion and the only benefit is avoiding a duplicate
  * row that writeAllListings' dedup already collapses. Suppression keys on the
  * identity that cannot merge two properties, and on nothing else.
+ *
+ * `ambiguousKeys` (planRetention's `ambiguousIdentities`) is the last gap in
+ * that reasoning. An identity held by more than one distinct stored row does
+ * not name a single row either, so "the city buckets published this identity"
+ * stops implying "they published THIS row" — and suppression here is a
+ * deletion with no verdict behind it. Those rows are therefore carried
+ * forward regardless of the claim. The cost is a possible duplicate row at one
+ * identity, which writeAllListings' isSameRecord dedup collapses when it is a
+ * real duplicate and keeps when it is not; the alternative cost is a deleted
+ * user listing. planRetention refuses to adopt an ambiguous identity into a
+ * city bucket precisely so this stays a belt-and-braces guard rather than the
+ * routine path. Omitting the argument means "no identity is ambiguous", which
+ * is the truth for every store that has none.
  */
 export function selectUserCarryForward(
   existingListings: Listing[],
-  claimedKeys: Set<string>
+  claimedKeys: Set<string>,
+  ambiguousKeys: ReadonlySet<string> = new Set<string>()
 ): Listing[] {
-  return existingListings.filter((l) => l.source === "user" && !claimedKeys.has(listingKey(l)));
+  return existingListings.filter((l) => {
+    if (l.source !== "user") return false;
+    const key = listingKey(l);
+    return !claimedKeys.has(key) || ambiguousKeys.has(key);
+  });
 }
 
 export interface SlugCollision {
   slug: string;
   /** listingKey() of each distinct property claiming this slug. */
   identities: string[];
+  /**
+   * How many retained ROWS claim it. Can exceed `identities.length`: two rows
+   * of one ambiguous identity share a slug too, and only one of them can own
+   * listings:by-slug:{slug}.
+   */
+  rows: number;
 }
 
 /**
- * Retained rows that are distinct properties but slugify to one URL.
+ * Retained rows that slugify to one URL — more than one row, whether or not
+ * they are more than one property.
  *
- * This is the cost of keying retention on identity instead of address: the
- * pre-fix Map collapsed such a pair to one row (losing one property with no
- * verdict), so the collision could not exist. Now both rows survive and only
- * one of them can own listings:by-slug:{slug} — the other renders the
- * survivor's snapshot at its own URL until the listing-lifecycle work lands.
+ * This is the cost of refusing to collapse: the pre-fix Maps dropped the
+ * loser of each collision (a property with no verdict), so the collision could
+ * not be observed. Now every row survives and only one of them can own
+ * listings:by-slug:{slug} — the others render the winner's snapshot at their
+ * own URL until the listing-lifecycle work lands. It counts ROWS rather than
+ * identities because both shapes produce the same defect: two properties at
+ * one address string (distinct identities, one slug), and two rows at one
+ * identity (one identity, still one slug). `identities` names the distinct
+ * properties involved, so a caller can tell the two shapes apart.
+ *
  * kv/listings.ts console.warns the same condition on the write path; this
  * surfaces it in the cron's own log[] and response, where the operator of
  * this route is actually looking.
  */
 export function retainedSlugCollisions(retained: Listing[]): SlugCollision[] {
-  const bySlug = new Map<string, Set<string>>();
+  const bySlug = new Map<string, { identities: Set<string>; rows: number }>();
   for (const l of retained) {
     const slug = slugify(l.address);
-    const ids = bySlug.get(slug);
-    if (ids) ids.add(listingKey(l));
-    else bySlug.set(slug, new Set([listingKey(l)]));
+    const entry = bySlug.get(slug);
+    if (entry) {
+      entry.identities.add(listingKey(l));
+      entry.rows++;
+    } else {
+      bySlug.set(slug, { identities: new Set([listingKey(l)]), rows: 1 });
+    }
   }
   return [...bySlug.entries()]
-    .filter(([, ids]) => ids.size > 1)
-    .map(([slug, ids]) => ({ slug, identities: [...ids] }));
+    .filter(([, e]) => e.rows > 1)
+    .map(([slug, e]) => ({ slug, identities: [...e.identities], rows: e.rows }));
 }

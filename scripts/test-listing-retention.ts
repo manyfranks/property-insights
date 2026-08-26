@@ -23,11 +23,18 @@
  *     CityConfig (citiesMatch() deliberately accepts siblings, and the row
  *     is filed under the city Zoocasa reported) are retained AND queued for
  *     freshness, not stranded.
- *  5. Same address, two cities — two records, not one. This is the audit
- *     finding: the address-keyed Map collapsed the pair and dropped one with
- *     no verdict behind it.
- *  6. Dead verdict scope — removes the one identity it was issued for, and
- *     leaves its cross-city namesake alone.
+ *  5. Same address, two cities — two records, not one. This is the first
+ *     audit finding: the address-keyed Map collapsed the pair and dropped one
+ *     with no verdict behind it.
+ * 5b. Same address, same city, two distinct rows — the follow-up finding.
+ *     The identity-keyed Map collapsed THAT pair the same way. Both rows now
+ *     survive; only isSameRecord (byte-equality) may still collapse anything;
+ *     and a candidate that matches such an identity binds to neither row
+ *     rather than stamping its dom onto whichever one it guessed.
+ *  6. Dead verdict scope — removes the one ROW it was issued for, leaving
+ *     both a cross-city namesake and a same-identity namesake alone. That is
+ *     why the removal authority is the checked row object and not a key:
+ *     these tests assert that the identity key alone would have taken both.
  *  7. Freshness deadline — no verdict is never a removal, and the shortfall
  *     is announced.
  *  8. cfg.target — an acquisition cap, never an eviction rule.
@@ -38,12 +45,14 @@
  *     suppress a user listing, and a row a city bucket adopted is not
  *     carried twice.
  * 11. Whole-run invariant — a stored row leaves the payload only when a
- *     "dead" verdict was issued for ITS OWN identity.
+ *     "dead" verdict was issued for ITS OWN ROW, including when its identity
+ *     is shared with a second row that got no such verdict.
  *
  * Plus the degraded paths that must announce themselves rather than pass for
  * clean runs: a missing search-result slot, an "unknown" verdict, a freshness
- * check that throws, and two stored rows that share one address|city|province
- * without being provably the same record (the Newark pair).
+ * check that throws, two stored rows that share one address|city|province
+ * without being provably the same record (the Newark pair), and a search
+ * candidate that cannot be bound to either of them.
  *
  * Usage: npx tsx scripts/test-listing-retention.ts
  */
@@ -236,12 +245,16 @@ async function main() {
   // ---------------------------------------------------------------------------
   // 4. Metro-sibling orphans
   // ---------------------------------------------------------------------------
-  heading("Two different properties at one address in one city are announced");
+  heading("Two different properties at one address in one city are BOTH retained");
   {
     const cfg = CITY("Newark", "NJ");
     // The Newark pair: same address string, same city, different MLS and
-    // price. listingKey cannot tell them apart, so retention treats them as
-    // one property — but it must say so rather than lose one quietly.
+    // price. listingKey cannot tell them apart. The identity-keyed Map that
+    // stood here kept only the second and dropped the first from the write
+    // payload with no dead verdict behind it — a permanent data loss, sold as
+    // a design decision by the comment above it. Both rows are now written;
+    // the only thing they lose is exclusive ownership of /property/{slug},
+    // which is a routing defect and recoverable.
     const a = mk("105-107 Broad St", "Newark", "NJ", { mlsNumber: "4016139", price: 224_900 });
     const b = mk("105-107 Broad St", "Newark", "NJ", { mlsNumber: "26010654", price: 254_900 });
     const plan = planRetention<CityConfig>({
@@ -250,10 +263,28 @@ async function main() {
       existingListings: [a, b],
       isOwned,
     });
+
+    eq("both rows retained", plan.cityBuckets[0].kept.length, 2);
+    check("the first row is in the payload", plan.cityBuckets[0].kept.includes(a));
+    check("the second row is in the payload", plan.cityBuckets[0].kept.includes(b));
+    eq("both are freshness-queued", plan.freshnessQueue.length, 2);
+    eq("neither is written twice", new Set(plan.freshnessQueue).size, 2);
+    eq("neither is stranded as an orphan", plan.orphanRetained.length, 0);
+    eq("the shared identity is reported ambiguous", [...plan.ambiguousIdentities], [listingKey(a)]);
+
     check("the ambiguity is announced", hasLog(plan.log, "not provably the same record"));
     check("the log names the affected identity", hasLog(plan.log, listingKey(a)));
+    check(
+      "the log counts the identity and the rows holding it",
+      hasLog(plan.log, "1 address|city|province identity(ies) held by 2 distinct stored row(s)")
+    );
+    check("the log says both are retained", hasLog(plan.log, "ALL of those rows are retained and written"));
+    check("and says they share one URL", hasLog(plan.log, "sharing one /property/{slug} URL"));
+    check("and no longer claims a row goes unwritten", !plan.log.some((l) => l.includes("is not written")));
 
     // A byte-identical duplicate is a real duplicate and must NOT be flagged.
+    // isSameRecord is the only test allowed to authorize dropping a row, and
+    // this is the only collapse left in the module.
     const clean = planRetention<CityConfig>({
       cities: [cfg],
       searchResults: [fulfilled(cfg, [])],
@@ -262,6 +293,145 @@ async function main() {
     });
     eq("an exact duplicate collapses silently", clean.cityBuckets[0].kept.length, 1);
     check("and raises no ambiguity warning", !hasLog(clean.log, "not provably the same record"));
+    eq("and flags no ambiguous identity", clean.ambiguousIdentities.size, 0);
+  }
+
+  heading("An ambiguous pair survives a whole run with no dead verdicts");
+  {
+    const cfg = CITY("Newark", "NJ");
+    const a = mk("105-107 Broad St", "Newark", "NJ", { mlsNumber: "4016139", price: 224_900 });
+    const b = mk("105-107 Broad St", "Newark", "NJ", { mlsNumber: "26010654", price: 254_900 });
+    const other = mk("12 Market St", "Newark", "NJ");
+    const plan = planRetention<CityConfig>({
+      cities: [cfg],
+      searchResults: [fulfilled(cfg, [])],
+      existingListings: [a, b, other],
+      isOwned,
+    });
+    const freshness = await runFreshnessPass({
+      queue: plan.freshnessQueue,
+      check: alwaysLive,
+      elapsed: () => 0,
+      deadlineMs: 60_000,
+    });
+
+    const survivors = pruneDead(plan.cityBuckets[0].kept, freshness.deadRows);
+    eq("no verdict was dead", freshness.deadRows.size, 0);
+    eq("all three rows survive", survivors.length, 3);
+    check("the first of the pair survives", survivors.includes(a));
+    check("the second of the pair survives", survivors.includes(b));
+    eq("and neither appears twice", new Set(survivors).size, 3);
+
+    // The URL they share is reported, not resolved by deleting a row.
+    const collisions = retainedSlugCollisions(survivors);
+    eq("the shared slug is reported", collisions.length, 1);
+    eq("as two rows", collisions[0]?.rows, 2);
+    eq("of a single identity", collisions[0]?.identities.length, 1);
+  }
+
+  heading("A dead verdict on one row of an ambiguous pair spares its namesake");
+  {
+    const cfg = CITY("Newark", "NJ");
+    const a = mk("105-107 Broad St", "Newark", "NJ", { mlsNumber: "4016139", price: 224_900 });
+    const b = mk("105-107 Broad St", "Newark", "NJ", { mlsNumber: "26010654", price: 254_900 });
+    const plan = planRetention<CityConfig>({
+      cities: [cfg],
+      searchResults: [fulfilled(cfg, [])],
+      existingListings: [a, b],
+      isOwned,
+    });
+
+    // checkFreshness is asked about the row's OWN detail url (address, city,
+    // province and the slug taken from l.url), which is the only thing that
+    // separates these two. The route passes exactly that, so a verdict here
+    // is genuinely about one of the pair.
+    const freshness = await runFreshnessPass({
+      queue: plan.freshnessQueue,
+      check: async (l) => (l.url === a.url ? "dead" : "live"),
+      elapsed: () => 0,
+      deadlineMs: 10_000,
+      maxWorkers: 2,
+    });
+
+    eq("both rows were checked", freshness.checked, 2);
+    eq("exactly one row died", freshness.deadRows.size, 1);
+    check("and it is the row whose own page 404s", freshness.deadRows.has(a));
+    check("the namesake got no verdict against it", !freshness.deadRows.has(b));
+
+    const survivors = pruneDead(plan.cityBuckets[0].kept, freshness.deadRows);
+    eq("exactly one row leaves the payload", survivors.length, 1);
+    check("the dead row is the one that left", !survivors.includes(a));
+    check("the namesake is retained", survivors.includes(b));
+
+    // Why the removal authority is the row and not the key: the identity-
+    // level summary cannot tell these two apart, and applying it would have
+    // deleted the live row with no verdict of its own.
+    eq("the identity summary names one identity", freshness.deadKeys.size, 1);
+    check(
+      "which both rows answer to",
+      plan.cityBuckets[0].kept.every((l) => freshness.deadKeys.has(listingKey(l)))
+    );
+  }
+
+  heading("A candidate matching an ambiguous identity binds to neither row");
+  {
+    const cfg = CITY("Victoria", "BC");
+    const a = mk("1200 Fairfield Rd", "Victoria", "BC", { mlsNumber: "V-A" });
+    const b = mk("1200 Fairfield Rd", "Victoria", "BC", { mlsNumber: "V-B" });
+    // Shares address, city and province with both; its MLS is exactly what
+    // makes it a different record from at least one of them.
+    const candidate = mk("1200 Fairfield Rd", "Victoria", "BC", {
+      mlsNumber: "V-A",
+      dom: 91,
+      preNarrative: undefined,
+    });
+
+    const plan = planRetention<CityConfig>({
+      cities: [cfg],
+      searchResults: [fulfilled(cfg, [candidate])],
+      existingListings: [a, b],
+      isOwned,
+    });
+
+    eq("both stored rows retained", plan.cityBuckets[0].kept.length, 2);
+    eq("neither row took the candidate's dom", plan.cityBuckets[0].kept.filter((l) => l.dom === 30).length, 2);
+    eq("no row was rewritten as a cron refresh", plan.cityBuckets[0].kept.filter((l) => l.dom === 91).length, 0);
+    eq("and it is not acquired as a third row at that address", plan.cityBuckets[0].needsDetail.length, 0);
+    check("the refusal is announced", hasLog(plan.log, "bound to none of them"));
+  }
+
+  heading("An ambiguous identity cannot suppress a user listing's carry-forward");
+  {
+    const cfg = CITY("Victoria", "BC");
+    const cronA = mk("1200 Fairfield Rd", "Victoria", "BC", { mlsNumber: "V-A" });
+    const cronB = mk("1200 Fairfield Rd", "Victoria", "BC", { mlsNumber: "V-B" });
+    const userRow = mk("1200 Fairfield Rd", "Victoria", "BC", { mlsNumber: "V-U", source: "user" });
+    const stored = [cronA, cronB, userRow];
+
+    const plan = planRetention<CityConfig>({
+      cities: [cfg],
+      searchResults: [fulfilled(cfg, [])],
+      existingListings: stored,
+      isOwned,
+    });
+    eq("both owned rows retained", plan.cityBuckets[0].kept.length, 2);
+    eq("the identity is flagged ambiguous", plan.ambiguousIdentities.size, 1);
+
+    const claimed = new Set(plan.cityBuckets[0].kept.map(listingKey));
+    eq(
+      "treating the claim as unambiguous would delete the user row",
+      selectUserCarryForward(stored, claimed).length,
+      0
+    );
+    eq(
+      "declaring the ambiguity carries it forward instead",
+      selectUserCarryForward(stored, claimed, plan.ambiguousIdentities).length,
+      1
+    );
+    check(
+      "and it is the user's own row",
+      selectUserCarryForward(stored, claimed, plan.ambiguousIdentities)[0] === userRow
+    );
   }
 
   heading("Metro-sibling orphans (city matches no CityConfig)");
@@ -322,6 +492,10 @@ async function main() {
     eq("Victoria bucket holds its own", keys(plan.cityBuckets[0].kept), [listingKey(vic)]);
     eq("Calgary bucket holds its own", keys(plan.cityBuckets[1].kept), [listingKey(cal)]);
     check("identities are distinct", listingKey(vic) !== listingKey(cal));
+    // Two cities is two identities, not one identity held by two rows. The
+    // module must not confuse the two shapes: they need different fixes.
+    eq("this is not an ambiguous identity", plan.ambiguousIdentities.size, 0);
+    check("and nothing is announced as ambiguous", !hasLog(plan.log, "not provably the same record"));
 
     // The slug index cannot tell them apart, and says so rather than dropping one.
     const collisions = retainedSlugCollisions([vic, cal]);
@@ -330,7 +504,7 @@ async function main() {
     eq("both rows still retained despite the shared slug", plan.freshnessQueue.length, 2);
   }
 
-  heading("A dead verdict removes only its own identity");
+  heading("A dead verdict removes only its own row (cross-city namesake)");
   {
     const victoria = CITY("Victoria", "BC");
     const calgary = CITY("Calgary", "AB");
@@ -360,12 +534,12 @@ async function main() {
     check("and not against the bare address", !freshness.deadKeys.has(vic.address.toLowerCase()));
     eq(
       "pruneDead keeps the namesake when handed both rows directly",
-      keys(pruneDead([vic, cal], new Set([listingKey(vic)]))),
+      keys(pruneDead([vic, cal], new Set([vic]))),
       [listingKey(cal)]
     );
 
-    const vicKept = pruneDead(plan.cityBuckets[0].kept, freshness.deadKeys);
-    const calKept = pruneDead(plan.cityBuckets[1].kept, freshness.deadKeys);
+    const vicKept = pruneDead(plan.cityBuckets[0].kept, freshness.deadRows);
+    const calKept = pruneDead(plan.cityBuckets[1].kept, freshness.deadRows);
     eq("dead Victoria row pruned", keys(vicKept), [listingKey(other)]);
     eq("Calgary namesake untouched", keys(calKept), [listingKey(cal)]);
   }
@@ -381,7 +555,7 @@ async function main() {
       deadlineMs: 10_000,
     });
     eq("nothing marked dead", freshness.deadKeys.size, 0);
-    eq("everything survives the prune", pruneDead(stored, freshness.deadKeys).length, 5);
+    eq("everything survives the prune", pruneDead(stored, freshness.deadRows).length, 5);
     eq("cfg is untouched by the pass", cfg.target, 25);
   }
 
@@ -403,7 +577,7 @@ async function main() {
     eq("three rows got a verdict", freshness.checked, 3);
     check("the error is announced, not swallowed", hasLog(freshness.log, "freshness check(s) threw"));
     check("the log carries the underlying error", hasLog(freshness.log, "socket hang up"));
-    eq("every row still retained", pruneDead(stored, freshness.deadKeys).length, 4);
+    eq("every row still retained", pruneDead(stored, freshness.deadRows).length, 4);
   }
 
   // ---------------------------------------------------------------------------
@@ -428,8 +602,9 @@ async function main() {
     check("budget shortfall is announced", hasLog(freshness.log, "freshness budget hit"));
     check("log states the retention rule", hasLog(freshness.log, "no verdict is never a removal"));
 
-    const survivors = pruneDead(stored, freshness.deadKeys);
-    eq("only the rows that got a verdict are pruned", survivors.length, 40 - freshness.checked);
+    const survivors = pruneDead(stored, freshness.deadRows);
+    eq("only the rows that got a verdict are pruned", survivors.length, 40 - freshness.deadRows.size);
+    eq("every checked row got a dead verdict here", freshness.deadRows.size, freshness.checked);
     check("unchecked rows all survived", survivors.length === freshness.remaining);
   }
 
@@ -546,14 +721,21 @@ async function main() {
   // ---------------------------------------------------------------------------
   // 11. Whole-run invariant
   // ---------------------------------------------------------------------------
-  heading("Whole run: nothing leaves the payload without a verdict for its own identity");
+  heading("Whole run: nothing leaves the payload without a verdict for its own row");
   {
     const cities = [CITY("Ottawa", "ON"), CITY("Victoria", "BC"), CITY("Calgary", "AB")];
+    // Two distinct rows at one address|city|province, riding through a city
+    // whose search failed outright. mk() gives each its own MLS and its own
+    // detail url, which is what lets a verdict be about one of them.
+    const twinA = mk("1200 Fairfield Rd", "Victoria", "BC", { mlsNumber: "V-TWIN-A", price: 810_000 });
+    const twinB = mk("1200 Fairfield Rd", "Victoria", "BC", { mlsNumber: "V-TWIN-B", price: 749_000 });
     const stored: Listing[] = [
       ...Array.from({ length: 25 }, (_, i) => mk(`${100 + i} Bank St`, "Ottawa", "ON")),
       ...Array.from({ length: 30 }, (_, i) => mk(`${i} Douglas St`, "Victoria", "BC")),
       mk("123 Main St", "Victoria", "BC", { mlsNumber: "V-1" }),
       mk("123 Main St", "Calgary", "AB", { mlsNumber: "C-1" }),
+      twinA,
+      twinB,
       mk("55 Brant St", "Burlington", "ON"),          // metro-sibling orphan
       mk("77 Oak Bay Ave", "Victoria", "BC", { source: "user" }),
     ];
@@ -572,30 +754,58 @@ async function main() {
 
     const freshness = await runFreshnessPass({
       queue: plan.freshnessQueue,
-      check: async (l) => (listingKey(l) === listingKey(doomed) ? "dead" : "live"),
+      // Two 404s: one whole identity, and ONE ROW of the ambiguous pair —
+      // matched on the detail url, which is what the route hands
+      // checkFreshness and the only thing that separates the twins.
+      check: async (l) =>
+        listingKey(l) === listingKey(doomed) || l.url === twinB.url ? "dead" : "live",
       elapsed: () => 0,
       deadlineMs: 60_000,
       maxWorkers: 8,
     });
 
     const survivors = [
-      ...plan.cityBuckets.flatMap((b) => pruneDead(b.kept, freshness.deadKeys)),
-      ...pruneDead(plan.orphanRetained, freshness.deadKeys),
+      ...plan.cityBuckets.flatMap((b) => pruneDead(b.kept, freshness.deadRows)),
+      ...pruneDead(plan.orphanRetained, freshness.deadRows),
     ];
     const claimed = new Set(survivors.map(listingKey));
-    const payload = [...survivors, ...selectUserCarryForward(stored, claimed)];
+    const payload = [
+      ...survivors,
+      ...selectUserCarryForward(stored, claimed, plan.ambiguousIdentities),
+    ];
 
-    const payloadKeys = new Set(payload.map(listingKey));
-    const missing = stored.filter((l) => !payloadKeys.has(listingKey(l)));
+    // ROW identity, not property identity. listingKey can no longer express
+    // this invariant on its own: the twins share one listingKey and both must
+    // be present exactly once. Every fixture row has its own MLS number and
+    // the dom refresh preserves it, so this names a row.
+    const rowId = (l: Listing) => `${listingKey(l)}#${l.mlsNumber ?? ""}`;
+    const payloadRows = new Set(payload.map(rowId));
+    const dead = [doomed, twinB];
+    const deadRowIds = new Set(dead.map(rowId));
+    const missing = stored.filter((l) => !payloadRows.has(rowId(l)));
 
-    eq("exactly one stored row left the payload", missing.length, 1);
-    eq("and it is the one with a dead verdict", missing.map(listingKey), [listingKey(doomed)]);
+    eq("exactly the rows with a dead verdict left the payload", missing.map(rowId).sort(), [...deadRowIds].sort());
     check(
       "every other stored row is present",
-      stored.filter((l) => listingKey(l) !== listingKey(doomed)).every((l) => payloadKeys.has(listingKey(l)))
+      stored.filter((l) => !deadRowIds.has(rowId(l))).every((l) => payloadRows.has(rowId(l)))
     );
-    eq("no row is written twice", payload.length, payloadKeys.size);
+    eq("no row is written twice", payload.length, payloadRows.size);
     eq("the user listing is in the payload", payload.filter((l) => l.source === "user").length, 1);
+
+    // The ambiguous pair, specifically: one row died on its own url, the
+    // other had no verdict against it and must still be there.
+    check("the surviving twin is in the payload", payloadRows.has(rowId(twinA)));
+    check("the twin with the 404 is not", !payloadRows.has(rowId(twinB)));
+    eq(
+      "and the shared identity is still represented, once",
+      payload.filter((l) => listingKey(l) === listingKey(twinA)).length,
+      1
+    );
+    check(
+      "the ambiguity was announced for exactly one identity",
+      hasLog(plan.log, "1 address|city|province identity(ies) held by 2 distinct stored row(s)")
+    );
+    eq("and only that identity is flagged", [...plan.ambiguousIdentities], [listingKey(twinA)]);
   }
 
   // ---------------------------------------------------------------------------
@@ -616,7 +826,7 @@ async function main() {
       deadlineMs: 60_000,
     });
     eq("no dead verdicts", freshness.deadKeys.size, 0);
-    eq("all retained", pruneDead(plan.cityBuckets[0].kept, freshness.deadKeys).length, 8);
+    eq("all retained", pruneDead(plan.cityBuckets[0].kept, freshness.deadRows).length, 8);
     eq("no slug collisions in a clean fixture", retainedSlugCollisions(stored).length, 0);
   }
 
