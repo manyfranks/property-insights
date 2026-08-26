@@ -19,7 +19,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { getAllListings } from "@/lib/kv/listings";
+import { requireAllListings } from "@/lib/kv/listings";
 import { slugify } from "@/lib/utils";
 import { insuranceLookupLimiter } from "@/lib/rate-limit";
 import { stageAtLeast } from "@/config/insurance-stage";
@@ -45,7 +45,16 @@ async function getIndex(): Promise<AddressHit[]> {
   if (indexCache && Date.now() - indexCache.ts < INDEX_TTL_MS) {
     return indexCache.hits;
   }
-  const listings = await getAllListings();
+  // requireAllListings, not getAllListings: the 502 below was already the
+  // right degraded behaviour, but nothing could ever reach it. getAllListings
+  // does not throw — it answers an unreadable store with `[]` — so an outage
+  // built and CACHED an empty index for five minutes, and every keystroke in
+  // that window returned `{results: []}` with a 200. To the visitor that
+  // reads as "your property isn't one we track," which is a claim about the
+  // data, made without having read any. The throw both surfaces the outage
+  // and, because it happens before the assignment below, keeps the empty
+  // index out of the 5-minute cache.
+  const listings = await requireAllListings({ context: "insurance address typeahead" });
   const hits: AddressHit[] = listings.map((l) => {
     const region = l.province.toUpperCase();
     return {

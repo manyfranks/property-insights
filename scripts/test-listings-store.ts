@@ -114,6 +114,7 @@ async function main() {
     writeAllListings,
     getAllListings,
     getListingBySlug,
+    getListingsStoreHealth,
     buildStorageChunks,
     estimateCachedResponseBytes,
     STORAGE_CHUNK_TARGET_BYTES,
@@ -161,7 +162,11 @@ async function main() {
   for (const i of sampleIdxs) {
     const slug = slugify(fixtures[i].address);
     const found = await getListingBySlug(slug, { keyPrefix: KEY_PREFIX });
-    check(`slug lookup for fixture #${i} (${slug})`, !!found && found.address === fixtures[i].address);
+    check(
+      `slug lookup for fixture #${i} (${slug})`,
+      found.status === "found" && found.listing.address === fixtures[i].address,
+      `status=${found.status}`
+    );
   }
 
   // --- 5. Floor guard -------------------------------------------------------
@@ -178,7 +183,13 @@ async function main() {
   check("store now has 700 after forced shrink", afterForced.length === 700, `got ${afterForced.length}`);
 
   // --- 6. Shape validation catches garbage ----------------------------------
-  console.log("\n[6/6] shape validation — corrupted data falls back to static, never throws");
+  // getAllListings no longer answers a corrupted/unreadable store with the
+  // static PRELOADED_LISTINGS seed — serving a stale March snapshot made an
+  // outage look like a small healthy store. It now returns an empty array,
+  // loudly ([kv-degraded] + getListingsStoreHealth()), and still never
+  // throws. What this step guards is unchanged: garbage in KV must never be
+  // handed back to callers as listings.
+  console.log("\n[6/6] shape validation — corrupted data yields no listings, never throws");
   await rawSet(`${KEY_PREFIX}:index`, "not-json{{{"); // malformed JSON -> sharded read must throw+recover, not crash
   await rawSet(`${KEY_PREFIX}:all`, JSON.stringify([1, 2, 3])); // valid JSON, wrong shape (not Listing[])
   let garbageResult: Listing[] | null = null;
@@ -190,9 +201,14 @@ async function main() {
   }
   check("getAllListings never throws on corrupted data", !threw);
   check(
-    "falls back to static data (not the [1,2,3] garbage)",
-    !!garbageResult && garbageResult.every((l) => typeof l.address === "string"),
+    "never returns the [1,2,3] garbage as listings",
+    !!garbageResult && garbageResult.every((l) => l && typeof l.address === "string"),
     JSON.stringify(garbageResult?.slice(0, 1))
+  );
+  check(
+    "reports the degraded read instead of substituting the static seed",
+    garbageResult?.length === 0 && getListingsStoreHealth().degraded === true,
+    `length=${garbageResult?.length}, health=${JSON.stringify(getListingsStoreHealth())}`
   );
 
   // --- Cleanup ---------------------------------------------------------------

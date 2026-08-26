@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { getAllListings } from "@/lib/kv/listings";
+import { readAllListings } from "@/lib/kv/listings";
 import { buildCityMetadata, getCityBySlug } from "@/lib/data/city-metadata";
 import { analyzeListing } from "@/lib/analyze";
 
@@ -44,13 +44,33 @@ export default async function CityOgImage({
 }) {
   const { city: slug } = await params;
 
+  // Degraded-mode choice for this surface: the neutral fallback image, with
+  // a log line — but never the "City not found" one.
+  //
+  // An OG image is decoration for a link preview: it is not indexed content,
+  // a crawler does not derive page existence from it, and failing it hard
+  // would break previews for pages that render fine. So a fallback is the
+  // right tier here — what was wrong is that it was undisclosed and, worse,
+  // mislabelled. On an unreadable store the city list came back empty,
+  // getCityBySlug returned undefined, and this route confidently rendered a
+  // "City not found" card for a city that exists. The store read is now
+  // typed so the two cases get different images, and the degraded one is
+  // logged instead of being swallowed by a bare catch.
   let meta;
   let listings;
   try {
-    listings = await getAllListings();
+    const store = await readAllListings();
+    if (store.status === "unavailable") {
+      console.error(`[discover-og] /discover/${slug} OG image degraded: ${store.reason}`);
+      return fallbackImage("Property Insights");
+    }
+    listings = store.status === "ok" ? store.listings : [];
     const { cities } = buildCityMetadata(listings);
     meta = getCityBySlug(slug, cities);
-  } catch {
+  } catch (err) {
+    console.error(
+      `[discover-og] /discover/${slug} OG image failed: ${err instanceof Error ? err.message : String(err)}`
+    );
     return fallbackImage("Property Insights");
   }
 
@@ -81,7 +101,11 @@ export default async function CityOgImage({
       { label: "Avg Savings", value: fmt(avgSavings) },
       { label: "Avg DOM", value: String(avgDom) },
     ];
-  } catch {
+  } catch (err) {
+    console.error(
+      `[discover-og] /discover/${slug} stats computation failed, rendering the card without them: ` +
+        `${err instanceof Error ? err.message : String(err)}`
+    );
     stats = [];
   }
 

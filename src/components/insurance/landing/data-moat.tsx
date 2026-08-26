@@ -23,7 +23,7 @@
  * says 6.
  */
 
-import { getAllListings } from "@/lib/kv/listings";
+import { readAllListings } from "@/lib/kv/listings";
 import {
   buildCoveragePrefill,
   formatMoney,
@@ -95,12 +95,31 @@ function buildFieldRows(prefill: CoveragePrefill): { label: string; value: strin
 }
 
 export default async function DataMoat({ country, region }: { country: Country; region: string }) {
+  // Degraded-mode choice for this surface: keep the section, switch to the
+  // already-written "we couldn't load a sample" copy — the two states below
+  // are distinct on purpose and must stay distinct.
+  //
+  // The `kvError` branch existed and was unreachable: getAllListings() does
+  // not throw, it answers an unreadable store with `[]`, and
+  // pickShowcaseListing([]) returns null — so an outage rendered the OTHER
+  // message, "we don't have a tracked listing to preview in this region
+  // yet." On a marketing page whose whole argument is the size of the data
+  // set, that is a false statement about coverage, made during an outage.
+  // The typed read restores the distinction the copy was written for.
   let listing: Listing | null = null;
   let kvError = false;
   try {
-    const listings = await getAllListings();
-    listing = pickShowcaseListing(listings, country, region);
-  } catch {
+    const store = await readAllListings();
+    if (store.status === "unavailable") {
+      console.error(`[insurance-landing] data-moat showcase degraded: ${store.reason}`);
+      kvError = true;
+    } else {
+      listing = pickShowcaseListing(store.status === "ok" ? store.listings : [], country, region);
+    }
+  } catch (err) {
+    console.error(
+      `[insurance-landing] data-moat showcase failed: ${err instanceof Error ? err.message : String(err)}`
+    );
     kvError = true;
   }
 

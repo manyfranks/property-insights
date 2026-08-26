@@ -182,8 +182,9 @@ async function main() {
   // Verify: round-trip read back one of the newly-written listings.
   if (enriched.length > 0) {
     const sampleSlug = slugify(enriched[0].address);
-    const readBack = await getListingBySlug(sampleSlug);
-    console.log(`\nRound-trip verify (slug "${sampleSlug}"):`);
+    const lookup = await getListingBySlug(sampleSlug);
+    const readBack = lookup.status === "found" ? lookup.listing : null;
+    console.log(`\nRound-trip verify (slug "${sampleSlug}", status=${lookup.status}):`);
     if (readBack && readBack.city.toLowerCase() === cityLower && readBack.preNarrative) {
       console.log(`  OK — found, city=${readBack.city}, province=${readBack.province}, tier=${readBack.preTier}, narrative present (${readBack.preNarrative.length} chars)`);
     } else {

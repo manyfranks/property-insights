@@ -1,5 +1,28 @@
+/**
+ * GET /api/sitemap — the dynamic sitemap.
+ *
+ * Degraded-mode contract: this route MUST NOT answer 200 with a sitemap that
+ * is missing its property URLs.
+ *
+ * getAllListings() returns `[]` both when the store is genuinely empty and
+ * when KV could not be read. This route used to take that array at face
+ * value, so a KV blip produced a perfectly valid, well-formed sitemap
+ * containing zero <loc> entries for /property/* and /discover/*. That is
+ * worse than an error: a sitemap is an assertion about which pages exist,
+ * and a crawler that fetches one omitting ~2,200 previously-listed URLs
+ * reads it as "those pages are gone." This site has already lost 409+
+ * property URLs to exactly that class of signal.
+ *
+ * So the read goes through requireAllListings, which throws rather than
+ * hand back an empty array it cannot vouch for, and the failure is answered
+ * with 503 + Retry-After. Google retries a 5xx and drops nothing; whatever
+ * sitemap it already holds stays authoritative until this route can tell the
+ * truth again. An `absent` store (verifiably empty over a healthy
+ * connection) is NOT an error — it renders the static/blog/US URLs and no
+ * property URLs, because that is then a fact about the site.
+ */
 import { NextResponse } from "next/server";
-import { getAllListings } from "@/lib/kv/listings";
+import { ListingsStoreUnavailableError, requireAllListings } from "@/lib/kv/listings";
 import { BLOG_POSTS } from "@/lib/blog";
 import { slugify } from "@/lib/utils";
 import { BASE_URL } from "@/lib/seo";
@@ -23,7 +46,29 @@ function entry(url: string, lastmod: string, changefreq: string, priority: numbe
 }
 
 export async function GET() {
-  const listings = await getAllListings();
+  let listings;
+  try {
+    listings = await requireAllListings({ context: "GET /api/sitemap" });
+  } catch (err) {
+    if (!(err instanceof ListingsStoreUnavailableError)) throw err;
+    console.error(`[sitemap] refusing to publish a sitemap without property URLs: ${err.reason}`);
+    // 503 + Retry-After, and explicitly no-store: a cached empty-ish sitemap
+    // would keep being served past the outage. Plain text so nothing
+    // downstream mistakes the body for a parseable urlset.
+    return new NextResponse(
+      `Sitemap unavailable: the listings store could not be read (${err.reason}). ` +
+        `Refusing to serve a sitemap that omits every property URL — retry shortly.`,
+      {
+        status: 503,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Retry-After": "300",
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  }
+
   const now = new Date().toISOString();
 
   // County /rent pages only exist for counties with a HUD fmr_2br row on

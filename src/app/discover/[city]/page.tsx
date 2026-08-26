@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getAllListings } from "@/lib/kv/listings";
+import { readAllListings, requireAllListings } from "@/lib/kv/listings";
 import { buildCityMetadata, getCityBySlug } from "@/lib/data/city-metadata";
 import { analyzeListing } from "@/lib/analyze";
 import { isUSState } from "@/lib/assessment/us";
@@ -45,7 +45,14 @@ function analyzeCityListings(cityListings: Listing[]): AnalysisResult[] {
 export const revalidate = 600; // 10 min ISR
 
 export async function generateStaticParams() {
-  const listings = await getAllListings();
+  // Build time. requireAllListings throws on an unreadable store, which
+  // fails the build — deliberately. Returning [] here would look harmless
+  // (params are dynamic, so pages still render on demand) but it silently
+  // ships a deploy that prerendered none of the city pages, and it is the
+  // same read the prebuild sitemap generator depends on. If KV cannot be
+  // read at build time, the honest outcome is a failed deploy, not a quietly
+  // thinner one.
+  const listings = await requireAllListings({ context: "discover/[city] generateStaticParams" });
   const { cities } = buildCityMetadata(listings);
   return cities.map((c) => ({ city: c.slug }));
 }
@@ -56,7 +63,15 @@ export async function generateMetadata({
   params: Promise<{ city: string }>;
 }): Promise<Metadata> {
   const { city: slug } = await params;
-  const listings = await getAllListings();
+  const store = await readAllListings();
+  if (store.status === "unavailable") {
+    // The page component below decides this request's status code and
+    // throws (500) on the same read. Emitting a "not found"-flavoured title
+    // here would be a claim the store never supported — stay neutral.
+    console.error(`[discover] metadata for /discover/${slug} degraded: ${store.reason}`);
+    return {};
+  }
+  const listings = store.status === "ok" ? store.listings : [];
   const { cities } = buildCityMetadata(listings);
   const meta = getCityBySlug(slug, cities);
 
@@ -102,7 +117,22 @@ export default async function DiscoverCityPage({
   params: Promise<{ city: string }>;
 }) {
   const { city: slug } = await params;
-  const listings = await getAllListings();
+
+  // Degraded-mode choice for this surface: THROW (500), never render and
+  // never 404.
+  //
+  // The city list this page validates `slug` against is derived from the
+  // listing array, so on an unreadable store buildCityMetadata([]) yields
+  // zero cities, getCityBySlug returns undefined, and the `!meta` branch
+  // below called notFound() — a 404 on every /discover/* URL for the whole
+  // outage. A 404 is the one answer that asks a crawler to DELETE the URL,
+  // and these are indexed pages; a 500 asks it to come back. Same reasoning
+  // as /property/[slug]'s unavailable branch, which this now matches.
+  //
+  // requireAllListings throws ListingsStoreUnavailableError, which Next
+  // renders as a 500. `absent` (verifiably empty store) still falls through
+  // to notFound(), because then the city genuinely does not exist here.
+  const listings = await requireAllListings({ context: `GET /discover/${slug}` });
   const { cities } = buildCityMetadata(listings);
   const meta = getCityBySlug(slug, cities);
 

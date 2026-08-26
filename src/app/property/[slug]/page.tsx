@@ -60,8 +60,17 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const listing = await getListingBySlug(slug);
-  if (!listing) return { title: "Property Not Found" };
+  const lookup = await getListingBySlug(slug);
+  if (lookup.status === "unavailable") {
+    // The page component below is what sets this request's status code, and
+    // on an unreadable store it throws (500). Titling the document "Property
+    // Not Found" here would be a claim we cannot support — the listing may
+    // well exist — so stay neutral and let the render fail loudly.
+    console.error(`[listing-store] metadata for /property/${slug} degraded: ${lookup.reason}`);
+    return { title: "Property Insights" };
+  }
+  if (lookup.status === "absent") return { title: "Property Not Found" };
+  const listing = lookup.listing;
 
   const price = `$${(listing.price / 1000).toFixed(0)}K`;
   const title = `${listing.address}, ${listing.city} ${listing.province} — ${price}`;
@@ -337,8 +346,18 @@ export default async function PropertyPage({
   // Assessment handoffs may have just refreshed this shared listing. Bypass
   // the five-minute KV fetch cache so the result cannot combine a stale offer
   // snapshot with a newly selected journey. Discover pages retain normal ISR.
-  const listing = await getListingBySlug(slug, { fresh: assessmentOrigin });
-  if (!listing) notFound();
+  const lookup = await getListingBySlug(slug, { fresh: assessmentOrigin });
+  // 404 vs 500 is a retention decision here, not a cosmetic one. A 404 tells
+  // crawlers to delete /property/{slug} — this site has already lost 409+
+  // property URLs that way — while a 500 tells them to come back. So only a
+  // *verified* absence (KV answered, over a healthy connection, that nothing
+  // is stored under this slug) is allowed to reach notFound(); an unreadable
+  // store throws, and the request 500s.
+  if (lookup.status === "unavailable") {
+    throw new Error(`Listings store unavailable for /property/${slug}: ${lookup.reason}`);
+  }
+  if (lookup.status === "absent") notFound();
+  const listing = lookup.listing;
 
   const journeyEnabled = assessmentOrigin && queryValue(query.journeys) === "1";
   const requestedAssessmentId = queryValue(query.assessmentId);
