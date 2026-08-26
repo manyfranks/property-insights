@@ -29,7 +29,8 @@
     "test:e2e:report": "playwright show-report",
     "test:retention": "tsx scripts/test-listing-retention.ts",
     "test:listing-identity": "tsx scripts/test-listing-identity.ts",
-    "test:listings-degraded": "tsx scripts/test-listings-degraded.ts"
+    "test:listings-degraded": "tsx scripts/test-listings-degraded.ts",
+    "test:meta-value": "tsx scripts/test-meta-value.ts"
   },
   "engines": {
     "node": ">=22.12.0"

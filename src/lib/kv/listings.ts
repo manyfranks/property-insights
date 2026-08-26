@@ -1680,8 +1680,58 @@ export async function getMetaValue(key: string): Promise<string | null> {
 
   try {
     const raw = await kvGet(key);
-    if (typeof raw === "string") return raw;
-    if (raw != null) return JSON.stringify(raw);
+    // -----------------------------------------------------------------
+    // [meta-encoding] Unwrap the extra JSON layer setMetaValue adds.
+    //
+    // setMetaValue hands an ALREADY-STRING value to kvSet, and kvSet
+    // JSON.stringify()s everything it is given — correct for the listing
+    // arrays it was written for, but for a string it stores a
+    // JSON-encoded string. Reading it back therefore yields the encoded
+    // form (`"{\"ema\":2}"`, quotes and escapes included), not the
+    // value that was written, and every caller then parsed one layer too
+    // few:
+    //
+    //   canary baseline   JSON.parse -> a STRING, not the state object.
+    //                     `prev.samples` undefined, so `undefined < 3`
+    //                     skipped the cold-start guard, and
+    //                     `count < prev.ema * ratio` was `count < NaN`
+    //                     — permanently false. The drop detector could
+    //                     never fire, and stored `{"ema":null,
+    //                     "samples":null}` back. Observed in production.
+    //   us-discover       Number('"1787..."') -> NaN -> getLastRefresh
+    //                     returns null -> every metro reads as due on
+    //                     every run, re-sweeping the whole set and
+    //                     burning RentCast quota the cadence gate exists
+    //                     to conserve.
+    //   city-metadata     JSON.parse -> a string, Array.isArray false, so
+    //                     slow-fill activation silently never persisted.
+    //
+    // All three degraded to a plausible-looking value rather than an
+    // error, which is exactly what this repo's fail-loud rule forbids.
+    // Fixed on READ rather than on write so existing keys — including the
+    // NaN-poisoned canary baselines already in production — keep
+    // resolving; those land in the cold-start branch and re-seed
+    // themselves. unwrapJson is the same helper listings:all uses against
+    // this identical double-encoding hazard.
+    // -----------------------------------------------------------------
+    if (raw == null) return null;
+    if (typeof raw !== "string") return JSON.stringify(raw);
+
+    // Exactly ONE layer, not unwrapJson's greedy loop: setMetaValue adds
+    // exactly one, and unwrapping further corrupts real values. unwrapJson
+    // would take the plain string "hello" -> `"hello"` -> throw on the
+    // second JSON.parse, and would take the string "1787" all the way down
+    // to a number. Peel one layer when the stored text is a JSON string
+    // literal (what kvSet produces for a string), and otherwise hand back
+    // the text untouched — which is also what a value written before this
+    // helper existed, or by a raw REST call, needs.
+    try {
+      const once = JSON.parse(raw);
+      if (typeof once === "string") return once;
+    } catch {
+      // Not JSON at all — a plain legacy value. Use it as written.
+    }
+    return raw;
   } catch {
     // Fall through
   }
