@@ -56,15 +56,22 @@ next-env.d.ts
 # keep the example env template tracked
 !.env.example
 
-# generated sitemaps — all prebuild artifacts written fresh on every deploy
-# by scripts/generate-sitemap.ts (~2.1MB total, ~11.8k <url> entries across
-# them). They were previously committed, which produced a full-file diff on
-# every deploy for no reason (the files are reproducible from KV + static
-# data at build time). sitemap-main.xml is now a <sitemapindex> (still the
-# URL robots.ts advertises); sitemap.xml is the flat legacy all-surfaces
-# merge; the sitemap-{static,blog,discover,property,us}.xml files are the
-# per-surface children the index points at. See scripts/generate-sitemap.ts
-# for the full rationale.
+# generated sitemaps — prebuild artifacts written fresh on every deploy by
+# scripts/generate-sitemap.ts. They were previously committed, which
+# produced a full-file diff on every deploy for no reason (the files are
+# reproducible from the DB + static data at build time). sitemap-main.xml is
+# a <sitemapindex> (still the URL robots.ts advertises); sitemap.xml is the
+# flat legacy merge (static/blog/us only, see generate-sitemap.ts);
+# sitemap-{static,blog,us}.xml are the per-surface children it still writes.
+#
+# sitemap-discover.xml and sitemap-property.xml are listed here too, but as
+# of 2026-08-27 the generator no longer writes them at all — they're dynamic
+# routes now (src/app/sitemap-{discover,property}.xml/route.ts), kept
+# ignored defensively: a stray static file at either path would silently
+# SHADOW the dynamic route (Next.js serves public/ before an app route),
+# which is exactly the regression scripts/test-sitemap-lastmod.ts and
+# scripts/test-listings-degraded.ts guard against. See
+# scripts/generate-sitemap.ts for the full rationale.
 public/sitemap.xml
 public/sitemap-main.xml
 public/sitemap-static.xml

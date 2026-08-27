@@ -18,15 +18,24 @@
  * switches to make reads, SETs or pipelines fail on demand. Nothing here
  * touches production KV or makes a live network call. The one exception is
  * section 3, which spawns the real prebuild sitemap generator as a child
- * process (that path can only be tested end to end, because what it does
- * wrong is write files), pointed at a dead KV endpoint.
+ * process, pointed at a dead KV endpoint.
  *
  * Sections:
  *   1. Store reads tell empty and unreadable apart (incl. torn-write
  *      detection).
- *   2. Bulk consumers never publish emptiness from an unreadable store.
- *   3. The prebuild sitemap generator fails the build instead of baking an
- *      empty sitemap into a deployment.
+ *   2. Bulk consumers never publish emptiness from an unreadable store —
+ *      including the two dynamic sitemap routes (sitemap-property.xml,
+ *      sitemap-discover.xml; see section 3 for why generate-sitemap.ts
+ *      itself is no longer one of these consumers).
+ *   3. The prebuild sitemap generator no longer touches KV at all — its
+ *      old degraded-KV build-failure behaviour moved to the two dynamic
+ *      routes checked in section 2 (2026-08-27 split, see
+ *      scripts/generate-sitemap.ts's header). This section instead guards
+ *      the decoupling itself: bad/unset KV creds must not affect the
+ *      generator's exit code or its (now KV-free) output, and it must
+ *      never write public/sitemap-{property,discover}.xml under any KV
+ *      condition — a stray static file at either path would silently
+ *      shadow the dynamic route.
  *   4. Failed kvSet/kvPipeline surface instead of reporting success —
  *      including a pipeline whose HTTP 200 body is not one result per
  *      submitted command.
@@ -42,7 +51,7 @@
  * Usage: npx tsx scripts/test-listings-degraded.ts
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { Listing } from "../src/lib/types";
 
@@ -362,6 +371,39 @@ async function main() {
       String(lookupRes2.status)
     );
 
+    // --- GET /sitemap-property.xml, GET /sitemap-discover.xml ---------------
+    // The two children of public/sitemap-main.xml that moved off build-time
+    // static files onto dynamic routes (2026-08-27 split — see
+    // scripts/generate-sitemap.ts's header). Same contract as GET
+    // /api/sitemap above, checked the same way.
+    const { GET: sitemapPropertyGET } = await import("../src/app/sitemap-property.xml/route");
+    const propertyRes = await sitemapPropertyGET();
+    const propertyBody = await propertyRes.text();
+    check("GET /sitemap-property.xml answers 503, not 200", propertyRes.status === 503, String(propertyRes.status));
+    check("the 503 body contains no <url> entries at all", !propertyBody.includes("<url>"));
+    check("the 503 sets Retry-After", propertyRes.headers.get("Retry-After") !== null);
+    check(
+      "the 503 is not cacheable",
+      (propertyRes.headers.get("Cache-Control") ?? "").includes("no-store"),
+      propertyRes.headers.get("Cache-Control") ?? "none"
+    );
+
+    const { GET: sitemapDiscoverGET } = await import("../src/app/sitemap-discover.xml/route");
+    const discoverSitemapRes = await sitemapDiscoverGET();
+    const discoverSitemapBody = await discoverSitemapRes.text();
+    check(
+      "GET /sitemap-discover.xml answers 503, not 200",
+      discoverSitemapRes.status === 503,
+      String(discoverSitemapRes.status)
+    );
+    check("the 503 body contains no <url> entries at all", !discoverSitemapBody.includes("<url>"));
+    check("the 503 sets Retry-After", discoverSitemapRes.headers.get("Retry-After") !== null);
+    check(
+      "the 503 is not cacheable",
+      (discoverSitemapRes.headers.get("Cache-Control") ?? "").includes("no-store"),
+      discoverSitemapRes.headers.get("Cache-Control") ?? "none"
+    );
+
     // --- /discover/[city] ---------------------------------------------------
     // This one is the 404-shaped hazard: the city list is derived from the
     // listing array, so an empty read used to reach notFound(), and a 404
@@ -402,7 +444,13 @@ async function main() {
       "src/app/discover/[city]/opengraph-image.tsx",
       "src/components/insurance/landing/data-moat.tsx",
       "src/lib/realtor-ca.ts",
-      "scripts/generate-sitemap.ts",
+      "src/app/sitemap-property.xml/route.ts",
+      "src/app/sitemap-discover.xml/route.ts",
+      // NOTE: scripts/generate-sitemap.ts is deliberately NOT in this list
+      // any more (2026-08-27) — it no longer reads the listings store at
+      // all (property/discover moved to the two dynamic routes above), so
+      // asserting it "uses the typed read" would fail on a script that is
+      // now correctly KV-free. See section 3 for its own regression guard.
     ];
     // Comments in these files legitimately mention getAllListings by name
     // (they explain why it is no longer used), so compare against code only.
@@ -419,16 +467,31 @@ async function main() {
   }
 
   // =========================================================================
-  console.log("\n[3/8] the prebuild sitemap generator fails the build, and writes nothing");
+  console.log("\n[3/8] the prebuild sitemap generator no longer touches KV — bad KV creds must not affect it");
   // =========================================================================
   {
-    // This is the worst path in the set: scripts/generate-sitemap.ts runs in
-    // `prebuild` and writeFileSync's STATIC files into public/. The dynamic
-    // route self-heals on the next request; a baked sitemap-property.xml with
-    // zero URLs is served to Googlebot (robots.ts points straight at
-    // sitemap-main.xml) until somebody redeploys.
-    const target = join(REPO_ROOT, "public", "sitemap-property.xml");
-    const before = existsSync(target) ? statSync(target).mtimeMs : null;
+    // Until 2026-08-27 this section asserted the OPPOSITE: that bad/unset KV
+    // creds made scripts/generate-sitemap.ts fail the build, because it used
+    // to writeFileSync property/discover STATIC files from a KV listings
+    // read, and a baked empty sitemap-property.xml would be served to
+    // Googlebot until the next deploy. Property/discover are dynamic routes
+    // now (src/app/sitemap-{property,discover}.xml/route.ts, checked in
+    // section 2 above) — the generator has nothing left in it that reads
+    // listings, so it should succeed regardless of KV state. What this
+    // section guards now is the decoupling itself, and the specific hazard
+    // the generator's header warns about: a stray static
+    // public/sitemap-property.xml or public/sitemap-discover.xml would
+    // silently SHADOW the dynamic route (Next.js serves a matching public/
+    // file before an app route ever sees the request), quietly undoing the
+    // whole freshness fix with no error anywhere. So: delete any such files
+    // first, then prove the generator doesn't recreate them under any KV
+    // condition, and that it still writes a healthy 5-name index.
+    const propertyTarget = join(REPO_ROOT, "public", "sitemap-property.xml");
+    const discoverTarget = join(REPO_ROOT, "public", "sitemap-discover.xml");
+    const indexTarget = join(REPO_ROOT, "public", "sitemap-main.xml");
+    for (const f of [propertyTarget, discoverTarget]) {
+      if (existsSync(f)) unlinkSync(f);
+    }
 
     const runGenerator = (env: Record<string, string>): { code: number; output: string } => {
       try {
@@ -436,8 +499,8 @@ async function main() {
           cwd: REPO_ROOT,
           encoding: "utf-8",
           stdio: ["ignore", "pipe", "pipe"],
-          // DATABASE_URL="" keeps the county queries out of this (falsy, so
-          // the generator skips them) — this is about the listings read.
+          // DATABASE_URL="" keeps the county queries out of this too — this
+          // block is entirely about KV, not regional_econ.
           env: { ...process.env, DATABASE_URL: "", ...env },
         });
         return { code: 0, output: out };
@@ -447,32 +510,23 @@ async function main() {
       }
     };
 
-    // 127.0.0.1:1 refuses instantly — a configured but unreachable KV.
-    const unreadable = runGenerator({
-      KV_REST_API_URL: "http://127.0.0.1:1",
-      KV_REST_API_TOKEN: "fake-token",
-    });
-    check("unreadable KV: generator exits non-zero (build fails)", unreadable.code !== 0, `exit=${unreadable.code}`);
-    check(
-      "unreadable KV: it says why, naming the refusal",
-      /refusing to generate a sitemap/i.test(unreadable.output),
-      unreadable.output.slice(-300)
-    );
-
-    // Unset credentials would silently produce a 250-URL static-seed sitemap.
-    const unconfigured = runGenerator({ KV_REST_API_URL: "", KV_REST_API_TOKEN: "" });
-    check("unconfigured KV: generator exits non-zero", unconfigured.code !== 0, `exit=${unconfigured.code}`);
-    check(
-      "unconfigured KV: it refuses rather than publishing the static dev seed",
-      /static dev seed|SITEMAP_ALLOW_STATIC_SEED/i.test(unconfigured.output),
-      unconfigured.output.slice(-300)
-    );
-
-    const after = existsSync(target) ? statSync(target).mtimeMs : null;
-    check("neither failed run wrote public/sitemap-property.xml", before === after, `${before} -> ${after}`);
-    if (after !== null) {
-      const xml = readFileSync(target, "utf-8");
-      check("any pre-existing sitemap-property.xml still holds its URLs", xml.includes("<url>"));
+    for (const [label, env] of [
+      ["unreachable KV (127.0.0.1:1 refuses instantly)", { KV_REST_API_URL: "http://127.0.0.1:1", KV_REST_API_TOKEN: "fake-token" }],
+      ["unconfigured KV (unset)", { KV_REST_API_URL: "", KV_REST_API_TOKEN: "" }],
+    ] as const) {
+      const result = runGenerator(env as Record<string, string>);
+      check(`${label}: generator still succeeds (no KV listings dependency left)`, result.code === 0, `exit=${result.code}: ${result.output.slice(-300)}`);
+      check(`${label}: still does not write public/sitemap-property.xml`, !existsSync(propertyTarget));
+      check(`${label}: still does not write public/sitemap-discover.xml`, !existsSync(discoverTarget));
+      if (existsSync(indexTarget)) {
+        const indexXml = readFileSync(indexTarget, "utf-8");
+        const namesAllFive = ["sitemap-static.xml", "sitemap-blog.xml", "sitemap-discover.xml", "sitemap-property.xml", "sitemap-us.xml"].every(
+          (f) => indexXml.includes(`/${f}`)
+        );
+        check(`${label}: sitemap-main.xml index still names all 5 children`, namesAllFive);
+      } else {
+        check(`${label}: sitemap-main.xml was written`, false, "index file missing after a successful run");
+      }
     }
   }
 
