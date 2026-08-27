@@ -190,6 +190,19 @@ export function journeyCapabilityStatus(
         message: "Property-specific rent and sale evidence can support a rental screen.",
       };
     }
+    const hardDenial = [items.addressRentEstimate.reason, items.grossYieldScreen.reason].find(
+      (reason) => reason === "provider_exclusion" || reason === "unsupported_scope" || reason === "conflicting_evidence"
+    );
+    if (hardDenial) {
+      return {
+        availability: "unavailable",
+        message: hardDenial === "provider_exclusion"
+          ? "This subject is outside the verified residential scope, so regional rent context cannot reopen a residential rental screen."
+          : hardDenial === "unsupported_scope"
+            ? "The available rent and value evidence does not match the resolved subject scope, so a rental screen is withheld."
+            : "The property-use or subject evidence conflicts, so a rental screen is withheld until the subject is resolved.",
+      };
+    }
     if (items.regionalRentBenchmark.available) {
       return {
         availability: "limited",

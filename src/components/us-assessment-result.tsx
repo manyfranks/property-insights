@@ -658,6 +658,14 @@ function UsLimitedListedRentalView({
   );
 }
 
+export function usRegionalGeographyLabel(countyName: string): string {
+  const normalized = countyName.trim();
+  return /^District of Columbia$/i.test(normalized) ||
+    /\b(?:County|Parish|Borough|Census Area|Municipality)$/i.test(normalized)
+    ? normalized
+    : `${normalized} County`;
+}
+
 function regionalRentEvidence(data: UsResultBase): RentalMoneyEvidence | null {
   const value = data.marketPanel?.fmr2br;
   if (value == null) return null;
@@ -665,7 +673,7 @@ function regionalRentEvidence(data: UsResultBase): RentalMoneyEvidence | null {
     value,
     label: "Regional benchmark · 2BR",
     source: "HUD Fair Market Rent",
-    geography: `${data.countyName} County`,
+    geography: usRegionalGeographyLabel(data.countyName),
     vintage: data.marketPanel?.vintages.fmr_2br ?? null,
   };
 }

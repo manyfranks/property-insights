@@ -12,7 +12,7 @@ import {
   rentCastValuationEvidenceScopes,
   shouldWithholdPropertyEvidence,
 } from "../src/lib/property-intelligence/investor-journey";
-import { assessmentJourneyHref } from "../src/lib/property-intelligence/journey";
+import { assessmentJourneyHref, journeyCapabilityStatus } from "../src/lib/property-intelligence/journey";
 import type { AssessmentSubject } from "../src/lib/property-intelligence/subject";
 import {
   buildFinancingScenario,
@@ -126,6 +126,15 @@ const cases: Array<[string, () => void]> = [
     assert.equal(model?.addressRent, null);
     assert.equal(model?.regionalRent?.value, 2_100);
     assert.equal(model?.yield, null);
+  }],
+  ["regional context cannot reopen a provider-excluded rental journey", () => {
+    const excluded = capabilities({ regionalRentBenchmark: true });
+    excluded.items.addressRentEstimate.reason = "provider_exclusion";
+    excluded.items.grossYieldScreen.reason = "provider_exclusion";
+    assert.equal(
+      journeyCapabilityStatus("rental_investment", excluded).availability,
+      "unavailable"
+    );
   }],
   ["capability denial withholds supplied property numbers", () => {
     const model = buildRentalScreenModel({
