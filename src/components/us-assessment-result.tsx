@@ -1328,7 +1328,7 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
               {assessment.source === "avm" ? "Estimated Value — RentCast AVM" : assessmentSourceLabel(assessment)}
             </div>
             <div className="text-4xl sm:text-5xl font-mono font-bold mb-2">{fmt(assessment.totalValue)}</div>
-            {avm && (assessment.source !== "avm" || avm.rangeLow || avm.rangeHigh) && avm.rangeLow != null && avm.rangeHigh != null && (
+            {assessment.source === "avm" && avm?.rangeLow != null && avm.rangeHigh != null && (
               <p className="text-sm text-muted mb-2">
                 Estimated range: {fmt(avm.rangeLow)} – {fmt(avm.rangeHigh)}
               </p>
@@ -1367,10 +1367,16 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
         {data.offerUnavailableMessage}
       </div>
 
-      {(assessment?.source === "avm" || rent) && (
+      {(avm || rent) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-          {assessment?.source === "government" && avm && (
-            <StatCard label="RentCast AVM Estimate" value={fmt(avm.value)} sub="Modeled — see disclaimer above" />
+          {assessment?.source !== "avm" && avm && (
+            <StatCard
+              label="RentCast AVM Estimate"
+              value={fmt(avm.value)}
+              sub={avm.rangeLow != null && avm.rangeHigh != null
+                ? `Modeled range: ${fmt(avm.rangeLow)} – ${fmt(avm.rangeHigh)}`
+                : "Modeled estimate · not an appraisal"}
+            />
           )}
           {rent && (
             <StatCard

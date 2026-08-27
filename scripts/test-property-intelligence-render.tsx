@@ -554,13 +554,13 @@ test("complete US off-market result keeps AVM history neutral across the product
     countyName: "Bennington County",
     countyFips: "50003",
     assessment: {
-      totalValue: 614_000,
+      totalValue: 193_200,
       landValue: 0,
       buildingValue: 0,
-      assessmentYear: "2026",
+      assessmentYear: "2025",
       found: true,
-      source: "avm",
-      evidenceClass: "modeled",
+      source: "government",
+      evidenceClass: "observed",
     },
     assessmentSubject: resolved,
     propertyClassification: classification,
@@ -605,6 +605,14 @@ test("complete US off-market result keeps AVM history neutral across the product
   assert.match(markup, /Recorded Sale &amp; Modeled Value/);
   assert.match(markup, /RentCast(?:&apos;|&#x27;|')s modeled value estimate/);
   assert.match(markup, /No active listing matched the resolved property/);
+  assert.match(markup, /County tax assessment/);
+  assert.match(markup, /\$193,200/);
+  assert.match(markup, /RentCast AVM Estimate/);
+  assert.match(markup, /Modeled range: \$580,000 – \$650,000/);
+  assert.ok(
+    markup.indexOf("2025 county tax assessment") < markup.indexOf("Modeled range: $580,000"),
+    "the AVM range must live with the RentCast AVM card, not the county assessment hero"
+  );
   assert.doesNotMatch(markup, /Seller Equity|Loss-Sale Distress|Long-Tenure Equity|room to negotiate/);
   assert.doesNotMatch(markup, /seller under financial pressure|structural distress/);
 });
