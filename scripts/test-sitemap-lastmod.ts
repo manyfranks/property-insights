@@ -21,8 +21,27 @@
  * generate-sitemap.ts's header), not a flat <urlset>, so this test reads
  * it to find the child sitemap files and concatenates their <url> entries
  * before running the same checks as before. This also doubles as a
- * structural check: the index must parse and every child it names must
- * exist on disk.
+ * structural check: the index must parse and name all five children.
+ *
+ * 2026-08-27 update: two of those five children — sitemap-discover.xml and
+ * sitemap-property.xml — are no longer static files. They are dynamic
+ * routes now (src/app/sitemap-{discover,property}.xml/route.ts) that read
+ * KV per request, precisely so listings acquired after a deploy don't go
+ * missing from crawlers until the next one — see generate-sitemap.ts's
+ * "property/discover moved to dynamic routes" section. This test therefore:
+ *   - still asserts the index NAMES all five URLs (nothing was dropped
+ *     from what robots.ts's sitemap ultimately points crawlers at);
+ *   - asserts sitemap-discover.xml/sitemap-property.xml do NOT exist as
+ *     static files in public/ — a leftover static file at either path
+ *     would silently shadow the dynamic route (Next.js serves a matching
+ *     public/ file before an app route ever sees the request), which is
+ *     exactly the regression this generator's header warns about;
+ *   - only reads/lastmod-checks the three children that still exist on
+ *     disk (static/blog/us) — the build-stamp regression check below is
+ *     unchanged and NOT weakened for those three;
+ *   - leaves the two dynamic children's own lastmod correctness to
+ *     scripts/test-sitemap-dynamic.ts, which imports their route handlers
+ *     in-process against live KV instead of reading a build artifact.
  *
  * Usage: npx tsx scripts/test-sitemap-lastmod.ts
  */
@@ -132,6 +151,19 @@ const SOURCE_GROUP: Record<Exclude<Surface, "static-omitted">, string> = {
   "us-rankings": "regional-econ",
 };
 
+// The two children that moved to dynamic routes (2026-08-27) — the index
+// must still name them, but they must NOT exist as static files in public/
+// (see the file header). Their own content/lastmod correctness is
+// scripts/test-sitemap-dynamic.ts's job, not this test's.
+const DYNAMIC_CHILDREN = new Set(["sitemap-discover.xml", "sitemap-property.xml"]);
+const EXPECTED_CHILDREN = new Set([
+  "sitemap-static.xml",
+  "sitemap-blog.xml",
+  "sitemap-discover.xml",
+  "sitemap-property.xml",
+  "sitemap-us.xml",
+]);
+
 function main() {
   console.log("[test-sitemap-lastmod] running the real generator...");
   const buildWindowStart = Date.now();
@@ -147,9 +179,31 @@ function main() {
   const childFiles = parseSitemapIndex(indexXml);
   console.log(`[test-sitemap-lastmod] index references ${childFiles.length} child sitemap(s): ${childFiles.join(", ")}`);
 
+  const missingFromIndex = [...EXPECTED_CHILDREN].filter((f) => !childFiles.includes(f));
+  if (missingFromIndex.length > 0) {
+    throw new Error(
+      `Index is missing ${missingFromIndex.length} expected child URL(s): ${missingFromIndex.join(", ")}. ` +
+        `All five children — including the two dynamic ones — must still be named, even though two no longer ` +
+        `exist as static files.`
+    );
+  }
+
   const entries: UrlEntry[] = [];
   for (const file of childFiles) {
     const childPath = join(PUBLIC_DIR, file);
+    if (DYNAMIC_CHILDREN.has(file)) {
+      if (existsSync(childPath)) {
+        throw new Error(
+          `public/${file} exists as a static file, but it is supposed to be a dynamic route now ` +
+            `(src/app/${file}/route.ts). A static file at this path SHADOWS the app route — Next.js serves ` +
+            `public/ before it ever reaches the route handler — so this would silently undo the whole ` +
+            `property/discover freshness fix. Delete the stray file and check generate-sitemap.ts's ` +
+            `\`groups\` array hasn't had "property"/"discover" re-added.`
+        );
+      }
+      console.log(`[test-sitemap-lastmod]   ${file}: dynamic route, not a static file — skipped (see test-sitemap-dynamic.ts)`);
+      continue;
+    }
     if (!existsSync(childPath)) {
       throw new Error(`Index references "${file}" but public/${file} does not exist on disk.`);
     }
@@ -158,10 +212,16 @@ function main() {
     console.log(`[test-sitemap-lastmod]   ${file}: ${childEntries.length} <url> entries`);
     entries.push(...childEntries);
   }
-  if (entries.length < 10_000) {
-    throw new Error(`Sanity check failed: only ${entries.length} <url> entries parsed across all children — sitemap looks truncated/broken.`);
+  // Sanity floor for the three STATIC children only (static+blog+us) — a
+  // live run currently sees ~9,555 (dominated by the ~3,144-county `us`
+  // surface). 3,000 is comfortably below that while still catching a
+  // truncated/broken run; it deliberately does NOT need to account for
+  // property/discover URLs anymore, since those two are no longer counted
+  // here at all (see DYNAMIC_CHILDREN above).
+  if (entries.length < 3_000) {
+    throw new Error(`Sanity check failed: only ${entries.length} <url> entries parsed across the static children — sitemap looks truncated/broken.`);
   }
-  console.log(`[test-sitemap-lastmod] parsed ${entries.length} <url> entries total across all children.`);
+  console.log(`[test-sitemap-lastmod] parsed ${entries.length} <url> entries total across the three static children.`);
 
   const failures: string[] = [];
   const valuesByGroup = new Map<string, Set<string>>();
