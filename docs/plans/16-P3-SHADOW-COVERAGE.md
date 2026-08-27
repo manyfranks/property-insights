@@ -9,7 +9,10 @@ P3 now emits two independent, additive artifacts after P2 resolves the assessmen
 - `PropertyClassification` describes scoped evidence with deterministic, inferred, conflicting, or unknown states, confidence, provenance, and debugging explanations.
 - `PropertyCapabilities` decides whether nine product modules are supportable and explains every unavailable decision.
 
-Both artifacts run in shadow mode. They do not suppress or add visible modules, change the buyer journey, select a goal, route a CTA, or persist inferred user intent. Occupancy is classified for review but is deliberately absent from capability inputs.
+At P3 launch, both artifacts ran only in shadow mode. P4/P5 now consume the
+capability contract on their explicit journey surfaces, while the classifier
+still cannot select a goal or persist inferred intent. Occupancy remains absent
+from capability inputs and cannot affect visible modules or CTA routing.
 
 ## Implemented contracts
 
@@ -64,7 +67,7 @@ This matrix reports what the deployed code path can evaluate when the optional s
 
 ## Fixture coverage
 
-`scripts/test-property-intelligence-p3.ts` currently locks 14 cases:
+`scripts/test-property-intelligence-p3.ts` currently locks 15 cases:
 
 | Category | Expected shadow result |
 |---|---|
@@ -73,6 +76,7 @@ This matrix reports what the deployed code path can evaluate when the optional s
 | Residential condo in mixed-use building | Residential unit remains supported; parcel stays mixed-use; parcel split rejected for the unit |
 | Apartment building without unit | Clarification takes precedence; consequential modules withheld |
 | Explicit whole-apartment-building listing | Whole building is preserved; unit use remains unknown; single-home valuation/offer modules are scope-excluded |
+| Whole multi-family listing with unit-scoped rent AVM | Whole-building value is never combined with a single-unit rent estimate |
 | Vacant land | High-confidence land; residential rent/insurance excluded |
 | Government/institutional | High-confidence institutional; residential modules excluded |
 | Commercial building | Commercial classification retained; unresolved unit/building scope safely takes precedence |
@@ -83,7 +87,7 @@ This matrix reports what the deployed code path can evaluate when the optional s
 | Discover seed | Listing form may classify; assess-only capabilities remain missing |
 | Occupancy invariance | Owner-occupied and non-owner-occupied inputs produce byte-equivalent capability output |
 
-Result: **14/14 passed; provider calls: 0**. The suite also asserts that serialized output contains no goal, journey, or investment-intent field.
+Result: **15/15 passed; provider calls: 0**. The suite also asserts that serialized output contains no goal, journey, or investment-intent field.
 
 ## Review watchlist for Matt
 
@@ -102,7 +106,7 @@ No single aggregate accuracy score will approve P3. Review is by subject scope, 
 
 | Check | Result |
 |---|---|
-| P3 classification/capability fixtures | **PASS — 14/14; zero provider calls** |
+| P3 classification/capability fixtures | **PASS — 15/15; zero provider calls** |
 | P2 subject fixtures | **PASS — 23/23; zero provider calls** |
 | P1 evidence fixtures | **PASS — 12/12** |
 | P0 fallback fixtures | **PASS — 14/14** |
@@ -116,9 +120,11 @@ No single aggregate accuracy score will approve P3. Review is by subject scope, 
 
 The production Queens assessment retained P2's `listing` / `listing_match` / high-confidence / no-clarification subject. P3 reported address sale, address rent, offer, and insurance prefill as `available`. The visible buyer result was unchanged: active $999,000 listing and $969,000 recommended offer.
 
-## Remaining P3 gates
+## Remaining P3 gates — reconciled 2026-08-27
 
-- Matt reviews live/fixture false positives and agrees on category-specific launch bars.
+- Land and unit/building containment have production examples. Mixed-use and institutional/commercial still lack a defensible live acceptance subject, so their launch bars remain out of coverage rather than passed.
+- Matt records the category-specific launch decision; no global aggregate score can substitute for it.
 - Counsel/privacy direction is recorded before occupancy can affect visible content, CTA routing, suggestions, or persistent profiling.
-- Live assessment responses are sampled across US listed/off-market/fallback and Canadian unit/whole-building cases.
-- P4 may consume capabilities only after this review; P3 itself remains incapable of selecting a user goal.
+- On-demand samples now cover US listed/off-market/fallback, a US unit/building mismatch, Canadian residential, and Canadian land. The corrected US off-market/fallback/mismatch rows still require the exact mobile/no-refetch production replay recorded in `25-P5-LIVE-ACCEPTANCE-SPRINT.md`.
+- Canadian Discover envelope coverage has improved to 108/108, but all current Canadian parcel-use classifications remain unknown. Keep capability-driven routing unchanged until the category review is recorded.
+- P3 remains incapable of selecting a user goal; occupancy remains shadow-only regardless of the acceptance decision.

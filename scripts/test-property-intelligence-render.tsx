@@ -21,6 +21,7 @@ import RentalOperatingScenario from "../src/components/rental-operating-scenario
 import UsAssessmentResult, {
   EquityTenureCard,
   RentalScreen as UsRentalScreen,
+  usRegionalGeographyLabel,
   type UsFallbackResult,
   type UsOffMarketResult,
 } from "../src/components/us-assessment-result";
@@ -123,6 +124,91 @@ test("excluded class (vacant land): AssessmentJourneyPanel withholds the calcula
   assert.match(markup, /vacant land/, "withheld-report notice must name the excluded class");
   assert.match(markup, /Report withheld for this focus/, "the amber withheld-report section must render in place of the calculator");
   assert.equal((markup.match(/<h1/g) ?? []).length, 0, "CA land keeps the generic withheld panel");
+});
+
+test("US excluded class: HUD regional context cannot reopen the rental screen or investor CTA", () => {
+  const resolved = subject({
+    rawInput: "100 Commerce St, Austin, TX",
+    normalizedAddress: "100 Commerce St, Austin, TX",
+    listing: { address: "100 Commerce St, Austin, TX", source: "rentcast_listing" },
+    propertyRecord: { address: "100 Commerce St, Austin, TX", propertyType: "Retail Commercial" },
+  });
+  const classification = classifyProperty({
+    subject: resolved,
+    evidence: evidence([{ value: "Retail Commercial", scope: "provider_record" }]),
+  });
+  const capabilities = evaluatePropertyCapabilities({
+    subject: resolved,
+    classification,
+    facts: {
+      addressSaleValue: { available: true, scope: "building" },
+      addressRentEstimate: { available: true, scope: "building" },
+      regionalRentBenchmark: { available: true, scope: "regional", source: "hud_fmr" },
+    },
+  });
+
+  const markup = renderToStaticMarkup(
+    <AssessmentJourneyPanel
+      enabled
+      initialGoal="rental_investment"
+      country="US"
+      subjectScope={resolved.scope}
+      capabilities={capabilities}
+      gateUnsupported
+    >
+      <div data-us-rental-screen="true">HUD rental screen</div>
+      <div>Continue your rental analysis</div>
+    </AssessmentJourneyPanel>
+  );
+
+  assert.match(markup, /Report withheld for this focus/);
+  assert.match(markup, /outside the verified residential scope/);
+  assert.doesNotMatch(markup, /data-us-rental-screen/);
+  assert.doesNotMatch(markup, /Continue your rental analysis/);
+});
+
+test("US resolved whole-apartment scope is withheld even when HUD regional context exists", () => {
+  const resolved = subject({
+    rawInput: "200 Main St, Seattle, WA",
+    normalizedAddress: "200 Main St, Seattle, WA",
+    listing: { address: "200 Main St, Seattle, WA", source: "rentcast_listing" },
+    propertyRecord: { address: "200 Main St, Seattle, WA", propertyType: "Apartment" },
+  });
+  const classification = classifyProperty({
+    subject: resolved,
+    evidence: evidence([
+      { value: "Apartment Building", scope: "listing", source: "rentcast_listing" },
+      { value: "Apartment", scope: "provider_record" },
+    ]),
+  });
+  const capabilities = evaluatePropertyCapabilities({
+    subject: resolved,
+    classification,
+    facts: {
+      addressSaleValue: { available: true, scope: "building" },
+      addressRentEstimate: { available: true, scope: "unit" },
+      regionalRentBenchmark: { available: true, scope: "regional", source: "hud_fmr" },
+    },
+  });
+
+  assert.equal(capabilities.items.addressRentEstimate.reason, "unsupported_scope");
+  const markup = renderToStaticMarkup(
+    <AssessmentJourneyPanel
+      enabled
+      initialGoal="rental_investment"
+      country="US"
+      subjectScope={resolved.scope}
+      capabilities={capabilities}
+      gateUnsupported
+      preserveContainedSubjectGapResult
+    >
+      <div data-us-whole-building-rental="true">Unsafe whole-building rental screen</div>
+    </AssessmentJourneyPanel>
+  );
+
+  assert.match(markup, /Report withheld for this focus/);
+  assert.match(markup, /does not match the resolved subject scope/);
+  assert.doesNotMatch(markup, /data-us-whole-building-rental/);
 });
 
 test("clean residential without CMHC: CanadaRentalScreen renders with the no-benchmark copy", () => {
@@ -233,6 +319,16 @@ test("US supported rental evidence composes the scenario while a regional fallba
   );
   assert.doesNotMatch(fallback, /data-p5-editable-scenario-basis/);
   assert.match(fallback, /HUD Fair Market Rent/);
+});
+
+test("US regional rent geography never duplicates county-equivalent suffixes", () => {
+  assert.equal(usRegionalGeographyLabel("Salt Lake County"), "Salt Lake County");
+  assert.equal(usRegionalGeographyLabel("District of Columbia"), "District of Columbia");
+  assert.equal(usRegionalGeographyLabel("Orleans Parish"), "Orleans Parish");
+  assert.equal(usRegionalGeographyLabel("Northwest Arctic Borough"), "Northwest Arctic Borough");
+  assert.equal(usRegionalGeographyLabel("Bethel Census Area"), "Bethel Census Area");
+  assert.equal(usRegionalGeographyLabel("Anchorage Municipality"), "Anchorage Municipality");
+  assert.equal(usRegionalGeographyLabel("Cook"), "Cook County");
 });
 
 function fallbackResult(
