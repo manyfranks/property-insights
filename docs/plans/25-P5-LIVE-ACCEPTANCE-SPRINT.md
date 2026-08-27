@@ -3,13 +3,12 @@
 _Created 2026-08-21 after Sprint 25 security closure and PR 10 merge. This is
 the executable production-acceptance record for the P4/P5 journey surface._
 
-**Status: `[~]` production matrix remains open.** The original 2026-08-21 run
-against deployment `dpl_66UGWHJpbvgdZadk3bDtP6Bkx1Zp` produced four complete
-passes (CA-1, CA-2, CA-3, US-1). Corrections for US-2, US-3, and US-4 then
-shipped in PR 17 / merge `051251d` and passed a corrected desktop production
-replay on deployment `dpl_D7H1agdsDqT1qqRMUdpcYpHMPrRR`. Those three rows are
-not yet complete because their corrected 390px and correlated no-refetch/provider
-evidence was not recorded. CA-4 remains a provider-coverage policy decision.
+**Status: `[x]` closed 2026-08-27.** CA-1, CA-2, CA-3, and US-1 passed the
+original matrix. US-2, US-3, and US-4 passed corrected production replays at
+390px with correlated request/provider evidence. CA-4 is recorded as
+`OUT_OF_COVERAGE`: the current Canadian corpus cannot support a defensible live
+commercial/institutional acceptance subject, so this row is not a pass and no
+commercial capability is claimed.
 
 ## Outcome and boundary
 
@@ -61,7 +60,7 @@ stand in for two branches merely because the rendered result is ambiguous.
 | CA-1 | Residential listing with mapped CMHC context | Rental view is `limited`; CMHC remains a regional benchmark and never seeds the property rent. User-entered rent and all scenario outputs are labeled assumptions. |
 | CA-2 | Residential listing in a city without mapped CMHC context | User-rent scenario remains usable; the UI states that no benchmark is mapped and does not invent one. |
 | CA-3 | Verified land/parcel listing | Residential offer narrative, rental calculator, insurance prefill/action, and incompatible partner CTAs are withheld. Land/listing-price context may remain. |
-| CA-4 | Verified commercial or institutional listing/address, if the live provider can resolve one | Same residential exclusions as CA-3. If the current provider cannot produce this class, record it as a coverage gap, not a pass; retain automated fixture evidence and leave this row open. |
+| CA-4 | Verified commercial or institutional listing/address, if the live provider can resolve one | Same residential exclusions as CA-3. If the current provider cannot produce this class, record `OUT_OF_COVERAGE`, not a pass; retain automated fixture evidence and do not claim commercial capability. |
 | US-1 | Active residential listing with address-level RentCast rent | Result is `listed`; asking price and modeled address rent retain separate provenance. The editable scenario changes assumptions only. Any eligible investor CTA is intent-matched and its FTC disclosure remains adjacent. |
 | US-2 | Off-market residential property with verified identity, AVM, and address rent | Result is `off_market`; AVM and rent provenance remain distinct; no active-listing claim or offer appears. |
 | US-3 | Completed property/listing lookup that legitimately falls back to county/regional context | Result is `regional_fallback`; county/regional values are labeled non-property-specific and no operating calculator or property-level rental claim appears. A quota-blocked lookup cannot satisfy this row. |
@@ -71,12 +70,11 @@ CA-3 is mandatory. CA-4 remains mandatory for a full commercial/institutional
 claim; provider non-coverage is a recorded blocker rather than permission to
 infer the class. Do not broaden this sprint into a new provider integration.
 
-**Proposed policy decision — not yet approved:** add `OUT_OF_COVERAGE` as a
-fourth evidence verdict for CA-4 when a dated provider-corpus review finds no
-defensible live subject. It would record the boundary without marking the row
-`PASS`, authorizing commercial output, or closing P3/P5's commercial-analysis
-gate. If approved, the current residential/land matrix could close after the
-other seven rows pass; until then, CA-4 and the overall matrix remain open.
+**Approved policy decision — 2026-08-27:** `OUT_OF_COVERAGE` is the fourth
+evidence verdict for CA-4 after the dated provider-corpus review found no
+defensible live subject. It records the boundary without marking the row
+`PASS`, authorizing commercial output, or closing a commercial-analysis gate.
+The supported residential/land matrix may close when its other seven rows pass.
 
 ## Selected acceptance cohort
 
@@ -89,11 +87,11 @@ its exact commit is deployed and the affected row is rerun.
 | CA-1 | `/property/2296-w-32nd-ave` (Vancouver, BC) | **PASS.** Fresh mapped-CMHC assessment kept the benchmark regional, the user scenario local, and the desktop/mobile hierarchy intact. |
 | CA-2 | `/property/2820-cosgrove-cres` (Nanaimo, BC) | **PASS.** Unmapped-CMHC flow remained usable without inventing a benchmark; corrected intent copy, link treatment, insurance goal mapping, and responsive composition passed. |
 | CA-3 | `/property/1827-main-st` (Coalmont, BC) | **PASS.** Verified land/parcel result withheld residential rental, offer, insurance, and partner actions at both viewports while retaining scoped land context. |
-| CA-4 | _coverage gap — no defensible subject found_ | **NOT PASS.** The latest read-only scan inspected all 108 current Canadian envelope-bearing records and still found no defensible commercial or institutional subject. Keep the fixtures and commercial-analysis claim out of coverage pending the proposed policy decision. |
+| CA-4 | _coverage gap — no defensible subject found_ | **OUT_OF_COVERAGE.** The latest read-only scan inspected all 108 current Canadian envelope-bearing records and found no defensible commercial or institutional subject. Automated exclusions remain in force and no commercial-analysis claim is approved. |
 | US-1 | `/property/5507-burgundy-dr` (Austin, TX) | **PASS.** Completed listing/property lookups produced the listed branch; asking price, modeled address rent, regional evidence, scenario assumptions, investor CTA, and adjacent disclosure remained distinct. |
-| US-2 | 112 Aldrich Rd (Peru, VT) | **CORRECTED DESKTOP PASS; ROW OPEN.** PR 17 recasts AVM history as recorded-sale-to-modeled-value evidence. The corrected production desktop replay passed; repeat at 390px and record corrected-build network/provider evidence. |
-| US-3 | Washington Monument (Washington, DC) | **CORRECTED DESKTOP PASS; ROW OPEN.** PR 17 withholds property-oriented partner actions on a clean identity miss. The corrected production desktop replay passed; repeat at 390px and record corrected-build network/provider evidence. |
-| US-4 | 1716 Boylston Ave (Seattle, WA) | **CORRECTED DESKTOP + 390PX VISUAL PASS; ROW OPEN.** PR 17 preserves the safe unresolved-subject identity and regional context through clarification and Explore without recombining evidence. The 2026-08-27 mobile replay had one identity heading, contained regional context, no partner CTA, and no horizontal overflow. Correlated corrected-build no-refetch/provider evidence remains open. |
+| US-2 | 112 Aldrich Rd (Peru, VT) | **PASS.** The off-market branch keeps the observed county tax assessment separate from RentCast's modeled AVM/range and address rent. The 390px scenario/focus interactions caused no assessment refetch. |
+| US-3 | 2 15th St NW (Washington, DC) | **PASS.** A completed identity miss renders District-level context only, withholds property values, operating output, and partner actions, and remains contained at 390px. |
+| US-4 | 1716 Boylston Ave (Seattle, WA) | **PASS.** The unit/building mismatch requires clarification, preserves the user's general-address choice, withholds incompatible property values/rent/actions, and remains contained at 390px. |
 
 ### Corrected production replay — PR 17
 
@@ -126,6 +124,34 @@ during focus changes and scenario actions on the corrected deployment.
 - The browser surface available for this run did not expose a trustworthy
   request ledger, so the corrected-build no-refetch/provider record is not
   inferred from DOM behavior or the earlier deployment.
+
+### 2026-08-27 capacity-backed final replay
+
+- Production `RENTCAST_MONTHLY_QUOTA` was set to `110` against primary-key
+  usage `85`, enforcing the approved maximum of 25 additional calls (a `$5`
+  ceiling at `$0.20` per call). The acceptance run consumed four live calls
+  before cache warming; the final corrected replay consumed zero.
+- Deployment `dpl_CKQKz9kkFoGmFRbxaxkHceC116z3` at `a49c3bd` closed US-3 and
+  US-4 at 390px with one initial `POST /api/assess` each, allowed owner-scoped
+  state patches only, and zero assessment/provider refetches during applicable
+  focus, clarification, and scenario interactions. US-2 exercised the same
+  no-refetch interaction protocol on that deployment.
+- US-2 exposed one provenance defect: a RentCast modeled range appeared
+  visually beneath the observed county tax-assessment hero. PR 23 / merge
+  `9e3f346` moved the modeled range into the separate RentCast AVM card and
+  added a render regression.
+- The exact corrected production deployment
+  `dpl_2L1wrh5hroVku4yc25wXMaV66qLC` passed the US-2 replay at 390px. The hero
+  showed the 2025 county tax assessment (`$193,200`), while the separate
+  RentCast card showed the modeled AVM (`$614,000`) and modeled range
+  (`$275,000–$952,000`). The correlated request logged one assessment POST,
+  `cacheHits=4`, `liveCalls=0`, completed property/listing lookups,
+  `quotaExhausted=false`, and the `off_market` result.
+- US-3's exact-address run logged `cacheHits=3`, `liveCalls=1`, completed
+  lookups, `quotaExhausted=false`, and `property_identity_not_found`; US-4
+  logged `cacheHits=3`, `liveCalls=1`, completed lookups, and the expected
+  conflicting capability evidence. Neither interaction sequence issued a
+  second assessment request.
 
 ### Original-run production request and telemetry evidence
 
@@ -319,31 +345,33 @@ does not close the separate KPI gate.
 ## Closure record
 
 - Production deployments: original matrix
-  `dpl_66UGWHJpbvgdZadk3bDtP6Bkx1Zp`; corrected PR 17 replay
-  `dpl_D7H1agdsDqT1qqRMUdpcYpHMPrRR` at merge `051251d`.
-- Evidence record: _partial production record above; no assessment IDs, raw
+  `dpl_66UGWHJpbvgdZadk3bDtP6Bkx1Zp`; PR 17 replay
+  `dpl_D7H1agdsDqT1qqRMUdpcYpHMPrRR`; capacity-backed closeout
+  `dpl_CKQKz9kkFoGmFRbxaxkHceC116z3`; final provenance correction
+  `dpl_2L1wrh5hroVku4yc25wXMaV66qLC` at merge `9e3f346`.
+- Evidence record: _complete production record above; no assessment IDs, raw
   address-query URLs, user identifiers, or private payloads retained._
 - Pre/post fixture results: _pre-deployment verification passed on 2026-08-21:
   157/157 property-intelligence assertions, 139/139 US-advantage assertions,
   and the affiliate-presentation regression, all with zero provider calls;
   TypeScript, targeted ESLint, insurance guards, journey-matrix check, the
   production build, and Playwright (14 passed, 1 intentionally skipped) passed._
-- CA rows: _CA-1, CA-2, and CA-3 PASS on production. CA-4 remains a provider/data
-  coverage gap and is not PASS; the `OUT_OF_COVERAGE` policy proposal remains
-  pending._
-- US rows: _US-1 PASS. US-4 also passed its corrected 390px visual/containment
-  replay. US-2 was blocked by exhausted capacity across all three configured
-  RentCast keys and US-3 was not rerun after that failed precondition. The
-  corrected-build correlated no-refetch/provider record remains open._
-- No-refetch result: _PASS on the original run for the interactions exercised.
-  The strict corrected-build evidence for US-2/US-3/US-4 remains pending and is
-  not inferred from the earlier run._
+- CA rows: _CA-1, CA-2, and CA-3 PASS on production. CA-4 is
+  `OUT_OF_COVERAGE`, not PASS; residential exclusions remain enforced and no
+  commercial capability is claimed._
+- US rows: _US-1, US-2, US-3, and US-4 PASS on production at desktop and 390px.
+  The final US-2 provenance correction was replayed on its exact production
+  deployment._
+- No-refetch result: _PASS. Each fresh US closeout case produced exactly one
+  assessment POST. Applicable focus, clarification, and scenario interactions
+  produced only permitted private-state patches and no assessment/provider
+  refetch._
 - 30-day telemetry readout (2026-08-27): _clarification shown building 3 / unit
   1; selected unit 1 / unknown 3; rental selections 2; rental listing views
   limited 4 / supported 4 / unavailable 4, unit unavailable 1, unknown limited
   3 / unavailable 4, parcel supported 1. Sample is too small and uncontrolled
   for KPI success closure._
-- Final decision/date: _OPEN on 2026-08-27. Four rows fully pass; US-4 has
-  corrected desktop and mobile containment evidence but lacks the correlated
-  request record; US-2/US-3 require capacity-backed replay; and CA-4 requires an
-  explicit coverage-policy decision._
+- Final decision/date: _CLOSED on 2026-08-27. Seven supported residential/land
+  rows pass. CA-4 is explicitly `OUT_OF_COVERAGE`. This closes the P4/P5 live
+  matrix without authorizing commercial analysis, occupancy personalization,
+  private scenario persistence, or a KPI-success claim._
