@@ -37,13 +37,13 @@ export const CITIES: CityConfig[] = [
   { city: "Toronto", province: "ON", minPrice: 1000000, maxPrice: 1800000, target: 25 },
   { city: "Hamilton", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 25 },
   { city: "Ottawa", province: "ON", minPrice: 600000, maxPrice: 1000000, target: 25 },
-  // Added 2026-08 — live coverage probe confirmed real Winnipeg inventory
-  // (19 valid house listings on a clean run; Zoocasa returns province="MB"
-  // correctly). Price band set from that probe's observed range (~$250K-
-  // $670K for 3-bed houses). Note: Winnipeg searches intermittently hit the
-  // documented province-wide-fallback regression (see zoocasa.ts's
-  // citiesMatch doc comment) and return 0 candidates on some requests — the
-  // two-search-variant dedup above plus daily reruns already tolerate this
-  // for other cities, so no special-casing needed here.
-  { city: "Winnipeg", province: "MB", minPrice: 300000, maxPrice: 650000, target: 25 },
+  // Winnipeg REMOVED 2026-08-26. It was added on a search-based probe that
+  // read the (now-known) province-wide-fallback feed. On the neighbourhood
+  // discovery path — the real, ungated listing surface — Zoocasa serves
+  // ZERO Latest-Listings links for Winnipeg: the city page claims "100,000+
+  // listings" but its internalLinks Latest-Listings block is empty, and so
+  // is every Winnipeg neighbourhood page checked. There is no MB listing
+  // data to ingest from this source, so carrying Winnipeg here only produced
+  // a guaranteed per-run failure. Re-add if Zoocasa's MB coverage returns
+  // (the canary's discovery check will surface that).
 ];

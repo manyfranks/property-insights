@@ -68,8 +68,9 @@ import {
   selectNewListings,
   selectUserCarryForward,
   retainedSlugCollisions,
+  UNKNOWN_DOM,
   type CitySearchOutcome,
-  type FreshnessVerdict,
+  type FreshnessCheckResult,
   type RetentionCityConfig,
 } from "../src/lib/pipeline/retention";
 
@@ -156,7 +157,7 @@ function rejected(reason: string): PromiseSettledResult<CitySearchOutcome<CityCo
   return { status: "rejected", reason };
 }
 
-const alwaysLive = async (): Promise<FreshnessVerdict> => "live";
+const alwaysLive = async (): Promise<FreshnessCheckResult> => ({ status: "live" });
 const keys = (rows: Listing[]) => rows.map(listingKey).sort();
 const hasLog = (log: string[], needle: string) => log.some((line) => line.includes(needle));
 
@@ -347,7 +348,7 @@ async function main() {
     // is genuinely about one of the pair.
     const freshness = await runFreshnessPass({
       queue: plan.freshnessQueue,
-      check: async (l) => (l.url === a.url ? "dead" : "live"),
+      check: async (l) => ({ status: l.url === a.url ? "dead" : "live" }),
       elapsed: () => 0,
       deadlineMs: 10_000,
       maxWorkers: 2,
@@ -522,7 +523,7 @@ async function main() {
     const freshness = await runFreshnessPass({
       queue: plan.freshnessQueue,
       // Only the Victoria row's own detail page 404s.
-      check: async (l) => (listingKey(l) === listingKey(vic) ? "dead" : "live"),
+      check: async (l) => ({ status: listingKey(l) === listingKey(vic) ? "dead" : "live" }),
       elapsed: () => 0,
       deadlineMs: 10_000,
       maxWorkers: 4,
@@ -550,7 +551,7 @@ async function main() {
     const stored = Array.from({ length: 5 }, (_, i) => mk(`${i} Queen St W`, "Toronto", "ON"));
     const freshness = await runFreshnessPass({
       queue: stored,
-      check: async () => "unknown",
+      check: async () => ({ status: "unknown" }),
       elapsed: () => 0,
       deadlineMs: 10_000,
     });
@@ -566,7 +567,7 @@ async function main() {
       queue: stored,
       check: async (l) => {
         if (l.address.startsWith("0")) throw new Error("socket hang up");
-        return "live";
+        return { status: "live" };
       },
       elapsed: () => 0,
       deadlineMs: 10_000,
@@ -591,7 +592,7 @@ async function main() {
       queue: stored,
       // Every row is genuinely dead; the point is that the ones the deadline
       // cuts off never get asked, so they are never removed.
-      check: async () => "dead",
+      check: async () => ({ status: "dead" }),
       elapsed: () => (clock += 1_000),
       deadlineMs: 5_000,
       maxWorkers: 1,
@@ -757,8 +758,9 @@ async function main() {
       // Two 404s: one whole identity, and ONE ROW of the ambiguous pair —
       // matched on the detail url, which is what the route hands
       // checkFreshness and the only thing that separates the twins.
-      check: async (l) =>
-        listingKey(l) === listingKey(doomed) || l.url === twinB.url ? "dead" : "live",
+      check: async (l) => ({
+        status: listingKey(l) === listingKey(doomed) || l.url === twinB.url ? "dead" : "live",
+      }),
       elapsed: () => 0,
       deadlineMs: 60_000,
       maxWorkers: 8,
@@ -828,6 +830,120 @@ async function main() {
     eq("no dead verdicts", freshness.deadKeys.size, 0);
     eq("all retained", pruneDead(plan.cityBuckets[0].kept, freshness.deadRows).length, 8);
     eq("no slug collisions in a clean fixture", retainedSlugCollisions(stored).length, 0);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 12. Thin discovery candidates (dom: UNKNOWN_DOM) must never clobber a
+  //     retained row's stored dom — discoverListingUrls() (Phase 1 of the
+  //     route) hands back only a URL + address label, never a real dom, so
+  //     every discovery candidate carries the UNKNOWN_DOM sentinel.
+  // ---------------------------------------------------------------------------
+  heading("A thin discovery candidate (dom: UNKNOWN_DOM) does not clobber stored dom");
+  {
+    const cfg = CITY("Calgary", "AB");
+    const stored = mk("100 4th Ave SW", "Calgary", "AB", { dom: 42, mlsNumber: "AB-1" });
+    // Same identity, thin: the shape discoverListingUrls' output maps to in
+    // Phase 1 — real address/mls carried over, dom unknown.
+    const thinCandidate = mk("100 4th Ave SW", "Calgary", "AB", {
+      dom: UNKNOWN_DOM,
+      mlsNumber: "AB-1",
+      preNarrative: undefined,
+    });
+
+    const plan = planRetention<CityConfig>({
+      cities: [cfg],
+      searchResults: [fulfilled(cfg, [thinCandidate])],
+      existingListings: [stored],
+      isOwned,
+    });
+
+    eq("stored row retained once", plan.cityBuckets[0].kept.length, 1);
+    eq(
+      "stored dom is NOT clobbered to UNKNOWN_DOM",
+      plan.cityBuckets[0].kept[0].dom,
+      42
+    );
+    check("dom is not the sentinel", plan.cityBuckets[0].kept[0].dom !== UNKNOWN_DOM);
+  }
+
+  heading("A thin discovery candidate adopting a user row does not clobber its dom either");
+  {
+    const cfg = CITY("Calgary", "AB");
+    const userRow = mk("200 5th Ave SW", "Calgary", "AB", { dom: 15, source: "user" });
+    const thinCandidate = mk("200 5th Ave SW", "Calgary", "AB", {
+      dom: UNKNOWN_DOM,
+      preNarrative: undefined,
+    });
+
+    const plan = planRetention<CityConfig>({
+      cities: [cfg],
+      searchResults: [fulfilled(cfg, [thinCandidate])],
+      existingListings: [userRow],
+      isOwned,
+    });
+
+    eq("user row adopted into the city bucket", plan.cityBuckets[0].kept.length, 1);
+    eq("adopted as a cron row", plan.cityBuckets[0].kept[0].source, "cron");
+    eq("user row's real dom survives the adoption", plan.cityBuckets[0].kept[0].dom, 15);
+  }
+
+  heading("A search-style candidate with a REAL finite dom still refreshes stored dom");
+  {
+    const cfg = CITY("Calgary", "AB");
+    const stored = mk("300 6th Ave SW", "Calgary", "AB", { dom: 10, mlsNumber: "AB-2" });
+    const refreshedCandidate = mk("300 6th Ave SW", "Calgary", "AB", { dom: 77, mlsNumber: "AB-2" });
+
+    const plan = planRetention<CityConfig>({
+      cities: [cfg],
+      searchResults: [fulfilled(cfg, [refreshedCandidate])],
+      existingListings: [stored],
+      isOwned,
+    });
+
+    eq("old refresh behaviour preserved: dom updates to the candidate's real value", plan.cityBuckets[0].kept[0].dom, 77);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 13. runFreshnessPass's dom write-back — see the "DOM WRITE-BACK" doc
+  //     comment on runFreshnessPass in retention.ts.
+  // ---------------------------------------------------------------------------
+  heading("runFreshnessPass writes back a live dom capture in place");
+  {
+    const row = mk("400 7th Ave SW", "Calgary", "AB", { dom: 5 });
+    const freshness = await runFreshnessPass({
+      queue: [row],
+      check: async (): Promise<FreshnessCheckResult> => ({ status: "live", dom: 88 }),
+      elapsed: () => 0,
+      deadlineMs: 10_000,
+    });
+    eq("row got a verdict", freshness.checked, 1);
+    eq("nothing died", freshness.deadRows.size, 0);
+    eq("dom updated in place on the SAME object the queue held", row.dom, 88);
+  }
+
+  heading("runFreshnessPass leaves dom untouched for a dom-less live, unknown, or dead verdict");
+  {
+    const liveNoDom = mk("401 7th Ave SW", "Calgary", "AB", { dom: 5 });
+    const unknownRow = mk("402 7th Ave SW", "Calgary", "AB", { dom: 6 });
+    const deadRow = mk("403 7th Ave SW", "Calgary", "AB", { dom: 7 });
+
+    const freshness = await runFreshnessPass({
+      queue: [liveNoDom, unknownRow, deadRow],
+      check: async (l): Promise<FreshnessCheckResult> => {
+        if (l === liveNoDom) return { status: "live" };
+        if (l === unknownRow) return { status: "unknown" };
+        return { status: "dead" };
+      },
+      elapsed: () => 0,
+      deadlineMs: 10_000,
+      maxWorkers: 1,
+    });
+
+    eq("dom-less live leaves dom unchanged", liveNoDom.dom, 5);
+    eq("unknown leaves dom unchanged", unknownRow.dom, 6);
+    eq("dead leaves dom unchanged on the (now-pruned) row object itself", deadRow.dom, 7);
+    check("the dead row is the one removed", freshness.deadRows.has(deadRow));
+    eq("only the dead row was pruned", pruneDead([liveNoDom, unknownRow, deadRow], freshness.deadRows).length, 2);
   }
 
 }

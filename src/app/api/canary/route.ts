@@ -32,37 +32,49 @@
  *      that closes the blind spot check #1's old zero-only threshold had:
  *      outages that leak a small non-zero number of listings through the
  *      city filter used to read as healthy.
- *   4. BC Assessment cache lookup — no network, just confirms the cache
+ *   4. Zoocasa neighbourhood-graph discovery probe
+ *      (checkZoocasaNeighbourhoodDiscovery) — confirms
+ *      src/lib/zoocasa-neighbourhood.ts's discoverListingUrls(), the crawler
+ *      Canadian listing discovery now depends on after moving OFF the
+ *      gated/frozen search endpoint, still yields a healthy number of
+ *      distinct listing URLs for a small sample of data-rich cities. Checks
+ *      #1-#3 above all read the OLD search surface
+ *      (props.pageProps.props.listings) — exactly the surface that got
+ *      gated — so none of them can see a break in the DIFFERENT surface
+ *      (internalLinks "Latest Listings" blocks) this crawler depends on
+ *      instead. See that function's own doc comment for the full blind-spot
+ *      rationale.
+ *   5. BC Assessment cache lookup — no network, just confirms the cache
  *      module loads and returns a well-formed Assessment.
- *   5. Calgary SODA health probe — confirms assessed_value is still
+ *   6. Calgary SODA health probe — confirms assessed_value is still
  *      present/numeric on the live dataset (broad query, no address filter).
- *   6. Edmonton SODA health probe — same shape as Calgary's, on the
+ *   7. Edmonton SODA health probe — same shape as Calgary's, on the
  *      Edmonton dataset. Broad query rather than one hardcoded address:
  *      Edmonton's grid uses numeric street names ("109 Street"), which
  *      trips lookupAB()'s unit-vs-house-number parsing heuristic when no
  *      explicit unit is supplied, and specific parcels drop off the roll
  *      dataset over time — a broad query proves live reachability + schema
  *      health without that fragility (see RUNBOOK.md §8 gap #4).
- *   7. Winnipeg SODA health probe — same shape, on the Winnipeg (MB)
+ *   8. Winnipeg SODA health probe — same shape, on the Winnipeg (MB)
  *      dataset (RUNBOOK.md §8 gap #4).
  *
  * US:
- *   8. Census geocoder — geocodes a fixed known address (cache miss the
+ *   9. Census geocoder — geocodes a fixed known address (cache miss the
  *      first run, KV cache hit on every run after). A cache hit alone
  *      would mask a fully-dead upstream API, so on a cache hit this also
  *      does a short (4s), independent live liveness ping against the
  *      geocoder endpoint (RUNBOOK.md §8 gaps #3 and #10).
- *   9. Neon `regional_econ` — getCountyMarketPanel("US-48453") (Travis
+ *   10. Neon `regional_econ` — getCountyMarketPanel("US-48453") (Travis
  *      County, TX — same county the geocoder check resolves to) returns a
  *      non-null panel (RUNBOOK.md §8 gap #3).
- *   10. RentCast KV cache infrastructure — a KV SCAN + GET against the
+ *   11. RentCast KV cache infrastructure — a KV SCAN + GET against the
  *      `rentcast:*` namespace, proving the cache read path works. This is
  *      deliberately NOT a live RentCast API call (quota is capped at
  *      45/month and this cron runs daily) — live RentCast health is
  *      intentionally not probed here to preserve quota. A cache-layer
  *      outage would still surface indirectly via `/api/assess`'s
  *      `bundle.meta.errors` logging (see RUNBOOK.md §6).
- *   11. County-assessor live lookup — one Maricopa County live lookup
+ *   12. County-assessor live lookup — one Maricopa County live lookup
  *      (`lookupCountyLive`, src/lib/assessment/us-county/index.ts) against
  *      a known-good Phoenix address. Unlike RentCast, this free county API
  *      has no meaningful quota concern, so it's probed live rather than
@@ -77,7 +89,10 @@
  * province pairs), once per day, all in parallel. That's a deliberate
  * representative subset, not the full city-pair matrix — see
  * ZOOCASA_FINGERPRINT_PAIRS' comment for why one pair per province
- * suffices.
+ * suffices. Check #4 adds a further small, bounded amount of traffic — 1
+ * city-page fetch plus a capped, early-exiting neighbourhood-page fan-out
+ * per probed city, 2 cities probed in parallel — see
+ * checkZoocasaNeighbourhoodDiscovery()'s doc comment for the exact budget.
  *
  * Returns 500 (not 200) on any failure so Vercel's cron dashboard marks the
  * run failed and alerts, in addition to the console.error("[canary]", ...)
@@ -90,6 +105,7 @@
 
 import { NextResponse } from "next/server";
 import { searchListings, buildSearchUrl, citiesMatch } from "@/lib/zoocasa";
+import { discoverListingUrls } from "@/lib/zoocasa-neighbourhood";
 import { CITIES } from "@/lib/pipeline/ca-cities";
 import { lookupBCSync } from "@/lib/assessment/bc";
 import { calgarySodaHealthCheck } from "@/lib/assessment/ab";
@@ -730,6 +746,157 @@ async function checkZoocasaFeedFingerprint(): Promise<CheckResult> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// checkZoocasaNeighbourhoodDiscovery()
+//
+// Blind spot this closes: checkZoocasaSearch/Baseline/Fingerprint above all
+// read Zoocasa's search-endpoint surface (props.pageProps.props.listings) —
+// exactly the surface that got gated behind a board Terms-of-Use wall and
+// now serves one frozen, province-wide 27-row feed (see this file's header
+// and src/lib/zoocasa-neighbourhood.ts's own doc comment for the full
+// history). Canadian listing discovery has moved OFF that surface entirely
+// and onto zoocasa-neighbourhood.ts's crawler, which reads a DIFFERENT part
+// of the same pages: internalLinks "Latest Listings" blocks. None of the
+// three checks above touch that code path. If Zoocasa renames, restructures,
+// or removes internalLinks the way it gated the search feed, discovery would
+// quietly fall toward zero and the KV store would thin out over days or
+// weeks — with EVERY check above still reporting green, including the
+// fingerprint check (it fingerprints the gated feed, a completely separate
+// surface it was never meant to watch). This check is the only thing in the
+// file that actually exercises the crawler the pipeline now depends on.
+// ---------------------------------------------------------------------------
+
+// Cities probed: Calgary, AB and Vancouver, BC. Both are reliably >100
+// distinct listing-detail URLs via the neighbourhood crawler (large metro
+// areas with many neighbourhood pages to fan out across), chosen
+// specifically to avoid thin markets that would false-alarm: Saanich yields
+// only ~18 distinct URLs legitimately (a real small city, not a regression
+// signal), and no Manitoba city is probed here (Winnipeg's neighbourhood
+// fan-out volume hasn't been characterized against this check's floor). One
+// BC city + one AB city also exercises two different provinces' page
+// templates without paying the request cost of all 10 cron target cities.
+const NEIGHBOURHOOD_DISCOVERY_CITIES: Array<{ city: string; province: string }> = [
+  { city: "Calgary", province: "AB" },
+  { city: "Vancouver", province: "BC" },
+];
+
+// Well below the 100+ URLs these two cities normally yield, but well above
+// zero — a real regression (a renamed/removed "Latest Listings" block, or
+// neighbourhood fan-out breaking) collapses the distinct-URL count toward
+// single digits or makes discoverListingUrls() throw outright (see below),
+// while ordinary day-to-day inventory noise in a 100+-listing metro comes
+// nowhere near this floor. Not set any tighter than this: discoverListingUrls()
+// already tolerates individual neighbourhood pages failing to parse (a soft
+// miss, logged via console.warn — see that function's doc comment), so some
+// day-to-day variance in the exact count is expected even on a fully healthy
+// surface, and the floor needs headroom for that.
+const NEIGHBOURHOOD_DISCOVERY_MIN_URLS = 25;
+
+// Caps each city's crawl at a small multiple of the floor above.
+// discoverListingUrls() stops fetching further neighbourhood pages once it
+// has collected this many distinct URLs (see its own maxUrls early-exit) —
+// this check only needs to confirm the surface yields "enough", not
+// enumerate every listing in the city (that enumeration is
+// fetchNeighbourhoodListings()'s job, run by the real ingestion pipeline,
+// not this canary). Keeping this low bounds both the request count and the
+// wall time this check adds to the canary's 60s budget.
+const NEIGHBOURHOOD_DISCOVERY_MAX_URLS = 40;
+
+// Hard per-city timeout. discoverListingUrls() takes no abort-signal
+// parameter, so a hung or unusually slow crawl (e.g. a slow neighbourhood
+// page) is bounded here via Promise.race instead — this keeps one bad probe
+// from eating the whole 60s canary budget on its own.
+const NEIGHBOURHOOD_DISCOVERY_TIMEOUT_MS = 25_000;
+
+async function probeNeighbourhoodDiscovery(
+  city: string,
+  province: string
+): Promise<{ ok: boolean; detail: string }> {
+  try {
+    const discovered = await Promise.race([
+      discoverListingUrls(city, province, { maxUrls: NEIGHBOURHOOD_DISCOVERY_MAX_URLS }),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `discoverListingUrls("${city}", "${province}") timed out after ${NEIGHBOURHOOD_DISCOVERY_TIMEOUT_MS}ms`
+              )
+            ),
+          NEIGHBOURHOOD_DISCOVERY_TIMEOUT_MS
+        );
+      }),
+    ]);
+
+    const count = discovered.length;
+    if (count < NEIGHBOURHOOD_DISCOVERY_MIN_URLS) {
+      return {
+        ok: false,
+        detail: `${city}, ${province}: only ${count} distinct listing URL(s) discovered (floor ${NEIGHBOURHOOD_DISCOVERY_MIN_URLS}) — neighbourhood-graph discovery may be degraded`,
+      };
+    }
+    return {
+      ok: true,
+      detail: `${city}, ${province}: ${count} distinct listing URL(s) discovered (floor ${NEIGHBOURHOOD_DISCOVERY_MIN_URLS}, cap ${NEIGHBOURHOOD_DISCOVERY_MAX_URLS})`,
+    };
+  } catch (err) {
+    // discoverListingUrls() THROWS on structural page-shape breakage (missing
+    // __NEXT_DATA__, missing/renamed internalLinks blocks, zero URLs found —
+    // see that function's own fail-loud contract) as well as on a genuine
+    // timeout above. Reported as its own distinct failure rather than folded
+    // into the low-count branch above, so the detail string names WHICH kind
+    // of break this is — a thrown structural/network error is a different
+    // signal from "yielded a suspiciously low but non-zero count" and a
+    // reader shouldn't have to guess which one fired.
+    return { ok: false, detail: `${city}, ${province}: ${errDetail(err)}` };
+  }
+}
+
+/**
+ * Confirms zoocasa-neighbourhood.ts's discoverListingUrls() — the ONLY
+ * discovery path Canadian listing ingestion uses now that the search
+ * endpoint's `listings` array is a gated, frozen, province-wide feed (see
+ * this file's header and zoocasa-neighbourhood.ts's own doc comment) — is
+ * still yielding real, current listing URLs.
+ *
+ * This closes a blind spot none of checkZoocasaSearch/Baseline/Fingerprint
+ * can see: all three read the OLD search-endpoint surface
+ * (props.pageProps.props.listings), which is exactly the surface that got
+ * gated. The new crawler reads a completely different field on the same
+ * pages (internalLinks "Latest Listings" blocks). If Zoocasa renames,
+ * restructures, or removes that block the way it gated the search feed,
+ * discovery would quietly fall toward zero — the KV store thinning out over
+ * days or weeks — while every one of the other three checks stays green,
+ * INCLUDING the fingerprint check (it fingerprints the gated feed, a
+ * separate surface it doesn't touch).
+ *
+ * Probes a small, deliberately non-exhaustive sample — Calgary AB and
+ * Vancouver BC (see NEIGHBOURHOOD_DISCOVERY_CITIES' comment for why these
+ * two and not, say, Saanich or a Manitoba city) — in parallel, each capped
+ * via discoverListingUrls()'s own maxUrls early-exit so neither probe walks
+ * the city's full neighbourhood fan-out. Request budget per probed city: 1
+ * city-page fetch + a handful of neighbourhood-page fetches, bounded by
+ * NEIGHBOURHOOD_DISCOVERY_MAX_URLS's early exit; 2 cities run in parallel —
+ * a small, bounded addition on top of this file's existing ~17 GETs/day
+ * Zoocasa budget (see the file-level request volume note above).
+ *
+ * FAILS (ok:false) if a probed city yields fewer than
+ * NEIGHBOURHOOD_DISCOVERY_MIN_URLS distinct URLs, or if discoverListingUrls()
+ * throws or times out (NEIGHBOURHOOD_DISCOVERY_TIMEOUT_MS) — see
+ * probeNeighbourhoodDiscovery()'s comment for why those are reported as
+ * distinct failure kinds rather than folded together. A check that can't
+ * tell "the surface is thin today" from "the network/crawl broke" reports
+ * that ambiguity in its own detail string rather than picking one silently
+ * (fail loud, never fake).
+ */
+async function checkZoocasaNeighbourhoodDiscovery(): Promise<CheckResult> {
+  const results = await Promise.all(
+    NEIGHBOURHOOD_DISCOVERY_CITIES.map((c) => probeNeighbourhoodDiscovery(c.city, c.province))
+  );
+  const ok = results.every((r) => r.ok);
+  return { ok, detail: results.map((r) => r.detail).join(" | ") };
+}
+
 function checkBcCache(): CheckResult {
   try {
     const [address] = Object.keys(BC_ASSESSMENT_CACHE);
@@ -961,6 +1128,7 @@ export async function GET(request: Request) {
     zoocasaSearch,
     zoocasaBaseline,
     zoocasaFingerprint,
+    zoocasaNeighbourhoodDiscovery,
     calgarySoda,
     edmontonSoda,
     winnipegSoda,
@@ -972,6 +1140,7 @@ export async function GET(request: Request) {
     checkZoocasaSearch(),
     checkZoocasaBaseline(),
     checkZoocasaFeedFingerprint(),
+    checkZoocasaNeighbourhoodDiscovery(),
     calgarySodaHealthCheck(),
     checkCaEdmonton(),
     checkCaWinnipeg(),
@@ -986,6 +1155,7 @@ export async function GET(request: Request) {
     zoocasaSearch,
     zoocasaBaseline,
     zoocasaFingerprint,
+    zoocasaNeighbourhoodDiscovery,
     bcCache,
     calgarySoda,
     edmontonSoda,

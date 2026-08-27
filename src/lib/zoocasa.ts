@@ -1123,12 +1123,34 @@ export async function fetchSoldDetail(
 // Public API: Freshness check (is a listing still active?)
 // ---------------------------------------------------------------------------
 
+/**
+ * The verdict PLUS a bonus dom capture. `dom` is populated only when the
+ * page was confirmed "live" AND its body parsed into a usable `addedAt`.
+ *
+ * WHY DOM RIDES ALONG HERE (discovery-path context): the neighbourhood-graph
+ * discovery crawler (zoocasa-neighbourhood.ts) that now feeds Phase 1 of the
+ * daily refresh cron gives only a URL + address label — no dom, because it
+ * never fetches a detail page, by design (fetching every discovered URL's
+ * detail page would be far too expensive for 10 cities in one cron budget).
+ * Meanwhile this function ALREADY fetches every retained listing's detail
+ * page once a day (that's its whole job) — so reading dom out of that same,
+ * already-paid-for response is a zero-marginal-cost way to keep retained
+ * rows' dom fresh now that search-based candidates no longer refresh it.
+ * See pipeline/retention.ts's runFreshnessPass for the write-back and
+ * planRetention's candidate-dom guard for why thin discovery candidates must
+ * NOT be allowed to clobber a row's dom to 0/undefined instead.
+ */
+export interface FreshnessCheckResult {
+  status: "live" | "dead" | "unknown";
+  dom?: number;
+}
+
 export async function checkFreshness(
   address: string,
   city: string,
   province: string,
   slug?: string
-): Promise<"live" | "dead" | "unknown"> {
+): Promise<FreshnessCheckResult> {
   try {
     const detailSlug = slug || addressSlug(address);
     const url = `https://www.zoocasa.com/${citySlug(city)}-${provSlug(province)}-real-estate/${detailSlug}`;
@@ -1140,13 +1162,46 @@ export async function checkFreshness(
     });
 
     if (res.status === 404 || res.url.includes("missingAddress")) {
-      return "dead";
+      return { status: "dead" };
     }
 
-    if (res.ok) return "live";
-    return "unknown";
+    if (!res.ok) return { status: "unknown" };
+
+    // From here the LIVENESS verdict is already decided ("live") and must
+    // not change no matter what happens below. Dom capture is a pure
+    // refinement layered on top of an already-fetched response — house rule
+    // is fail loud, never fake, so any failure to read/parse it is
+    // console.warn'd and we fall back to a dom-less "live", never to
+    // "unknown"/"dead" and never a thrown error that would make a live
+    // listing look checked-and-failed.
+    try {
+      const html = await res.text();
+      const data = extractNextData(html);
+      const props = data?.props as Record<string, unknown> | undefined;
+      const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+      const innerProps = pageProps?.props as Record<string, unknown> | undefined;
+      const activeListing = innerProps?.activeListing as Record<string, unknown> | undefined;
+      const raw = activeListing?.listing as ZoocasaDetailResult | undefined;
+
+      if (!raw || !raw.addedAt) {
+        console.warn(
+          `[zoocasa-dom] checkFreshness("${address}", "${city}", "${province}"): live page but ` +
+            `no addedAt found in __NEXT_DATA__ — dom capture skipped, verdict unaffected`
+        );
+        return { status: "live" };
+      }
+
+      const dom = computeDom(raw.addedAt, raw.history);
+      return { status: "live", dom };
+    } catch (err) {
+      console.warn(
+        `[zoocasa-dom] checkFreshness("${address}", "${city}", "${province}"): dom capture failed ` +
+          `(${err instanceof Error ? err.message : String(err)}) — verdict unaffected, dom omitted`
+      );
+      return { status: "live" };
+    }
   } catch {
-    return "unknown";
+    return { status: "unknown" };
   }
 }
 
