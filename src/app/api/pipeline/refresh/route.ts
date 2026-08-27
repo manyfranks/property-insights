@@ -14,7 +14,8 @@
  */
 
 import { NextResponse } from "next/server";
-import { searchListings, fetchDetail, checkFreshness, fetchSoldListings, ZoocasaSoldRaw } from "@/lib/zoocasa";
+import { fetchDetailByUrl, checkFreshness, fetchSoldListings, ZoocasaSoldRaw } from "@/lib/zoocasa";
+import { discoverListingUrls } from "@/lib/zoocasa-neighbourhood";
 import { readListingsStore, writeAllListings } from "@/lib/kv/listings";
 import { enrichListing } from "@/lib/pipeline/enrich";
 import { refreshUSDiscover } from "@/lib/pipeline/us-discover";
@@ -31,6 +32,7 @@ import {
   selectNewListings,
   selectUserCarryForward,
   retainedSlugCollisions,
+  UNKNOWN_DOM,
   type CitySearchOutcome,
 } from "@/lib/pipeline/retention";
 
@@ -143,29 +145,78 @@ export async function GET(request: Request) {
     log.push(`Loaded ${existingListings.length} existing listings (${elapsed()}ms)`);
 
     // -----------------------------------------------------------------------
-    // Phase 1: Search ALL cities in parallel
+    // Phase 1: Discover ALL cities in parallel via discoverListingUrls()
+    //          (zoocasa-neighbourhood.ts), NOT searchListings().
+    //
+    // searchListings() hits /{city}-{prov}-real-estate, which Zoocasa gated
+    // behind a Terms-of-Use wall — see retention.ts's module header, "ROOT
+    // CAUSE OF THE 409-URL 404 INCIDENT" — and now serves one frozen,
+    // byte-identical 27-row province feed regardless of city or filters.
+    // discoverListingUrls() instead reads the ungated "…Latest Listings"
+    // internalLinks blocks off the city page and its neighbourhood pages,
+    // which are not behind that wall.
+    //
+    // It hands back only a URL + address label per listing — no detail
+    // fetch, so no real days-on-market. Each becomes a THIN candidate:
+    // dom: UNKNOWN_DOM (see retention.ts's UNKNOWN_DOM/candidateHasRealDom),
+    // so it can never clobber a retained row's real dom in Phase 2. Retained
+    // rows' dom is instead refreshed for free during Phase 3's freshness
+    // check, which already re-fetches every retained row's own detail page
+    // daily and now reads dom off that same response (see checkFreshness in
+    // zoocasa.ts and runFreshnessPass's dom write-back in retention.ts).
+    //
+    // DISCOVERY_DEADLINE_MS is an ABSOLUTE epoch-ms deadline — that is
+    // discoverListingUrls' contract for its `deadlineMs` option (unlike
+    // FRESHNESS_DEADLINE_MS below, which Phase 3 compares against `elapsed()`
+    // and is therefore duration-shaped). It is computed once, up front, and
+    // shared across all 10 cities the same way FRESHNESS_DEADLINE_MS is
+    // shared across Phase 3's freshness queue: a slow city's expansion
+    // consumes the shared budget rather than starving the others via a fixed
+    // per-call timeout. A full 10-city discovery run measured ~16s in
+    // practice, so 60s leaves generous headroom while still guaranteeing
+    // this phase alone cannot eat into Phase 3's 150s freshness budget or
+    // Phase 4's 180s detail-fetch cutoff.
     // -----------------------------------------------------------------------
+    const DISCOVERY_DEADLINE_MS = Date.now() + 60_000;
     const searchResults = await Promise.allSettled(
       CITIES.map(async (cfg): Promise<CitySearchOutcome<CityConfig>> => {
-        const [defaultResults, oldestResults] = await Promise.all([
-          searchListings(cfg.city, cfg.province, {
-            type: "house", beds: 3, minPrice: cfg.minPrice, maxPrice: cfg.maxPrice,
-          }),
-          searchListings(cfg.city, cfg.province, {
-            type: "house", beds: 3, minPrice: cfg.minPrice, maxPrice: cfg.maxPrice, sortBy: "days-desc",
-          }),
-        ]);
-        const seen = new Set<string>();
-        const candidates: Listing[] = [];
-        for (const l of [...defaultResults, ...oldestResults]) {
-          const key = l.mlsNumber || l.address;
-          if (!seen.has(key)) { seen.add(key); candidates.push(l); }
-        }
+        const discovered = await discoverListingUrls(cfg.city, cfg.province, {
+          target: cfg.target,
+          deadlineMs: DISCOVERY_DEADLINE_MS,
+        });
+        // Thin candidate — mirrors mapSearchListing's (zoocasa.ts) field
+        // defaults for everything discovery cannot know yet (price, beds,
+        // baths, sqft, ...), since these candidates flow through the exact
+        // same retention/acquisition code that used to only ever see
+        // mapSearchListing output. `dom: UNKNOWN_DOM` is the one deliberate
+        // departure — a real search candidate always had SOME dom, a
+        // discovery candidate never does at this point.
+        const candidates: Listing[] = discovered.map((d) => ({
+          address: d.label,
+          city: cfg.city,
+          province: cfg.province,
+          dom: UNKNOWN_DOM,
+          price: 0,
+          beds: "0",
+          baths: "0",
+          sqft: "",
+          yearBuilt: "",
+          taxes: "",
+          lotSize: "",
+          priceReduced: false,
+          hasSuite: false,
+          estateKeywords: false,
+          description: "",
+          notes: "",
+          cluster: "",
+          url: d.url,
+          source: "cron",
+        }));
         return { cfg, candidates };
       })
     );
 
-    log.push(`Phase 1 search done (${elapsed()}ms)`);
+    log.push(`Phase 1 discovery done (${elapsed()}ms)`);
 
     // -----------------------------------------------------------------------
     // Phase 2: Seed retention from STORED listings, then let this run's
@@ -307,10 +358,16 @@ export async function GET(request: Request) {
         for (const candidate of toFetch) {
           if (detailed.length >= newAllowance) break;
           try {
-            const urlPath = candidate.url?.replace("https://www.zoocasa.com", "") || "";
-            const slug = urlPath.split("/").pop() || "";
-            if (!slug) continue;
-            const detail = await fetchDetail(candidate.address, cfg.city, cfg.province, slug);
+            // Discovery URLs are 3-segment
+            // (/{city}-{prov}-real-estate/{neighbourhood}/{listing}).
+            // fetchDetail() builds its own 2-segment URL from a slug plus
+            // city/province and would therefore misfetch a discovery
+            // candidate's actual page. fetchDetailByUrl() fetches the
+            // candidate's own URL as-is — same reasoning as
+            // fetchNeighbourhoodListings' detail-fetch loop in
+            // zoocasa-neighbourhood.ts.
+            if (!candidate.url) continue;
+            const detail = await fetchDetailByUrl(candidate.url);
             const listing = stripPrecomputed(detail.listing);
             if (!listing.url && candidate.url) listing.url = candidate.url;
             if (!listing.mlsNumber && candidate.mlsNumber) listing.mlsNumber = candidate.mlsNumber;

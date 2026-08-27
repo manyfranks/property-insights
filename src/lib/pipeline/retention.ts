@@ -119,6 +119,42 @@ import { Listing } from "../types";
 import { listingKey, listingMlsKey, isSameRecord } from "../listing-identity";
 import { slugify } from "../utils";
 
+/**
+ * Sentinel `dom` for a THIN discovery candidate.
+ *
+ * Phase 1 of the refresh cron now builds its candidates from
+ * discoverListingUrls() (zoocasa-neighbourhood.ts) instead of Zoocasa's
+ * gated search endpoint — it hands back only a URL and an address label, no
+ * detail fetch, so no real days-on-market exists yet. `Listing.dom` is a
+ * required `number` (types.ts), not optional, so "no dom yet" can't be
+ * spelled as `undefined` the way a genuinely optional field could be. A real
+ * dom (computeDom() in zoocasa.ts) is always >= 0, so a negative sentinel is
+ * unambiguous and can never collide with a genuine value — including a
+ * genuine 0 for a just-listed property, which the old always-refresh
+ * behaviour handled correctly and must go on doing so.
+ *
+ * `candidateHasRealDom` is the ONLY place this sentinel is inspected. Every
+ * other line in this module that reads `candidate.dom` (the sort in
+ * planRetention, dead-code paths, tests) is fine treating it as a plain
+ * number, because a thin candidate's UNKNOWN_DOM only ever needs to lose an
+ * "is this real" check, never to look correct on its own.
+ */
+export const UNKNOWN_DOM = -1;
+
+/**
+ * True when `candidate.dom` is a real, usable value rather than a thin
+ * discovery candidate's UNKNOWN_DOM placeholder. Guards every place a
+ * candidate's dom would otherwise overwrite a retained row's stored dom —
+ * see the two call sites in planRetention below. Without this guard, every
+ * discovery candidate (dom: UNKNOWN_DOM) would clobber the matching stored
+ * row's real dom on every single cron run — dom feeds scoring and the offer
+ * model's seller-motivation multiplier, so that would be a silent
+ * data-quality regression, not a cosmetic one.
+ */
+function candidateHasRealDom(candidate: Listing): boolean {
+  return Number.isFinite(candidate.dom) && candidate.dom !== UNKNOWN_DOM;
+}
+
 /** The slice of the route's CityConfig retention actually depends on. */
 export interface RetentionCityConfig {
   city: string;
@@ -398,11 +434,28 @@ export function planRetention<C extends RetentionCityConfig>(
       const existing = group[0];
       const seededRows = keptByKey.get(key);
       if (seededRows && seededRows.length > 0) {
-        // Already retained by the seed above; the candidate's only job is to
-        // refresh the volatile field the search row is authoritative for
-        // (days-on-market), exactly as the pre-fix code did. The group is
-        // unambiguous here, so `seededRows` holds exactly the one row.
-        seededRows[0] = { ...seededRows[0], dom: candidate.dom, source: "cron" };
+        // Already retained by the seed above. The candidate's job used to be
+        // refreshing the one volatile field a search row was authoritative
+        // for — days-on-market — but a THIN discovery candidate (see Phase 1
+        // in api/pipeline/refresh/route.ts: discoverListingUrls() gives only
+        // a URL + address label, never a real dom) carries no such value.
+        // candidateHasRealDom is the guard: only overwrite the stored dom
+        // when the candidate's own is a real, finite number. Without it,
+        // every discovery candidate would carry dom:UNKNOWN_DOM and this
+        // line would clobber every retained row's true dom to that sentinel
+        // on every single run — a silent data-quality regression (dom feeds
+        // scoring and the offer model's seller-motivation multiplier). This
+        // is a safe no-op for discovery, not a lost refresh: Phase 3's
+        // freshness check now re-fetches each retained row's own detail page
+        // daily anyway and captures a real dom from that response instead
+        // (see runFreshnessPass below and checkFreshness in zoocasa.ts) — so
+        // dom still gets refreshed, just by the phase that already pays for
+        // the fetch. A real search-style candidate (still produced by the
+        // 132 pre-existing fixtures, and by any future non-discovery source)
+        // is untouched: this preserves the exact old refresh behaviour.
+        if (candidateHasRealDom(candidate)) {
+          seededRows[0] = { ...seededRows[0], dom: candidate.dom, source: "cron" };
+        }
         continue;
       }
 
@@ -425,7 +478,12 @@ export function planRetention<C extends RetentionCityConfig>(
         // so it can't also be carried forward. Only reachable for a group of
         // one — an ambiguous identity never gets here — which is what keeps
         // that claimed-key suppression from deleting the row it did not adopt.
-        keptByKey.set(key, [{ ...existing, dom: candidate.dom, source: "cron" }]);
+        // Same thin-candidate dom guard as the refresh branch above: a
+        // discovery candidate carries no real dom, so adopting one must not
+        // clobber the user row's existing dom either.
+        keptByKey.set(key, [
+          { ...existing, dom: candidateHasRealDom(candidate) ? candidate.dom : existing.dom, source: "cron" },
+        ]);
         continue;
       }
 
@@ -477,6 +535,23 @@ export function planRetention<C extends RetentionCityConfig>(
 
 export type FreshnessVerdict = "live" | "dead" | "unknown";
 
+/**
+ * What one freshness check reports back: the removal verdict, PLUS an
+ * optional dom capture. checkFreshness() (zoocasa.ts) already fetches every
+ * retained row's own detail page to answer the verdict; when that page is
+ * live and its body parses cleanly it also returns the dom read from that
+ * SAME response, at no extra network cost. `dom` is present only for a
+ * "live" verdict with a successfully parsed value — never for "dead" (no
+ * page body to read) or "unknown" (the fetch itself failed/timed out), and
+ * omitted (not zero, not stale) on any live-but-unparseable page, per the
+ * house fail-loud rule: a dom-capture failure is disclosed by omission, not
+ * papered over with a guessed number.
+ */
+export interface FreshnessCheckResult {
+  status: FreshnessVerdict;
+  dom?: number;
+}
+
 export interface FreshnessPassResult {
   /**
    * The exact ROW OBJECTS a "dead" verdict was issued for. THE removal
@@ -516,10 +591,24 @@ export interface FreshnessPassResult {
  * literal "unknown" — and all three mean the same thing: it stays. Each of
  * the first two is counted and logged, because "we did not check 900 of your
  * listings" is a degraded run even when it is a safe one.
+ *
+ * DOM WRITE-BACK: a "live" result carrying a `dom` updates that row's `dom`
+ * IN PLACE. This is deliberately a mutation, not the module's usual
+ * copy-and-replace style (see e.g. planRetention's `seededRows[0] = {
+ * ...seededRows[0], ... }`): `l` here is the exact same object reference
+ * that lives in the caller's `cityBuckets[*].kept` / `orphanRetained` arrays
+ * — `freshnessQueue` is built from those same references, not copies — so a
+ * copy-and-replace would only update this function's local queue and never
+ * reach the arrays the caller actually writes. Mutating the one shared
+ * object is what makes the update visible everywhere that reference is
+ * held, which is exactly the same reasoning `pruneDead`'s Set<Listing>
+ * object-identity match already relies on. A "dead" verdict, "unknown", or a
+ * dom-less "live" leaves `dom` untouched — see FreshnessCheckResult's doc
+ * comment for why dom is absent rather than stale/guessed in those cases.
  */
 export async function runFreshnessPass(opts: {
   queue: Listing[];
-  check: (l: Listing) => Promise<FreshnessVerdict>;
+  check: (l: Listing) => Promise<FreshnessCheckResult>;
   /** Milliseconds since the run started, as the route measures it. */
   elapsed: () => number;
   deadlineMs: number;
@@ -542,9 +631,9 @@ export async function runFreshnessPass(opts: {
       if (opts.elapsed() > opts.deadlineMs) break;
       const l = queue.shift();
       if (!l) break;
-      let status: FreshnessVerdict;
+      let result: FreshnessCheckResult;
       try {
-        status = await opts.check(l);
+        result = await opts.check(l);
       } catch (err) {
         errored++;
         if (errorSamples.length < 3) {
@@ -553,9 +642,14 @@ export async function runFreshnessPass(opts: {
         continue;
       }
       checked++;
-      if (status === "dead") {
+      if (result.status === "dead") {
         deadRows.add(l);
         deadKeys.add(listingKey(l));
+      } else if (result.status === "live" && result.dom !== undefined) {
+        // DOM WRITE-BACK — see the doc comment above this function for why
+        // this mutates `l` in place instead of the module's usual
+        // copy-and-replace style.
+        l.dom = result.dom;
       }
     }
   }
