@@ -50,6 +50,8 @@ import {
 } from "@/lib/property-intelligence/land-listing";
 import { auth } from "@clerk/nextjs/server";
 import { getUserAssessmentState } from "@/lib/db/user-assessments";
+import { buildBuyerCompositionModel } from "@/lib/property-intelligence/buyer-journey";
+import BuyerCompositionNotice from "@/components/buyer-composition-notice";
 
 // ISR: serve cached page for 10 minutes, revalidate in background
 export const revalidate = 600;
@@ -427,16 +429,21 @@ export default async function PropertyPage({
     classification: listing.propertyClassification,
   });
   const verifiedLandListing = !!landPriceContext;
+  const buyerComposition = buildBuyerCompositionModel({
+    subject: listing.assessmentSubject,
+    classification: listing.propertyClassification,
+    capabilities: effectiveCapabilities,
+  });
   const caGoalStatuses = {
     buy_home: journeyCapabilityStatus("buy_home", effectiveCapabilities),
     rental_investment: caRentalJourneyStatus,
     own_manage: journeyCapabilityStatus("own_manage", effectiveCapabilities),
     explore: journeyCapabilityStatus("explore", effectiveCapabilities),
   };
-  const showResidentialPartnerActions = residentialPartnerActionsAllowed(
-    effectiveCapabilities,
-    listing.propertyClassification
-  );
+  const showResidentialPartnerActions =
+    !verifiedLandListing && buyerComposition.showPartnerActions;
+  const showResidentialInsurance =
+    !verifiedLandListing && buyerComposition.showInsurancePrefill;
   const caResultLead = (
     <>
       <Link
@@ -466,12 +473,12 @@ export default async function PropertyPage({
             {listing.city}, {listing.province}
           </p>
         </div>
-        {!verifiedLandListing && <TierBadge tier={score.tier} />}
+        {!verifiedLandListing && buyerComposition.showAcquisitionAnalysis && <TierBadge tier={score.tier} />}
       </div>
 
       {landPriceContext ? <LandPriceContextCard context={landPriceContext} /> : (
         <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
-          {offer ? (
+          {offer && buyerComposition.showOfferAnalysis ? (
             <>
               <div className="text-xs uppercase tracking-widest text-muted mb-2">
                 {offer.anchorType === "language" ? "Estimated Offer" : "Recommended Offer"}
@@ -540,7 +547,11 @@ export default async function PropertyPage({
   );
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-6 sm:py-10">
+    <main
+      className="max-w-3xl mx-auto px-6 py-6 sm:py-10"
+      data-p6a-buyer-contract={buyerComposition.contract}
+      data-p6a-buyer-availability={buyerComposition.availability}
+    >
       <PropertyJsonLd
         url={`${BASE_URL}/property/${slugify(listing.address)}`}
         address={listing.address}
@@ -596,8 +607,10 @@ export default async function PropertyPage({
         <PropertyJourneyHandoff assessmentInput={propertyAssessmentInput} goalStatuses={caGoalStatuses} />
       )}
 
+      {!verifiedLandListing && <BuyerCompositionNotice model={buyerComposition} />}
+
       {/* D. The Signal — LLM narrative */}
-      <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
+      {(landPriceContext || buyerComposition.showAcquisitionAnalysis) && <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs uppercase tracking-widest text-muted">The Signal</div>
           {llmConfidence != null && llmConfidence > 0 && (
@@ -625,10 +638,10 @@ export default async function PropertyPage({
               : `This ${listing.beds}-bed property in ${listing.city} has been on market for ${listing.dom} days${signals.length > 0 || (llmSignals && llmSignals.length > 0) ? ` with ${(signals.length + (llmSignals?.length ?? 0))} motivation signal${(signals.length + (llmSignals?.length ?? 0)) > 1 ? "s" : ""} detected` : ""}.${score.tier === "HOT" ? " It scores in the HOT tier — worth a closer look." : score.tier === "WARM" ? " It scores in the WARM tier." : " It\u2019s currently in the WATCH tier."}`}
           </p>
         )}
-      </div>
+      </div>}
 
       {/* E. Expandable: Offer Cascade */}
-      {offer && !verifiedLandListing && (
+      {offer && !verifiedLandListing && buyerComposition.showOfferAnalysis && (
         <div className="mb-4">
           <ExpandableSection title="How we calculated this" defaultOpen={false}>
             <OfferCascade offer={offer} />
@@ -637,7 +650,7 @@ export default async function PropertyPage({
       )}
 
       {/* F. Expandable: Score Breakdown */}
-      {!verifiedLandListing && <div className="mb-4">
+      {!verifiedLandListing && buyerComposition.showAcquisitionAnalysis && <div className="mb-4">
         <ExpandableSection title="Score breakdown" defaultOpen={false}>
           <ScoreBreakdown breakdown={score.breakdown} />
         </ExpandableSection>
@@ -646,7 +659,7 @@ export default async function PropertyPage({
       {/* G. Bento Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         {/* Property Details */}
-        {verifiedLandListing ? <LandListingFactsCard listing={listing} /> : (
+        {verifiedLandListing ? <LandListingFactsCard listing={listing} /> : buyerComposition.showValuationContext ? (
         <div className="border border-border rounded-xl p-4 bg-white">
           <div className="text-xs uppercase tracking-widest text-muted mb-3">Property</div>
           <div className="grid grid-cols-2 gap-2 text-sm">
@@ -681,9 +694,10 @@ export default async function PropertyPage({
             </div>
           )}
         </div>
-        )}
+        ) : null}
 
         {/* Assessment */}
+        {(verifiedLandListing || buyerComposition.showValuationContext) && (
         <div className="border border-border rounded-xl p-4 bg-white">
           <div className="text-xs uppercase tracking-widest text-muted mb-3">Assessment</div>
           {assessment ? (
@@ -738,9 +752,10 @@ export default async function PropertyPage({
             <p className="text-sm text-muted">Assessment not yet cached for this address.</p>
           )}
         </div>
+        )}
 
         {/* Comparables */}
-        {!verifiedLandListing && listing.preComparables && listing.preComparables.confidence !== "none" && (
+        {!verifiedLandListing && buyerComposition.showValuationContext && listing.preComparables && listing.preComparables.confidence !== "none" && (
           <div className="border border-border rounded-xl p-4 bg-white">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs uppercase tracking-widest text-muted">Comparables</div>
@@ -831,7 +846,7 @@ export default async function PropertyPage({
             <span className="font-mono text-2xl font-bold">{listing.dom}</span>
             <span className="text-sm text-muted">days on market</span>
           </div>
-          {offer && !verifiedLandListing && (
+          {offer && !verifiedLandListing && buyerComposition.showOfferAnalysis && (
             <div className="text-xs text-muted mb-2">{offer.domTag}</div>
           )}
           <div className="flex flex-wrap gap-1.5">
@@ -840,12 +855,12 @@ export default async function PropertyPage({
                 Price reduced
               </span>
             )}
-            {listing.estateKeywords && (
+            {buyerComposition.showAcquisitionAnalysis && listing.estateKeywords && (
               <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
                 Estate sale
               </span>
             )}
-            {listing.hasSuite && (
+            {buyerComposition.showAcquisitionAnalysis && listing.hasSuite && (
               <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
                 Suite potential
               </span>
@@ -854,7 +869,7 @@ export default async function PropertyPage({
         </div>
 
         {/* Motivation Signals */}
-        {!verifiedLandListing && (
+        {!verifiedLandListing && buyerComposition.showAcquisitionAnalysis && (
         <div className="border border-border rounded-xl p-4 bg-white">
           <div className="text-xs uppercase tracking-widest text-muted mb-3">Motivation Signals</div>
           <div className="flex items-center gap-3 mb-3">
@@ -897,7 +912,7 @@ export default async function PropertyPage({
         )}
 
         {/* Canada Advantage: Investor Yield + Market Momentum (CMHC rent / StatCan NHPI) */}
-        {!verifiedLandListing && caCma && (
+        {!verifiedLandListing && buyerComposition.showValuationContext && caCma && (
           <CaInvestorYieldCard investorYield={caInvestorYield} cmaName={caCma.cmaName} rentVintage={caRent?.vintage ?? 0} />
         )}
         {!verifiedLandListing && caCma && <CaMarketMomentumCard momentum={caMomentum} cmaName={caCma.cmaName} />}
@@ -907,11 +922,13 @@ export default async function PropertyPage({
       {listing.description && (
         <div className="mb-6">
           <div className="text-xs uppercase tracking-widest text-muted mb-2">
-            {verifiedLandListing ? "Seller-provided listing description" : "Listing Description"}
+            {verifiedLandListing || buyerComposition.propertyEvidenceDenied
+              ? "Seller-provided listing description"
+              : "Listing Description"}
           </div>
-          {verifiedLandListing && (
+          {(verifiedLandListing || buyerComposition.propertyEvidenceDenied) && (
             <p className="text-xs text-muted mb-2">
-              Development, zoning, rezoning, and permitted-use claims below come from the listing and are not independently verified here.
+              Claims below come from the listing and are not independently verified as property facts or residential buyer analysis.
             </p>
           )}
           <p className="text-sm text-muted leading-relaxed">{listing.description}</p>
@@ -931,10 +948,10 @@ export default async function PropertyPage({
         />
       </div>}
 
-      {/* I2. Insurance module (Insurance Path Stage 2, Screen 1) — gated on
-          showResidentialPartnerActions like every partner action (land-listing
-          containment policy, plan 22). */}
-      {showResidentialPartnerActions && <div className="mb-6">
+      {/* I2. Insurance module (Insurance Path Stage 2, Screen 1) — gated by
+          the distinct insurancePrefill capability, not the generic partner
+          action decision. */}
+      {showResidentialInsurance && <div className="mb-6">
         <JourneyInsuranceModule
           fallbackGoal={assessmentGoal}
           country="CA"

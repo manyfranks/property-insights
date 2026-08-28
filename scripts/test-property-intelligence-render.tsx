@@ -494,6 +494,19 @@ test("US transient provider fallback retains existing partner-action composition
   assert.match(markup, /Track this home(?:&apos;|&#x27;|')s value and rent/);
 });
 
+test("P6A buyer routing preserves the P0 transient fallback explanation", () => {
+  const markup = renderToStaticMarkup(
+    <UsAssessmentResult
+      data={fallbackResult("provider_error")}
+      activeGoal="buy_home"
+    />
+  );
+
+  assert.match(markup, /Property and listing lookup is temporarily unavailable/);
+  assert.match(markup, /County Median Home Value/);
+  assert.doesNotMatch(markup, /Residential buyer analysis withheld/);
+});
+
 function neutralAvmHistorySignal(): EquityTenureSignal {
   return {
     tier: "recorded_value_history",
@@ -511,6 +524,8 @@ function neutralAvmHistorySignal(): EquityTenureSignal {
     narrative: "The last recorded sale was 18.2yr ago at $290,000. RentCast's modeled value estimate is $614,000, a +112% change from that recorded sale. This recorded-sale-to-modeled-value comparison does not identify or infer a current seller, negotiation leverage, mortgage balance, equity, distress, or intent.",
   };
 }
+
+let supportedOffMarketFixture: UsOffMarketResult | null = null;
 
 test("off-market value history never presents modeled AVM change as seller leverage", () => {
   const signal = neutralAvmHistorySignal();
@@ -539,10 +554,11 @@ test("complete US off-market result keeps AVM history neutral across the product
     subject: resolved,
     classification,
     facts: {
-      addressSaleValue: { available: true, scope: "building" },
-      addressRentEstimate: { available: true, scope: "building" },
+      addressSaleValue: { available: true, scope: "parcel" },
+      addressRentEstimate: { available: true, scope: "parcel" },
       activeListing: false,
       countyMarketContext: true,
+      insurancePrefillCore: true,
     },
   });
   const result: UsOffMarketResult = {
@@ -600,8 +616,12 @@ test("complete US off-market result keeps AVM history neutral across the product
       note: null,
     },
   };
+  supportedOffMarketFixture = result;
   const markup = renderToStaticMarkup(<UsAssessmentResult data={result} activeGoal="buy_home" />);
 
+  assert.match(markup, /data-p6a-buyer-contract="capability"/);
+  assert.match(markup, /data-p6a-buyer-availability="supported"/);
+  assert.doesNotMatch(markup, /data-p6a-buyer-notice/);
   assert.match(markup, /Recorded Sale &amp; Modeled Value/);
   assert.match(markup, /RentCast(?:&apos;|&#x27;|')s modeled value estimate/);
   assert.match(markup, /No active listing matched the resolved property/);
@@ -615,6 +635,77 @@ test("complete US off-market result keeps AVM history neutral across the product
   );
   assert.doesNotMatch(markup, /Seller Equity|Loss-Sale Distress|Long-Tenure Equity|room to negotiate/);
   assert.doesNotMatch(markup, /seller under financial pressure|structural distress/);
+});
+
+test("US regional-only buyer result cannot leak property valuation or rent cards", () => {
+  assert.ok(supportedOffMarketFixture, "supported off-market fixture must run first");
+  const capabilities = evaluatePropertyCapabilities({
+    subject: supportedOffMarketFixture.assessmentSubject,
+    classification: supportedOffMarketFixture.propertyClassification,
+    facts: { countyMarketContext: true },
+  });
+  const result: UsOffMarketResult = {
+    ...supportedOffMarketFixture,
+    propertyCapabilities: capabilities,
+  };
+  const markup = renderToStaticMarkup(<UsAssessmentResult data={result} activeGoal="buy_home" />);
+
+  assert.match(markup, /data-p6a-buyer-availability="limited"/);
+  assert.match(markup, /Property-specific buyer analysis is limited/);
+  assert.match(markup, /regional context only/i);
+  assert.doesNotMatch(markup, /\$193,200|RentCast AVM Estimate|Estimated Monthly Rent/);
+  assert.doesNotMatch(markup, /Recorded Sale &amp; Modeled Value|Valuation triangulation|Act on this analysis|Sponsored/);
+});
+
+test("US commercial evidence withholds the legacy residential buyer composition", () => {
+  assert.ok(supportedOffMarketFixture, "supported off-market fixture must run first");
+  const unresolved = subject({
+    rawInput: "100 Commerce St, Austin, TX",
+    normalizedAddress: "100 Commerce St, Austin, TX",
+    propertyRecord: { address: "100 Commerce St, Austin, TX", propertyType: "Retail Commercial" },
+  });
+  const resolved = {
+    ...unresolved,
+    selectedBy: "user_confirmation" as const,
+    resolutionConfidence: "high" as const,
+    requiresClarification: false,
+    clarificationReason: undefined,
+  };
+  const classification = classifyProperty({
+    subject: resolved,
+    evidence: evidence([{ value: "Retail Commercial", scope: "provider_record" }]),
+  });
+  const capabilities = evaluatePropertyCapabilities({
+    subject: resolved,
+    classification,
+    facts: {
+      addressSaleValue: { available: true, scope: "building" },
+      addressRentEstimate: { available: true, scope: "building" },
+      activeListing: false,
+      countyMarketContext: true,
+      insurancePrefillCore: true,
+    },
+  });
+  const result: UsOffMarketResult = {
+    ...supportedOffMarketFixture,
+    address: "100 Commerce St, Austin, TX",
+    city: "Austin",
+    state: "TX",
+    countyName: "Travis County",
+    countyFips: "48453",
+    assessmentSubject: resolved,
+    propertyClassification: classification,
+    propertyCapabilities: capabilities,
+  };
+  const markup = renderToStaticMarkup(<UsAssessmentResult data={result} activeGoal="buy_home" />);
+
+  assert.match(markup, /data-p6a-buyer-availability="limited"/);
+  assert.match(markup, /data-p6a-buyer-withheld="true"/);
+  assert.match(markup, /Residential buyer analysis withheld/);
+  assert.match(markup, /outside the verified residential scope/);
+  assert.doesNotMatch(markup, /RentCast AVM Estimate|Estimated Monthly Rent/);
+  assert.doesNotMatch(markup, /Recorded Sale &amp; Modeled Value|Investor Yield|Recommended Offer/);
+  assert.doesNotMatch(markup, /Act on this analysis|Sponsored/);
 });
 
 test("supported result renders address and primary offer before a collapsed focus control", () => {
