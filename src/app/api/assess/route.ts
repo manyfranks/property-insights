@@ -1572,6 +1572,11 @@ export async function POST(req: Request) {
       hasSuite: enriched.hasSuite,
       yearBuilt: enriched.yearBuilt,
     },
+    // Match the established US listed-path contract: an active listing price
+    // is property-specific sale-value evidence for the resolved listing
+    // subject. Assessment provenance remains separate in propertyEvidence and
+    // the rendered assessment card.
+    saleValue: { available: enriched.price > 0, source: "zoocasa_listing" },
     regionalRent: { available: !!cmaRent, source: "cmhc_cma_rent" },
     activeListing: true,
     offerComputed: !!enriched.preOffer,

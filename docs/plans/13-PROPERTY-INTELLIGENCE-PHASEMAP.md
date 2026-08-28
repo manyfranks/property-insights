@@ -401,10 +401,10 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Buyer convergence
 
-- [ ] **[A] Move buyer result composition** onto subject + classification + capability contracts.
-- [ ] **[A] Preserve current scoring, offer, narrative, email, and CTA behavior** for supported residential listings.
-- [ ] **[A] Make mixed-use/unit context informative** without treating the containing building as the assessment subject.
-- [ ] **[A] Compare old and new buyer outputs** across the P0 fixture set before default-on.
+- [~] **[A] Move buyer result composition** onto subject + classification + capability contracts. Implemented in P6A; production acceptance pending.
+- [~] **[A] Preserve current scoring, offer, narrative, email, and CTA behavior** for supported residential listings. Automated parity passes; live US/CA replay pending.
+- [x] **[A] Make mixed-use/unit context informative** without treating the containing building as the assessment subject.
+- [x] **[A] Compare old and new buyer outputs** across the P0 fixture set before default-on. Operational/clean-miss fallbacks retain P0; scoped exclusions are explicit P2/P3 changes.
 
 ### Owner / Manager V1
 
@@ -422,8 +422,8 @@ Development/renovation should not be a top-level V1 promise until P3 shows enoug
 
 ### Evidence
 
-- Commit/PR: _TBD_
-- Buyer parity report: _TBD_
+- Commit/PR: _P6A implementation pending review_
+- Buyer parity report: `26-P6A-BUYER-CONVERGENCE.md`
 - Owner V1 decision/readout: _TBD_
 
 ---

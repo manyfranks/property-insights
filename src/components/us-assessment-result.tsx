@@ -6,6 +6,10 @@ import type { PropertyClassification } from "@/lib/property-intelligence/classif
 import type { PropertyCapabilities } from "@/lib/property-intelligence/capabilities";
 import type { AssessmentGoal } from "@/lib/property-intelligence/journey";
 import {
+  buildBuyerCompositionModel,
+  type BuyerCompositionModel,
+} from "@/lib/property-intelligence/buyer-journey";
+import {
   assessmentAudience,
   buildRentalOperatingScenarioBasis,
   buildRentalScreenModel,
@@ -28,6 +32,7 @@ import { insuranceSelectionForJourney } from "@/components/insurance/goal-line-m
 import ExpandableSection from "@/components/expandable-section";
 import TierBadge from "@/components/tier-badge";
 import { AssessmentJourneyFocus } from "@/components/assessment-journey";
+import BuyerCompositionNotice from "@/components/buyer-composition-notice";
 import {
   US_COUNTY_FALLBACK_LABEL,
   usCountyFallbackDisclosure,
@@ -846,7 +851,15 @@ function domColor(dom: number): string {
   return "bg-green-500";
 }
 
-function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: AssessmentGoal | null }) {
+function UsListedView({
+  data,
+  activeGoal,
+  buyerComposition,
+}: {
+  data: UsListedResult;
+  activeGoal: AssessmentGoal | null;
+  buyerComposition: BuyerCompositionModel;
+}) {
   const {
     listing,
     assessment,
@@ -904,12 +917,12 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
             {listing.city}, {listing.province}
           </p>
         </div>
-        <TierBadge tier={score.tier} />
+        {buyerComposition.showAcquisitionAnalysis && <TierBadge tier={score.tier} />}
       </div>
 
       {/* Hero — recommended offer */}
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
-        {offer ? (
+        {offer && buyerComposition.showOfferAnalysis ? (
           <>
             <div className="text-xs uppercase tracking-widest text-muted mb-2">
               {offer.anchorType === "language" ? "Estimated Offer" : "Recommended Offer"}
@@ -950,6 +963,8 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
 
       <AssessmentJourneyFocus />
 
+      <BuyerCompositionNotice model={buyerComposition} />
+
       {rentalScreen && (
         <RentalScreen
           model={rentalScreen}
@@ -959,13 +974,13 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
         />
       )}
 
-      <div className="mb-6">
+      {buyerComposition.showPartnerActions && <div className="mb-6">
         <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
-      </div>
+      </div>}
 
       {/* THE SIGNAL — LLM narrative (src/lib/pipeline/us-narrative.ts), mirrors
           the Canadian /property/[slug] page's "The Signal" section layout. */}
-      <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
+      {buyerComposition.showAcquisitionAnalysis && <div className="bg-gray-50/50 rounded-xl p-6 mb-6">
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs uppercase tracking-widest text-muted">The Signal</div>
           {narrativeConfidence != null && narrativeConfidence > 0 && (
@@ -983,9 +998,9 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
         ) : (
           <p className="text-sm text-foreground leading-relaxed">Generating analysis — check back shortly.</p>
         )}
-      </div>
+      </div>}
 
-      {offer && (
+      {offer && buyerComposition.showOfferAnalysis && (
         <div className="mb-4">
           <ExpandableSection title="How we calculated this" defaultOpen={false}>
             <OfferCascade offer={offer} />
@@ -993,20 +1008,21 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
         </div>
       )}
 
-      <div className="mb-4">
+      {buyerComposition.showAcquisitionAnalysis && <div className="mb-4">
         <ExpandableSection title="Score breakdown" defaultOpen={false}>
           <ScoreBreakdown breakdown={score.breakdown} />
         </ExpandableSection>
-      </div>
+      </div>}
 
-      <div className="mb-4">
+      {buyerComposition.showValuationContext && <div className="mb-4">
         <ExpandableSection title="Valuation triangulation" defaultOpen={false}>
           <TriangulationDetail triangulation={triangulation} />
         </ExpandableSection>
-      </div>
+      </div>}
 
       {/* Bento grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        {buyerComposition.showValuationContext && <>
         <div className="border border-border rounded-xl p-4 bg-white">
           <div className="text-xs uppercase tracking-widest text-muted mb-3">Property</div>
           <div className="grid grid-cols-2 gap-2 text-sm">
@@ -1079,8 +1095,9 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
             <p className="text-sm text-muted">No assessment data available for this address.</p>
           )}
         </div>
+        </>}
 
-        {comparables.comparables.length > 0 && (
+        {buyerComposition.showValuationContext && comparables.comparables.length > 0 && (
           <div className="border border-border rounded-xl p-4 bg-white">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs uppercase tracking-widest text-muted">Comparables</div>
@@ -1139,6 +1156,7 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
           </div>
         )}
 
+        {buyerComposition.showAcquisitionAnalysis && <>
         <div className="border border-border rounded-xl p-4 bg-white">
           <div className="text-xs uppercase tracking-widest text-muted mb-3">Market Activity</div>
           <div className="flex items-center gap-3 mb-3">
@@ -1174,15 +1192,16 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
             </p>
           )}
         </div>
+        </>}
 
-        <EquityTenureCard equitySignal={equitySignal} />
-        {!rentalScreen && <InvestorYieldCard investorYield={investorYield} />}
-        <RiskMomentumCard riskMomentum={riskMomentum} />
+        {buyerComposition.showAcquisitionAnalysis && <EquityTenureCard equitySignal={equitySignal} />}
+        {buyerComposition.showValuationContext && !rentalScreen && <InvestorYieldCard investorYield={investorYield} />}
+        {buyerComposition.showRegionalContext && <RiskMomentumCard riskMomentum={riskMomentum} />}
       </div>
 
-      <OverAssessmentCallout overAssessment={overAssessment} />
+      {buyerComposition.showValuationContext && <OverAssessmentCallout overAssessment={overAssessment} />}
 
-      <div className="mb-6">
+      {buyerComposition.showPartnerActions && <div className="mb-6">
         <PartnerCta
           country="US"
           state={data.state}
@@ -1192,10 +1211,10 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
           heading="Act on this analysis"
           city={data.city}
         />
-      </div>
+      </div>}
 
       {/* Insurance module (Insurance Path Stage 2, Screen 1) */}
-      <div className="mb-6">
+      {buyerComposition.showInsurancePrefill && <div className="mb-6">
         <InsuranceModule
           key={insuranceSelection.key}
           country="US"
@@ -1210,12 +1229,12 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
           estimatedRent={investorYield?.monthlyRent}
           initialLine={insuranceSelection.initialLine}
         />
-      </div>
+      </div>}
 
-      <div className="mb-2 pt-4 border-t border-border">
+      {buyerComposition.showRegionalContext && <div className="mb-2 pt-4 border-t border-border">
         <div className="text-xs uppercase tracking-widest text-muted mb-3">County Context</div>
         <MarketPanelSection marketPanel={marketPanel} />
-      </div>
+      </div>}
 
       <FooterCredits marketPanel={marketPanel} />
     </div>
@@ -1226,7 +1245,15 @@ function UsListedView({ data, activeGoal }: { data: UsListedResult; activeGoal: 
 // Off-market variant
 // ---------------------------------------------------------------------------
 
-function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; activeGoal: AssessmentGoal | null }) {
+function UsOffMarketView({
+  data,
+  activeGoal,
+  buyerComposition,
+}: {
+  data: UsOffMarketResult;
+  activeGoal: AssessmentGoal | null;
+  buyerComposition: BuyerCompositionModel;
+}) {
   const { assessment, avm, rent, marketPanel, equitySignal, triangulation, investorYield, riskMomentum, overAssessment } =
     data;
   const audience = assessmentAudience(activeGoal);
@@ -1321,6 +1348,7 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
         </p>
       </div>
 
+      {buyerComposition.showValuationContext && (
       <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
         {assessment?.found ? (
           <>
@@ -1347,8 +1375,11 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
           <p className="text-sm text-muted py-4">No value estimate available for this address yet.</p>
         )}
       </div>
+      )}
 
       <AssessmentJourneyFocus />
+
+      <BuyerCompositionNotice model={buyerComposition} />
 
       {rentalScreen && (
         <RentalScreen
@@ -1359,17 +1390,17 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
         />
       )}
 
-      <div className="mb-6">
+      {buyerComposition.showPartnerActions && <div className="mb-6">
         <PartnerCtaRow country="US" state={data.state} source="assess-result" mode={audience.mode} surface={audience.surface} city={data.city} />
-      </div>
+      </div>}
 
       <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 mb-6 text-sm text-amber-800">
         {data.offerUnavailableMessage}
       </div>
 
-      {(avm || rent) && (
+      {buyerComposition.showValuationContext && (avm || rent) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-          {assessment?.source !== "avm" && avm && (
+          {buyerComposition.showValuationContext && assessment?.source !== "avm" && avm && (
             <StatCard
               label="RentCast AVM Estimate"
               value={fmt(avm.value)}
@@ -1378,7 +1409,7 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
                 : "Modeled estimate · not an appraisal"}
             />
           )}
-          {rent && (
+          {data.propertyCapabilities.items.addressRentEstimate.available && rent && (
             <StatCard
               label="Estimated Monthly Rent"
               value={fmt(rent.value) + "/mo"}
@@ -1388,25 +1419,25 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
         </div>
       )}
 
-      <div className="mb-4">
+      {buyerComposition.showValuationContext && <div className="mb-4">
         <ExpandableSection title="Valuation triangulation" defaultOpen={false}>
           <TriangulationDetail triangulation={triangulation} />
         </ExpandableSection>
-      </div>
+      </div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <EquityTenureCard equitySignal={equitySignal} variant="off_market" />
-        {!rentalScreen && <InvestorYieldCard investorYield={investorYield} />}
-        <RiskMomentumCard riskMomentum={riskMomentum} />
+        {buyerComposition.showValuationContext && <EquityTenureCard equitySignal={equitySignal} variant="off_market" />}
+        {buyerComposition.showValuationContext && !rentalScreen && <InvestorYieldCard investorYield={investorYield} />}
+        {buyerComposition.showRegionalContext && <RiskMomentumCard riskMomentum={riskMomentum} />}
       </div>
 
-      <OverAssessmentCallout overAssessment={overAssessment} />
+      {buyerComposition.showValuationContext && <OverAssessmentCallout overAssessment={overAssessment} />}
 
-      <div className="pt-2">
+      {buyerComposition.showRegionalContext && <div className="pt-2">
         <MarketPanelSection marketPanel={marketPanel} />
-      </div>
+      </div>}
 
-      <div className="mb-6">
+      {buyerComposition.showPartnerActions && <div className="mb-6">
         <PartnerCta
           country="US"
           state={data.state}
@@ -1416,10 +1447,10 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
           heading="Act on this analysis"
           city={data.city}
         />
-      </div>
+      </div>}
 
       {/* Insurance module (Insurance Path Stage 2, Screen 1) */}
-      <div className="mb-6">
+      {buyerComposition.showInsurancePrefill && <div className="mb-6">
         <InsuranceModule
           key={insuranceSelection.key}
           country="US"
@@ -1432,7 +1463,7 @@ function UsOffMarketView({ data, activeGoal }: { data: UsOffMarketResult; active
           estimatedRent={rent?.value}
           initialLine={insuranceSelection.initialLine}
         />
-      </div>
+      </div>}
 
       <FooterCredits marketPanel={marketPanel} />
     </div>
@@ -1541,6 +1572,43 @@ function UsFallbackView({ data, activeGoal }: { data: UsFallbackResult; activeGo
   );
 }
 
+function UsBuyerUnavailableView({
+  data,
+  buyerComposition,
+}: {
+  data: UsAssessResult;
+  buyerComposition: BuyerCompositionModel;
+}) {
+  const listingPrice = data.offerAvailable ? data.listing.price : null;
+  return (
+    <div data-p6a-buyer-withheld="true">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight">{data.address}</h1>
+        <p className="text-sm text-muted mt-0.5">{data.countyName}, {data.state}</p>
+      </div>
+
+      {listingPrice != null && (
+        <div className="border border-border rounded-xl p-5 sm:p-8 mb-6 text-center bg-white">
+          <div className="text-xs uppercase tracking-widest text-muted mb-2">Seller-provided listing price</div>
+          <div className="text-4xl sm:text-5xl font-mono font-bold">{fmt(listingPrice)}</div>
+          <p className="text-xs text-muted mt-2">Listing evidence only — not a residential offer recommendation.</p>
+        </div>
+      )}
+
+      <AssessmentJourneyFocus />
+      <BuyerCompositionNotice model={buyerComposition} />
+
+      {buyerComposition.showRegionalContext && (
+        <div className="mb-2 pt-2">
+          <div className="text-xs uppercase tracking-widest text-muted mb-3">Regional context only</div>
+          <MarketPanelSection marketPanel={data.marketPanel} />
+        </div>
+      )}
+      <FooterCredits marketPanel={data.marketPanel} includeRentCast={false} />
+    </div>
+  );
+}
+
 function UsUnresolvedSubjectView({ data }: { data: UsAssessResult }) {
   const isBuilding = data.assessmentSubject.scope === "building";
   return (
@@ -1595,10 +1663,17 @@ export default function UsAssessmentResult({
   data: UsAssessResult;
   activeGoal?: AssessmentGoal | null;
 }) {
+  const buyerComposition = buildBuyerCompositionModel({
+    subject: data.assessmentSubject,
+    classification: data.propertyClassification,
+    capabilities: data.propertyCapabilities,
+  });
   const withholdPropertyEvidence = shouldWithholdPropertyEvidence(
     data.assessmentSubject,
     data.propertyCapabilities
   );
+  const withholdBuyerComposition =
+    activeGoal !== "rental_investment" && buyerComposition.propertyEvidenceDenied;
   return (
     <div
       className="max-w-3xl mx-auto"
@@ -1614,14 +1689,27 @@ export default function UsAssessmentResult({
       data-capability-offer={data.propertyCapabilities.items.offerAnalysis.reason}
       data-capability-insurance-prefill={data.propertyCapabilities.items.insurancePrefill.reason}
       data-p5-active-composition={activeGoal === "rental_investment" ? "rental" : "legacy"}
+      data-p6a-buyer-contract={buyerComposition.contract}
+      data-p6a-buyer-availability={buyerComposition.availability}
     >
       {withholdPropertyEvidence ? (
         <UsUnresolvedSubjectView data={data} />
       ) : data.offerAvailable ? (
-        <UsListedView data={data} activeGoal={activeGoal} />
+        withholdBuyerComposition ? (
+          <UsBuyerUnavailableView data={data} buyerComposition={buyerComposition} />
+        ) : (
+          <UsListedView data={data} activeGoal={activeGoal} buyerComposition={buyerComposition} />
+        )
       ) : data.offerUnavailableReason === "not_listed" ? (
-        <UsOffMarketView data={data} activeGoal={activeGoal} />
+        withholdBuyerComposition ? (
+          <UsBuyerUnavailableView data={data} buyerComposition={buyerComposition} />
+        ) : (
+          <UsOffMarketView data={data} activeGoal={activeGoal} buyerComposition={buyerComposition} />
+        )
       ) : (
+        // Operational and clean-miss fallbacks retain the P0 degradation
+        // contract. A missing provider record cannot be reclassified as a
+        // verified unsupported property class.
         <UsFallbackView data={data} activeGoal={activeGoal} />
       )}
     </div>
