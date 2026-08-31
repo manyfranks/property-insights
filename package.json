@@ -31,7 +31,8 @@
     "test:retention": "tsx scripts/test-listing-retention.ts",
     "test:listing-identity": "tsx scripts/test-listing-identity.ts",
     "test:listings-degraded": "tsx scripts/test-listings-degraded.ts",
-    "test:meta-value": "tsx scripts/test-meta-value.ts"
+    "test:meta-value": "tsx scripts/test-meta-value.ts",
+    "test:analytics-url-privacy": "tsx scripts/test-analytics-url-privacy.ts"
   },
   "engines": {
     "node": ">=22.12.0"
