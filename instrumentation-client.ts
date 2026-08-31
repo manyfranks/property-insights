@@ -4,6 +4,7 @@ import {
   isSensitiveInsuranceCapabilityPath,
   postHogEventContainsInsuranceCapability,
 } from "@/lib/insurance/privacy/sensitive-routes";
+import { redactAnalyticsUrlProperties } from "@/lib/analytics-url-privacy";
 
 const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 // Do Not Sell/Share: never initialize PostHog for a visitor who is opted out
@@ -41,7 +42,11 @@ if (optedOut || sensitiveCapabilityRoute) {
     // Capture unhandled exceptions via Error Tracking
     capture_exceptions: true,
     before_send(event) {
-      return postHogEventContainsInsuranceCapability(event) ? null : event;
+      if (postHogEventContainsInsuranceCapability(event)) return null;
+      // Strip raw street addresses and property identifiers from the URL
+      // properties before capture — this also cleans session-recording start
+      // URLs, which are derived from the $current_url on snapshot events.
+      return redactAnalyticsUrlProperties(event);
     },
     // Debug output in development
     debug: process.env.NODE_ENV === "development",
