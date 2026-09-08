@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withPostHogConfig } from "@posthog/nextjs-config";
 
 const nextConfig: NextConfig = {
   // Next 16.3+ otherwise writes framework-generated AGENTS.md/CLAUDE.md files
@@ -77,4 +78,23 @@ const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
 };
 
-export default nextConfig;
+// Upload client source maps to PostHog Error Tracking at build time. Without
+// this every browser stack trace stays minified, so an exception issue (e.g.
+// the 2026-09-08 React #418 hydration mismatch on a cached county page) points
+// only at anonymised frames and cannot be read.
+//
+// The upload needs a personal API key with error-tracking write access, which
+// lives only in the production/deploy environment. When POSTHOG_API_KEY is
+// absent — local `next build`, a fork, a preview build without the secret —
+// skip the wrapper entirely so those builds still succeed and never attempt an
+// upload. Set POSTHOG_API_KEY and POSTHOG_PROJECT_ID in the deploy environment
+// (e.g. Vercel project settings) to turn uploads on.
+const personalApiKey = process.env.POSTHOG_API_KEY;
+
+export default personalApiKey
+  ? withPostHogConfig(nextConfig, {
+      personalApiKey,
+      projectId: process.env.POSTHOG_PROJECT_ID,
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://us.posthog.com",
+    })
+  : nextConfig;
