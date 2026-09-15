@@ -45,7 +45,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "next": "16.3.2",
     "openai": "^6.27.0",
-    "posthog-js": "^1.417.1",
+    "posthog-js": "^1.433.4",
     "posthog-node": "^5.49.1",
     "puppeteer-core": "25.8.0",
     "react": "19.2.3",
